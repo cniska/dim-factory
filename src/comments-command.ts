@@ -14,7 +14,7 @@ function purge(args: string[]): unknown {
 export const commentsCommand: Command = {
   name: "comments",
   usage: USAGE,
-  summary: "purge the comments a repo holds and ban new ones",
+  summary: "purge the comments a repo holds",
   run(args) {
     const [verb, ...rest] = args;
     if (verb === "purge") return purge(rest);

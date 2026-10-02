@@ -7,39 +7,39 @@ afterEach(() => {
   (process.stderr.write as unknown as { mockRestore?: () => void }).mockRestore?.();
 });
 
-function printed(error: unknown, usage = "usage: dim gate check <range>"): unknown {
+function printed(error: unknown, usage = "usage: dim trace <order>"): unknown {
   const lines: string[] = [];
   spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
     lines.push(String(chunk));
     return true;
   });
-  writeError("gate", error, usage);
+  writeError("trace", error, usage);
   return JSON.parse(lines.join(""));
 }
 
 describe("an error on stderr", () => {
   test("carries a refusal's code, facts and the command that resolves it beside its message", () => {
     const refused = new CodedError(
-      "gate_commits_unenumerable",
-      "cannot enumerate main..HEAD",
-      { range: "main..HEAD" },
-      "dim gate check main..HEAD",
+      "no_order",
+      "no order k7m2qx4d is on record",
+      { order: "k7m2qx4d" },
+      "dim order add --title <title> --description <description>",
     );
     expect(printed(refused)).toEqual({
-      command: "gate",
+      command: "trace",
       ok: false,
       error: {
-        code: "gate_commits_unenumerable",
-        message: "cannot enumerate main..HEAD",
-        meta: { range: "main..HEAD" },
-        resolve: "dim gate check main..HEAD",
+        code: "no_order",
+        message: "no order k7m2qx4d is on record",
+        meta: { order: "k7m2qx4d" },
+        resolve: "dim order add --title <title> --description <description>",
       },
     });
   });
 
   test("resolves a usage error with the command's usage", () => {
-    expect(printed(new UsageError("gate check needs a range"))).toMatchObject({
-      error: { code: "usage", resolve: "dim gate check <range>" },
+    expect(printed(new UsageError("trace takes an order"))).toMatchObject({
+      error: { code: "usage", resolve: "dim trace <order>" },
     });
   });
 

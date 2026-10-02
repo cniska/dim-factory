@@ -107,11 +107,11 @@ describe("the purge command", () => {
     });
     const { report } = purgeCommand(dir, []);
     expect(report).toMatchObject({ comments: 1, files: [{ path: "a.ts", removed: 1 }] });
-    expect(report.next).toContain(".dim/config.json");
-    expect(existsSync(join(dir, ".dim", "config.json"))).toBe(false);
+    expect(report.next).toBe("dim comments purge --write removes them, runs bun run format");
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("// why\nconst a = 1;\n");
   });
 
-  test("with write, purges, bans comments in the project config and runs the formatter", () => {
+  test("with write, purges and runs the formatter", () => {
     const dir = repo({
       "a.ts": "// why\nconst a = 1;\n",
       "package.json": '{ "scripts": { "format": "touch formatted" } }',
@@ -120,11 +120,8 @@ describe("the purge command", () => {
     const { status, report } = purgeCommand(dir, ["--write"]);
     expect(status).toBe(0);
     expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("const a = 1;\n");
-    expect(JSON.parse(readFileSync(join(dir, ".dim", "config.json"), "utf8"))).toEqual({
-      comments: "banned",
-    });
     expect(existsSync(join(dir, "formatted"))).toBe(true);
-    expect(report).toMatchObject({ banned: ".dim/config.json", format: { exitCode: 0 } });
+    expect(report).toMatchObject({ format: { exitCode: 0 } });
   });
 
   test("fails where the formatter fails, and carries what it printed", () => {
@@ -137,21 +134,6 @@ describe("the purge command", () => {
     expect(status).toBe(1);
     expect(report).toMatchObject({ format: { exitCode: expect.any(Number) } });
     expect(JSON.stringify(report.format)).toContain("broke");
-  });
-
-  test("refuses a project config it cannot read before touching any file", () => {
-    const dir = repo({ "a.ts": "// why\n", ".dim/config.json": '{ "comments": ' });
-    const run = spawnSync(
-      process.execPath,
-      [join(import.meta.dir, "cli.ts"), "comments", "purge", "--write"],
-      {
-        cwd: dir,
-        encoding: "utf8",
-        env: { ...process.env, HOME: join(dir, ".home") },
-      },
-    );
-    expect(run.status).not.toBe(0);
-    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("// why\n");
   });
 });
 
@@ -169,7 +151,7 @@ describe("purging a checkout", () => {
     expect(readFileSync(join(dir, "src/a.ts"), "utf8")).toBe("const a = 1;\n");
   });
 
-  test("reads only tracked files, in the languages the gate judges", () => {
+  test("reads only tracked files, in the languages it parses", () => {
     const dir = repo({ "a.ts": "const a = 1;\n", "notes.md": "<!-- why -->\n", "run.sh": "# why\n" });
     writeFileSync(join(dir, "untracked.ts"), "// why\n");
     expect(purgeCheckout(dir, { write: false }).files).toEqual([]);

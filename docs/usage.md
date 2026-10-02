@@ -29,36 +29,21 @@ dim sql "<read-only select>"
 dim hooks install
 dim rules install
 dim skills install
-dim gate install --owner <host>/<account>
 ```
 
 - Each install writes at once and copies aside any file it replaces.
 - Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
 - Hooks, Codex rules, Codex hook trust and `~/.codex/skills` are installed and checked only for a harness whose executable is on `PATH`; `~/.agents/skills` is linked whatever is installed.
-- `dim doctor` reports missing or stale hooks, missing Codex trust, database drift, unloaded agents, and whether the comment gate is on — each with its repair.
+- `dim doctor` reports missing or stale hooks, missing Codex trust, database drift and unloaded agents, each with its repair.
 
-### Commit gate
+A project's gates are its own: its hooks, its tests and its CI, which the factory runs as any contributor does.
 
-Each git hook the gate installs calls `dim gate`, and each hook's rules are one entry in [`src/gate-registry.ts`](../src/gate-registry.ts). A hook that cannot find or run `dim` lets the commit or push through and says it was not judged.
+### Comment purge
 
-- A commit's subject is a Conventional Commit of at most 50 ASCII characters, with no body. A `fixup!` subject is judged by the subject it names, so `git commit --fixup` makes a commit that `git rebase --autosquash` folds in; `dim gate check` still refuses one that is left in a range.
-- The repository's declared check runs before the commit. `DIM_SKIP_CHECK=1` skips it and the comment gate for one commit.
+`dim comments purge [<path>...]` reports the comments tracked JS and TS files hold, parsed with `@babel/parser`. `--write` removes them and runs the declared format command; then run the check and commit. A test that runs the same scan and expects nothing keeps the code free of them, as dim-factory's `src/no-comments.test.ts` does.
 
-### Comment gate
-
-Part of the commit gate, on where the [config](#configuration) resolves `comments` to `banned`. The project layer is read as `HEAD` commits it, so one commit cannot both lift the ban and add a comment.
-
-- Each staged JS or TS file is parsed with `@babel/parser`, and the refusal names `path:line` for every comment on an added or edited line.
-- Only added lines count, so a repo with existing comments can turn the ban on without a sweep. In a merge a line counts only where it is added against every parent.
-- A file rewritten past git's rename detection is a new file.
-- **Not judged:** tool contracts (`/// <reference …>`, `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__`, `@__PURE__`, a `/*!` license header, and in plain JS a JSDoc of only `@type`, `@typedef` or `@param`), a `#!` line, files git marks `linguist-generated` or `linguist-vendored`, files that do not parse (named on stderr), and other languages.
-- A config it cannot read lets the commit through, says why, and still runs the check.
-
-`dim comments purge [<path>...]` reports the comments tracked JS and TS files hold. `--write` removes them, sets `comments` to `banned` in the project config and runs the declared format command; then run the check and commit. Languages are adapters in [`src/comments-language.ts`](../src/comments-language.ts).
-
-### Push gate
-
-Refuses a rewrite or deletion of the remote default branch, and any push carrying a revert, since git commits a revert without running the commit gate. A repository's own `core.hooksPath` is left alone.
+- **Left in place:** tool contracts (`/// <reference …>`, `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__`, `@__PURE__`, a `/*!` license header, and in plain JS a JSDoc of only `@type`, `@typedef` or `@param`), a `#!` line, files git marks `linguist-generated` or `linguist-vendored`, files that do not parse (named in the report), and other languages.
+- Languages are adapters in [`src/comments-language.ts`](../src/comments-language.ts).
 
 ## Configuration
 
@@ -66,13 +51,13 @@ Two layers of JSON: the user's `config.json` in the [config directory](core.md#p
 
 ```sh
 dim config
-dim config set comments banned --project
-dim config unset comments
+dim config set ship default-branch --project
+dim config unset ship
 ```
 
 | Setting | Values |
 |---|---|
-| `comments` | `banned` turns on the comment gate; `allowed` turns it off |
+| `ship` | `default-branch` lands an approved order on the project's default branch by fast-forward |
 
 ## Session start
 

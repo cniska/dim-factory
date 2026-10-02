@@ -1,7 +1,6 @@
 import { relative, resolve } from "node:path";
 import { UsageError } from "./cli-contract";
 import { type PurgedFile, purgeCheckout } from "./comments-purge";
-import { PROJECT_CONFIG, projectConfigPath, readProjectConfig, writeConfigValue } from "./config";
 import { checkTask, formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
 
@@ -25,7 +24,7 @@ export type Purged =
   | {
       readonly written: true;
       readonly failed: boolean;
-      readonly report: Counted & { banned: string; format: Formatted | null; next: string };
+      readonly report: Counted & { format: Formatted | null; next: string };
     };
 
 export function purgeComments(
@@ -35,15 +34,12 @@ export function purgeComments(
   const root = checkoutRoot(cwd);
   if (root === null) throw new UsageError(`${cwd} is not inside a git checkout`);
   const paths = options.paths.map((path) => relative(root, resolve(cwd, path)) || ".");
-  readProjectConfig(root);
-  if (options.write) writeConfigValue(projectConfigPath(root), "comments", "banned");
   const { files, unparsed } = purgeCheckout(root, { write: options.write, paths });
   const comments = files.reduce((sum, file) => sum + file.removed, 0);
-  const ban = PROJECT_CONFIG;
   const format = formatTask(root)?.commandLine ?? null;
   const check = checkTask(root)?.commandLine ?? null;
   if (!options.write) {
-    const steps = [`removes them`, `bans comments in ${ban}`, format ? `runs ${format}` : null];
+    const steps = ["removes them", format ? `runs ${format}` : null];
     return {
       written: false,
       report: {
@@ -63,11 +59,10 @@ export function purgeComments(
       files,
       unparsed,
       comments,
-      banned: ban,
       format: ran,
       next: failed
         ? `${ran.command} failed; fix it before committing`
-        : `${check ? `run ${check}, then ` : ""}commit the purge together with ${ban}`,
+        : `${check ? `run ${check}, then ` : ""}commit the purge`,
     },
   };
 }

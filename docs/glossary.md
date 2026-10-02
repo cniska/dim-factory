@@ -45,6 +45,5 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Answer | The builder's one reply to a finding: `fixed`, or `refused` with a reason |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |
-| Comment gate | The part of the commit gate that refuses a new comment in a JS or TS file, in a repo that bans them ([`usage.md`](usage.md#comment-gate)) |
 | Config | `dim`'s settings, from the user's and the project's JSON layers ([`usage.md`](usage.md#configuration)) |
 | Setting | One named entry of the config, taking one of a fixed set of values |

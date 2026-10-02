@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dim": "bun run src/cli.ts",
+    "prepare": "git config core.hooksPath .githooks",
     "format": "bunx biome check --write src acceptance",
     "lint": "bunx biome check --error-on-warnings src acceptance",
     "typecheck": "bunx tsc --noEmit",

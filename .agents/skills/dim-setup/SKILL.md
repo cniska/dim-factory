@@ -24,7 +24,6 @@ Use the doctor's findings to choose only the needed installers. Each writes when
 - `dim hooks install` for Claude Code and Codex session hooks.
 - `dim skills install` for dim's shared skills in the agent skill directories.
 - `dim rules install` when its canonical Claude rules source exists.
-- `dim gate install --owner <host>/<account>` for the owner's verified remote scope. Do not infer that scope from an unrelated clone.
 - `dim agent install` on macOS when scheduled sync is wanted. Run it even when doctor says the agent is loaded, because the plist names this checkout and the installed Bun path. Its result gives the command to load the launchd agent.
 
 On Linux, run `dim sync` manually; the launchd installer is macOS-specific.
@@ -35,7 +34,7 @@ Run `dim doctor` again after repairs. Codex hook trust is granted in Codex, and 
 
 ## Exit check
 
-Setup is ready when the executable, hooks, gates, rules, skill links and routing checks are healthy, at least one harness can run a station, and `dim-factory` resolves from the shared skill directory of each installed harness. Check the executable and skill targets from a separate project checkout; both must still lead to this clone. `dim-factory` operates an existing order id, and `dim-add` creates one from a new request. Report observational doctor failures such as insufficient session-end history separately, with the evidence needed to judge them after more sessions. If an external or owner-dependent action remains, report setup as blocked with its concrete next step. On a second run with the same inputs, the installers make no changes.
+Setup is ready when the executable, hooks, rules, skill links and routing checks are healthy, at least one harness can run a station, and `dim-factory` resolves from the shared skill directory of each installed harness. Check the executable and skill targets from a separate project checkout; both must still lead to this clone. `dim-factory` operates an existing order id, and `dim-add` creates one from a new request. Report observational doctor failures such as insufficient session-end history separately, with the evidence needed to judge them after more sessions. If an external or owner-dependent action remains, report setup as blocked with its concrete next step. On a second run with the same inputs, the installers make no changes.
 
 ## Result
 
@@ -44,7 +43,6 @@ Report which controls were installed or already healthy, the final doctor result
 ## Red flags
 
 - calling a different `dim` from PATH
-- writing machine-wide hooks or gates before reading what doctor says they change
-- guessing the commit gate's owner scope
+- writing machine-wide hooks before reading what doctor says they change
 - treating a doctor's warning or failure as a successful installation
 - concealing a trust or routing decision the owner must make

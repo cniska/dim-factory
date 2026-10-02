@@ -36,7 +36,7 @@ A comment is where an agent excuses what the code should have fixed. A comment e
 
 **Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`todo.md`](../../../docs/todo.md).
 
-**Holds it.** The comment gate, in a repo that bans comments: the commit gate refuses a commit adding one to a JS or TS line ([`usage.md`](../../../docs/usage.md#comment-gate)). Elsewhere, review.
+**Holds it.** A test in the project's suite that scans for comments and expects none ([`usage.md`](../../../docs/usage.md#comment-purge)). Elsewhere, review.
 
 ## A gate on the step before the act
 

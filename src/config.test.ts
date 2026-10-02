@@ -40,27 +40,20 @@ describe("the layers a setting is read from", () => {
 
   test("reads the user layer from the home config", () => {
     const home = scratch();
-    put(join(home, ".config", "dim", "config.json"), '{ "comments": "banned" }');
+    put(join(home, ".config", "dim", "config.json"), '{ "ship": "default-branch" }');
     expect(userConfigPath({ HOME: home })).toBe(join(home, ".config", "dim", "config.json"));
-    expect(readConfig({ env: { HOME: home } })).toEqual({ comments: "banned" });
+    expect(readConfig({ env: { HOME: home } })).toEqual({ ship: "default-branch" });
   });
 
-  test("lets the project layer override the user layer", () => {
-    const home = scratch();
-    put(join(home, ".config", "dim", "config.json"), '{ "comments": "banned" }');
-    const root = repo('{ "comments": "allowed" }');
-    expect(readConfig({ env: { HOME: home }, root, at: "HEAD" })).toEqual({ comments: "allowed" });
-  });
-
-  test("reads the model each role runs on from the user layer", () => {
+  test("reads the model each role runs on from the user layer, beside the project's settings", () => {
     const home = scratch();
     put(
       join(home, ".config", "dim", "config.json"),
       '{ "models": { "default": "sonnet", "planner": "opus" } }',
     );
-    const root = repo('{ "comments": "allowed" }');
+    const root = repo('{ "ship": "default-branch" }');
     expect(readConfig({ env: { HOME: home }, root, at: "HEAD" })).toEqual({
-      comments: "allowed",
+      ship: "default-branch",
       models: { default: "sonnet", planner: "opus" },
     });
   });
@@ -74,10 +67,10 @@ describe("the layers a setting is read from", () => {
   });
 
   test("reads the project layer as a revision holds it, not as the working tree does", () => {
-    const root = repo('{ "comments": "banned" }');
-    writeFileSync(projectConfigPath(root), '{ "comments": "allowed" }');
-    expect(readConfig({ env: { HOME: scratch() }, root, at: "HEAD" })).toEqual({ comments: "banned" });
-    expect(readConfig({ env: { HOME: scratch() }, root })).toEqual({ comments: "allowed" });
+    const root = repo("{}");
+    writeFileSync(projectConfigPath(root), '{ "ship": "default-branch" }');
+    expect(readConfig({ env: { HOME: scratch() }, root, at: "HEAD" })).toEqual({});
+    expect(readConfig({ env: { HOME: scratch() }, root })).toEqual({ ship: "default-branch" });
   });
 
   test("reads no project layer at a revision that does not hold one", () => {
@@ -93,17 +86,17 @@ describe("the layers a setting is read from", () => {
 
   test("reads a layer carrying comments of its own", () => {
     const home = scratch();
-    put(join(home, ".config", "dim", "config.json"), '{\n  // mine\n  "comments": "banned",\n}\n');
-    expect(readConfig({ env: { HOME: home } })).toEqual({ comments: "banned" });
+    put(join(home, ".config", "dim", "config.json"), '{\n  // mine\n  "ship": "default-branch",\n}\n');
+    expect(readConfig({ env: { HOME: home } })).toEqual({ ship: "default-branch" });
   });
 
   for (const [what, text] of [
-    ["a key no setting has", '{ "comment": "banned" }'],
-    ["a value the key does not take", '{ "comments": "maybe" }'],
-    ["a value of the wrong type", '{ "comments": true }'],
-    ["a repeated key", '{ "comments": "banned", "comments": "allowed" }'],
-    ["a layer that is not an object", '["comments"]'],
-    ["a layer that does not parse", '{ "comments": '],
+    ["a key no setting has", '{ "comments": "banned" }'],
+    ["a value the key does not take", '{ "ship": "maybe" }'],
+    ["a value of the wrong type", '{ "ship": true }'],
+    ["a repeated key", '{ "ship": "default-branch", "ship": "default-branch" }'],
+    ["a layer that is not an object", '["ship"]'],
+    ["a layer that does not parse", '{ "ship": '],
   ]) {
     test(`refuses ${what}, naming the file`, () => {
       const home = scratch();
@@ -116,27 +109,27 @@ describe("the layers a setting is read from", () => {
 describe("writing a setting", () => {
   test("creates the layer when it is absent", () => {
     const path = join(scratch(), ".dim", "config.json");
-    writeConfigValue(path, "comments", "banned");
-    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ comments: "banned" });
+    writeConfigValue(path, "ship", "default-branch");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ ship: "default-branch" });
   });
 
   test("keeps the comments and other lines already in the layer", () => {
     const path = join(scratch(), "config.json");
-    put(path, '{\n  // mine\n  "comments": "allowed"\n}\n');
-    writeConfigValue(path, "comments", "banned");
-    expect(readFileSync(path, "utf8")).toBe('{\n  // mine\n  "comments": "banned"\n}\n');
+    put(path, "{\n  // mine\n}\n");
+    writeConfigValue(path, "ship", "default-branch");
+    expect(readFileSync(path, "utf8")).toBe('{\n  "ship": "default-branch"\n  // mine\n}\n');
   });
 
   test("removes a setting when given no value", () => {
     const path = join(scratch(), "config.json");
-    put(path, '{ "comments": "banned" }\n');
-    writeConfigValue(path, "comments", undefined);
+    put(path, '{ "ship": "default-branch" }\n');
+    writeConfigValue(path, "ship", undefined);
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({});
   });
 
   test("refuses a value the key does not take, writing nothing", () => {
     const path = join(scratch(), "config.json");
-    expect(() => writeConfigValue(path, "comments", "maybe")).toThrow("banned, allowed");
+    expect(() => writeConfigValue(path, "ship", "maybe")).toThrow("default-branch");
     expect(() => readFileSync(path)).toThrow();
   });
 });

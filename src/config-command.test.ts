@@ -24,17 +24,17 @@ function config(args: string[]): { dir: string; run: (more: string[]) => ReturnT
 
 describe("dim config", () => {
   test("sets a project setting, which resolves once HEAD commits it", () => {
-    const { dir, run } = config(["set", "comments", "banned", "--project"]);
+    const { dir, run } = config(["set", "ship", "default-branch", "--project"]);
     const out = run([]);
     expect(out.status).toBe(0);
     expect(JSON.parse(readFileSync(join(dir, ".dim", "config.json"), "utf8"))).toEqual({
-      comments: "banned",
+      ship: "default-branch",
     });
     expect(JSON.parse(String(out.stdout)).result).toMatchObject({
       user: { config: {} },
-      project: { config: { comments: "banned" }, committed: {} },
+      project: { config: { ship: "default-branch" }, committed: {} },
       resolved: {},
-      settings: { comments: ["banned", "allowed"] },
+      settings: { ship: ["default-branch"] },
     });
     execFileSync("git", ["-C", dir, "add", ".dim/config.json"]);
     execFileSync("git", [
@@ -48,44 +48,44 @@ describe("dim config", () => {
       "-q",
       "--no-verify",
       "-m",
-      "chore: ban",
+      "chore: ship",
     ]);
     const listed = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "config"], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, HOME: join(dir, ".home") },
     });
-    expect(JSON.parse(listed.stdout).result).toMatchObject({ resolved: { comments: "banned" } });
+    expect(JSON.parse(listed.stdout).result).toMatchObject({ resolved: { ship: "default-branch" } });
   });
 
   test("leaves no file beside the one it edits", () => {
-    const { dir, run } = config(["set", "comments", "allowed", "--project"]);
+    const { dir, run } = config(["set", "ship", "default-branch", "--project"]);
     run([]);
     run([]);
     expect(readdirSync(join(dir, ".dim"))).toEqual(["config.json"]);
   });
 
   test("unsets a setting, and writes nothing where there is no file", () => {
-    const { dir, run } = config(["unset", "comments", "--project"]);
+    const { dir, run } = config(["unset", "ship", "--project"]);
     expect(run([]).status).toBe(0);
     expect(existsSync(join(dir, ".dim"))).toBe(false);
   });
 
   test("refuses an argument beyond the value", () => {
-    expect(config(["set", "comments", "banned", "extra"]).run([]).status).not.toBe(0);
+    expect(config(["set", "ship", "default-branch", "extra"]).run([]).status).not.toBe(0);
   });
 
   test("sets the user layer without --project", () => {
-    const { dir, run } = config(["set", "comments", "banned"]);
+    const { dir, run } = config(["set", "ship", "default-branch"]);
     expect(run([]).status).toBe(0);
     expect(JSON.parse(readFileSync(join(dir, ".home", ".config", "dim", "config.json"), "utf8"))).toEqual({
-      comments: "banned",
+      ship: "default-branch",
     });
   });
 
   test("refuses a key no setting has", () => {
-    const out = config(["set", "commentz", "banned"]).run([]);
+    const out = config(["set", "shipp", "default-branch"]).run([]);
     expect(out.status).not.toBe(0);
-    expect(String(out.stderr)).toContain("the settings are comments");
+    expect(String(out.stderr)).toContain("the settings are ship");
   });
 });

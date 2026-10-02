@@ -231,30 +231,6 @@ describe("hooks", () => {
     }
   });
 
-  test("the commit gate lets a commit through when it cannot read the project's check, and says why when it blocks one", async () => {
-    const m = await start({ check: "exit 1" });
-    resultOf(await m.operator.dim(["gate", "install", "--owner", "github.com/acme"]));
-    const commit = (message: string) =>
-      Bun.spawnSync(["git", "commit", "-q", "--allow-empty", "-m", message], {
-        cwd: m.repo,
-        env: m.env,
-        stderr: "pipe",
-      });
-
-    const blocked = commit("feat: blocked by the red check");
-    expect(blocked.exitCode).not.toBe(0);
-    expect(blocked.stderr.toString()).toContain("pre-commit:");
-
-    chmodSync(join(m.repo, "package.json"), 0o000);
-    try {
-      const through = commit("feat: through, the check is unreadable");
-      expect(through.exitCode).toBe(0);
-      expect(through.stderr.toString()).toContain("not judged");
-    } finally {
-      chmodSync(join(m.repo, "package.json"), 0o644);
-    }
-  });
-
   test("an edit in a station worker's session runs neither the workspace's format command nor its settings' hooks", async () => {
     const m = await start({
       script: {

@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+subject=$(head -n 1 "$1")
+body=$(tail -n +2 "$1" | grep -v '^#' | grep -v '^[[:space:]]*$' || true)
+
+[ -f "$(git rev-parse --git-path MERGE_HEAD)" ] && exit 0
+
+judged=$subject
+while [ "${judged#"fixup! "}" != "$judged" ]; do judged=${judged#"fixup! "}; done
+
+refuse() {
+  echo "commit-msg: $1" >&2
+  echo "  got: $subject" >&2
+  exit 1
+}
+
+[ -n "$(printf '%s' "$judged" | tr -d '[:space:]')" ] || refuse "subject is empty."
+[ -z "$body" ] || refuse "commit has a body. The subject is the whole message."
+printf '%s\n' "$judged" | grep -Eq '^(feat|fix|refactor|docs|test|chore|style|perf|build|ci)(\([a-z0-9-]+\))?!?: .+' ||
+  refuse "subject is not a Conventional Commit (type(scope): what changed)."
+if printf '%s' "$judged" | LC_ALL=C grep -q '[^ -~]'; then refuse "subject is not ASCII."; fi
+[ "$(printf '%s' "$judged" | wc -c)" -le 50 ] || refuse "subject is $(printf '%s' "$judged" | wc -c | tr -d ' ') characters, over the 50 allowed."
+exit 0

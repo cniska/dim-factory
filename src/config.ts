@@ -9,7 +9,6 @@ import { committedTree } from "./git-committed";
 import { configDir, type Env } from "./paths";
 
 export const SETTINGS = {
-  comments: ["banned", "allowed"],
   ship: ["default-branch"],
 } as const satisfies Record<string, readonly string[]>;
 

@@ -6,11 +6,11 @@ import { dbPath } from "./paths";
 export const doctorCommand: Command = {
   name: "doctor",
   usage: "usage: dim doctor",
-  summary: "check that collection and the gates are actually working, and say what to fix",
+  summary: "check that collection is actually working, and say what to fix",
   run() {
     const db = openReadOnly(dbPath(), { forDiagnosis: true });
     try {
-      const checks = diagnose(db, process.env, process.cwd());
+      const checks = diagnose(db, process.env);
       const failing = checks.filter((check) => check.state === "fail").length;
       return new Ran({ checks, failing }, failing === 0 ? 0 : 1);
     } finally {

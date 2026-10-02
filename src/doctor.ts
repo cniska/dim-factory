@@ -1,25 +1,16 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { CodedError } from "./coded-error";
-import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
 import { ConfigError } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
-import { type CommentGate, commentGateFor } from "./gate-comment";
-import { GATE_ERROR } from "./gate-contract";
-import { type GatePlan, installedOwners, planCommitGate, sharedHooksDir } from "./gate-install";
-import { unarmedCheckouts } from "./gate-push";
-import { checkoutRoot } from "./git-checkout";
-import { isHostQualified } from "./git-remote-slug";
 import { harnessInstalled, installedHarnesses } from "./harness-installed";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
-import { recordedRepos } from "./ingest-git";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { TOOLS } from "./ingest-tools";
-import { type Env, resolveHomeDir, spoolDir, tildePath } from "./paths";
+import { type Env, resolveHomeDir, spoolDir } from "./paths";
 import { planRules } from "./rules";
 import { planSkill, retiredLinks } from "./skill";
 
@@ -201,72 +192,6 @@ function spool(env: Env): Health {
   };
 }
 
-const REINSTALL_GATE = "dim gate install --owner <host>/<account>";
-
-function gateFailure(name: string, error: unknown): Health | null {
-  if (!(error instanceof CodedError)) return null;
-  if (error.code === GATE_ERROR.gitConfigUnreadable) return { name, state: "fail", detail: error.message };
-  if (error.code === GATE_ERROR.unreadableOwners) {
-    return { name, state: "fail", detail: error.message, fix: REINSTALL_GATE };
-  }
-  return null;
-}
-
-function commentGate(env: Env, cwd: string, commitGate: Health): Health {
-  const name = "comment gate";
-  const root = checkoutRoot(cwd);
-  let gate: CommentGate;
-  try {
-    gate = root === null ? { state: "unlabeled" } : commentGateFor(root, "HEAD", env);
-  } catch (error) {
-    const failed = gateFailure(name, error);
-    if (failed !== null) return failed;
-    if (!(error instanceof ConfigError)) throw error;
-    if (root !== null && error.path.startsWith(projectConfigPath(root))) {
-      return { name, state: "fail", detail: error.message, fix: `repair ${PROJECT_CONFIG} and commit it` };
-    }
-    return unreadable(name, error);
-  }
-  if (gate.state === "unlabeled") {
-    return {
-      name,
-      state: "ok",
-      detail: `not judged: ${tildePath(cwd, env)} is not a checkout with a remote`,
-    };
-  }
-  const { label } = gate;
-  if (gate.state === "off") {
-    return {
-      name,
-      state: "ok",
-      detail: `off for ${label}: ${PROJECT_CONFIG} as HEAD commits it, over ${tildePath(userConfigPath(env), env)}, does not ban comments`,
-    };
-  }
-  if (gate.state === "uncovered") {
-    return {
-      name,
-      state: "warn",
-      detail: `comments are banned for ${label}, but no installed pre-commit hook covers its origin, so nothing refuses them`,
-      fix: REINSTALL_GATE,
-    };
-  }
-  if (commitGate.state !== "ok") {
-    return { name, state: "warn", detail: `banned for ${label}, not on until the commit gate is` };
-  }
-  if (gate.state === "hooks-elsewhere") {
-    return {
-      name,
-      state: "warn",
-      detail: `comments are banned for ${label}, but git runs its hooks from ${gate.hooksPath === null ? "the repository's own hooks directory" : tildePath(gate.hooksPath, env)} rather than ${tildePath(sharedHooksDir(env), env)}, so nothing refuses them`,
-    };
-  }
-  return {
-    name,
-    state: "ok",
-    detail: `on for ${label}: a comment added to a JS or TS file is refused at commit`,
-  };
-}
-
 function dimOnPath(): Health {
   return Bun.which("dim")
     ? { name: "path", state: "ok", detail: `dim resolves to ${Bun.which("dim")}` }
@@ -340,81 +265,6 @@ function skill(env: Env): Health {
       };
 }
 
-function commitGate(env: Env): Health {
-  try {
-    return commitGateHealth(planCommitGate(installedOwners(env) ?? [], [], env), sharedHooksDir(env));
-  } catch (error) {
-    const failed = gateFailure("commit gate", error);
-    if (failed === null) throw error;
-    return failed;
-  }
-}
-
-function commitGateHealth(plan: GatePlan, dir: string): Health {
-  const gaps = plan.hooks
-    .filter((h) => h.state !== "installed")
-    .map((h) => `${h.name} is ${h.state}`)
-    .concat(
-      plan.globalHooksPath === dir
-        ? []
-        : [`git's global core.hooksPath is ${plan.globalHooksPath ?? "unset"} rather than ${dir}`],
-    );
-  return gaps.length === 0
-    ? { name: "commit gate", state: "ok", detail: "every hook in place, for every repo" }
-    : {
-        name: "commit gate",
-        state: "warn",
-        detail: `${gaps.join(", ")}; those rules are held only where a repo gates its own`,
-        fix: "dim gate install --owner <owner>",
-      };
-}
-
-function gateOwners(env: Env): Health[] {
-  try {
-    const owners = installedOwners(env);
-    return owners === null ? [] : ownersHealth(owners);
-  } catch (error) {
-    const failed = gateFailure("gate owners", error);
-    if (failed === null) throw error;
-    return [failed];
-  }
-}
-
-function ownersHealth(owners: readonly string[]): Health[] {
-  const bareOwners = owners.filter((owner) => !isHostQualified(owner));
-  if (bareOwners.length === 0) {
-    return [
-      {
-        name: "gate owners",
-        state: "ok",
-        detail: `${owners.length} owners, each naming a host and an account`,
-      },
-    ];
-  }
-  return [
-    {
-      name: "gate owners",
-      state: "fail",
-      detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
-      fix: REINSTALL_GATE,
-    },
-  ];
-}
-
-function pushGate(db: Database, env: Env): Health {
-  const unarmed = unarmedCheckouts(recordedRepos(db).filter((repo) => existsSync(join(repo, ".git"))));
-  return unarmed.length === 0
-    ? { name: "push gate", state: "ok", detail: "every checkout names the branch the gate protects" }
-    : {
-        name: "push gate",
-        state: "warn",
-        detail: `${unarmed.length} checkouts have no origin/HEAD, so the push gate exits before reading anything there: ${unarmed
-          .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
-          .join(", ")}`,
-        fix: "git remote set-head origin -a, in each",
-      };
-}
-
 function agent(env: Env): Health {
   const plan = planAgent(env);
   const plist = plan.path;
@@ -471,9 +321,8 @@ function outcomes(db: Database): Health {
     : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` };
 }
 
-export function diagnose(db: Database, env: Env, cwd: string): Health[] {
+export function diagnose(db: Database, env: Env): Health[] {
   const hooks = readHooks(env);
-  const commit = commitGate(env);
   return [
     dimOnPath(),
     schema(db),
@@ -482,10 +331,6 @@ export function diagnose(db: Database, env: Env, cwd: string): Health[] {
     codexTrust(env),
     endReasons(db, hooks),
     skill(env),
-    commit,
-    ...gateOwners(env),
-    commentGate(env, cwd, commit),
-    pushGate(db, env),
     agent(env),
     rules(env),
     retention(env),

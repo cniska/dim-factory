@@ -15,7 +15,7 @@ A factory with no human reading the work ships whatever the checks miss, and the
 The factory aims to give each project the conditions that let its owner delegate work with evidence:
 
 - **Codebase quality.** Clear boundaries, current docs and tests give a worker a reliable starting point. [`dim-audit`](../skills/dim-audit/SKILL.md) inspects an existing project and reports debt for the owner to turn into work.
-- **Static analysis and tests.** The project declares the check it needs; the commit gate executes it before accepting code ([`usage.md`](usage.md#commit-gate)).
+- **Static analysis and tests.** The project declares the check it needs; its own hooks and CI run it before accepting code, and the factory's slice gates run it on every commit a worker hands in.
 - **Rules.** Standing instructions tell agents what holds throughout a project. Mechanical rules become gates, which still run when an agent misses an instruction ([`usage.md`](usage.md#install-the-shared-controls)).
 - **Skills.** Shared, task-specific procedures guide planning, building, review and audit. [`dim-setup`](../.agents/skills/dim-setup/SKILL.md) installs them for use from other projects.
 - **Style guide.** The project's conventions and examples show what its code and docs should look like: names, file boundaries, API patterns and writing. Formatting is one enforceable part; reviewers judge conventions that tools cannot decide. [Google's style guide overview](https://github.com/google/styleguide/blob/gh-pages/README.md) uses the term for conventions ranging from names to design choices.
@@ -24,7 +24,7 @@ Setup installs the shared controls, while each project supplies its declared che
 
 ## Borrowed from the assembly line
 
-- **Stop on a defect, never on success** (*jidoka*). The commit gate halts a failing change; the operator halts on a second failure of one order.
+- **Stop on a defect, never on success** (*jidoka*). A slice gate halts a failing change; the operator halts on a second failure of one order.
 - **A defect halts its own work** (*andon*). A finding stops its slice until it is answered, and a red check fails the turn it ran on.
 - **Fix the process, not the part.** A defect found repeatedly is a gate that does not exist yet.
 - **Make the error impossible** (*poka-yoke*). Whatever is mechanical is a gate; judgement goes to an agent with a fixed brief.
