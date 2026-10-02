@@ -198,7 +198,7 @@ describe("a Pi or omp session", () => {
 });
 
 describe("listing sessions", () => {
-  test("names each session file under its harness by the id in its file name", () => {
+  test("names each session file by the id in its file name", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-pi-"));
     roots.push(root);
     const dir = join(root, "--home-dev-widgets--");
@@ -208,9 +208,9 @@ describe("listing sessions", () => {
       `${LINES[1]}\n`,
     );
 
-    expect(
-      listPiSessions("omp", root).map(({ tool, kind, sessionId }) => ({ tool, kind, sessionId })),
-    ).toEqual([{ tool: "omp", kind: "transcript", sessionId: "aaaaaaaa-0000-4000-8000-000000000001" }]);
-    expect(listPiSessions("pi", join(root, "absent"))).toEqual([]);
+    expect(listPiSessions(root).map(({ kind, sessionId }) => ({ kind, sessionId }))).toEqual([
+      { kind: "transcript", sessionId: "aaaaaaaa-0000-4000-8000-000000000001" },
+    ]);
+    expect(listPiSessions(join(root, "absent"))).toEqual([]);
   });
 });

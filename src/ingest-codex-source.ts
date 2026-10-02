@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Glob } from "bun";
-import type { FileSpec } from "./ingest";
+import type { SourceFile } from "./ingest";
 import { type CodexState, parseCodexChunk } from "./ingest-parse-codex";
 import { codexDir, type Env } from "./paths";
 
@@ -21,9 +21,9 @@ function readState(raw: string | null): CodexState {
   }
 }
 
-export function listCodexRollouts(env: Env = process.env): FileSpec[] {
+export function listCodexRollouts(env: Env = process.env): SourceFile[] {
   const root = codexDir(env);
-  const specs: FileSpec[] = [];
+  const specs: SourceFile[] = [];
   for (const dir of [join(root, "sessions"), join(root, "archived_sessions")]) {
     if (!existsSync(dir)) continue;
     for (const path of new Glob("**/rollout-*.jsonl").scanSync({ cwd: dir, absolute: true })) {
@@ -31,7 +31,6 @@ export function listCodexRollouts(env: Env = process.env): FileSpec[] {
       if (!threadId) continue;
       specs.push({
         path,
-        tool: "codex",
         kind: "rollout",
         sessionId: threadId,
         parse: (lines, first, state) => parseCodexChunk(lines, first, threadId, readState(state)),

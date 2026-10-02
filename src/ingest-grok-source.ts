@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { Glob } from "bun";
-import type { FileSpec } from "./ingest";
+import type { SourceFile } from "./ingest";
 import { parseGrokChunk } from "./ingest-parse-grok";
 import { projectOf, type SessionFacts } from "./ingest-session-records";
 import { type Env, grokDir } from "./paths";
@@ -66,17 +66,16 @@ function summaryFacts(summary: GrokSummary | undefined): SessionFacts[] {
   ];
 }
 
-export function listGrokSessions(env: Env = process.env): FileSpec[] {
+export function listGrokSessions(env: Env = process.env): SourceFile[] {
   const root = join(grokDir(env), "sessions");
   if (!existsSync(root)) return [];
-  const specs: FileSpec[] = [];
+  const specs: SourceFile[] = [];
   for (const path of new Glob("*/*/updates.jsonl").scanSync({ cwd: root, absolute: true })) {
     const sessionDir = dirname(path);
     const summary = readGrokSummary(sessionDir);
     const facts = summaryFacts(summary);
     specs.push({
       path,
-      tool: "grok",
       kind: "transcript",
       sessionId: summary?.id ?? basename(sessionDir),
       parentId: summary?.parentId,
@@ -91,10 +90,10 @@ export function listGrokSessions(env: Env = process.env): FileSpec[] {
   return orderParents(specs.sort((a, b) => a.path.localeCompare(b.path)));
 }
 
-function orderParents(specs: FileSpec[]): FileSpec[] {
+function orderParents(specs: SourceFile[]): SourceFile[] {
   const ids = new Set(specs.map((spec) => spec.sessionId));
   const remaining = [...specs];
-  const ordered: FileSpec[] = [];
+  const ordered: SourceFile[] = [];
   const placed = new Set<string>();
   while (remaining.length > 0) {
     const ready = remaining.filter(

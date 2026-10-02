@@ -1,3 +1,3 @@
-export type Tool = "claude" | "codex" | "grok" | "pi" | "omp";
+export const TOOLS = ["claude", "codex", "grok", "pi", "omp"] as const;
 
-export const TOOLS: readonly Tool[] = ["claude", "codex", "grok", "pi", "omp"];
+export type Tool = (typeof TOOLS)[number];

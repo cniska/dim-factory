@@ -1,4 +1,4 @@
-import type { FileSpec } from "./ingest";
+import type { SourceFile } from "./ingest";
 import { listClaudeSubagents, listClaudeTranscripts } from "./ingest-claude-source";
 import { codexTitlesPath, listCodexRollouts, readCodexTitles } from "./ingest-codex-source";
 import { listGrokSessions } from "./ingest-grok-source";
@@ -7,31 +7,14 @@ import type { Tool } from "./ingest-tools";
 import { type Env, ompSessionsDir, piSessionsDir } from "./paths";
 
 export type SessionSource = {
-  tool: Tool;
-  list(env: Env): FileSpec[];
+  list(env: Env): SourceFile[];
   titles?: { path(env: Env): string; read(path: string): ReadonlyMap<string, string> };
 };
 
-export const SESSION_SOURCES: readonly SessionSource[] = [
-  {
-    tool: "claude",
-    list: (env) => [...listClaudeTranscripts(env), ...listClaudeSubagents(env)],
-  },
-  {
-    tool: "codex",
-    list: listCodexRollouts,
-    titles: { path: codexTitlesPath, read: readCodexTitles },
-  },
-  {
-    tool: "grok",
-    list: listGrokSessions,
-  },
-  {
-    tool: "pi",
-    list: (env) => listPiSessions("pi", piSessionsDir(env)),
-  },
-  {
-    tool: "omp",
-    list: (env) => listPiSessions("omp", ompSessionsDir(env)),
-  },
-];
+export const SESSION_SOURCES: Readonly<Record<Tool, SessionSource>> = {
+  claude: { list: (env) => [...listClaudeTranscripts(env), ...listClaudeSubagents(env)] },
+  codex: { list: listCodexRollouts, titles: { path: codexTitlesPath, read: readCodexTitles } },
+  grok: { list: listGrokSessions },
+  pi: { list: (env) => listPiSessions(piSessionsDir(env)) },
+  omp: { list: (env) => listPiSessions(ompSessionsDir(env)) },
+};

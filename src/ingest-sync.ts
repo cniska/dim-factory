@@ -5,7 +5,7 @@ import { createIngester, type FileSpec } from "./ingest";
 import { type GitReport, ingestCommits } from "./ingest-git";
 import { SESSION_SOURCES, type SessionSource } from "./ingest-sources";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
-import type { Tool } from "./ingest-tools";
+import { TOOLS, type Tool } from "./ingest-tools";
 import type { Env } from "./paths";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 
@@ -63,19 +63,20 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     }
   };
 
-  for (const source of SESSION_SOURCES) {
-    const specs = source.list(env);
+  for (const tool of TOOLS) {
+    const source = SESSION_SOURCES[tool];
+    const files = source.list(env);
     const titles = titlesOf(source);
-    for (const spec of specs) {
-      if (spec.parentId && !sessionExists.get(spec.parentId)) {
-        report.orphanSubagents.push(spec.sessionId);
-        spec.parentId = undefined;
+    for (const file of files) {
+      if (file.parentId && !sessionExists.get(file.parentId)) {
+        report.orphanSubagents.push(file.sessionId);
+        file.parentId = undefined;
       }
-      run(spec);
-      const title = titles?.get(spec.sessionId);
-      if (title) setTitle.run(title, spec.sessionId);
+      run({ ...file, tool });
+      const title = titles?.get(file.sessionId);
+      if (title) setTitle.run(title, file.sessionId);
     }
-    report.sources.push({ tool: source.tool, files: specs.length });
+    report.sources.push({ tool, files: files.length });
   }
 
   applyHookEvents(db);

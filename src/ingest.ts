@@ -8,9 +8,10 @@ import type { Tool } from "./ingest-tools";
 import { worktreeOf } from "./worktree";
 export type Kind = "transcript" | "subagent" | "rollout";
 
-export type FileSpec = {
+export type FileSpec = SourceFile & { tool: Tool };
+
+export type SourceFile = {
   path: string;
-  tool: Tool;
   kind: Kind;
   sessionId: string;
   parentId?: string;
