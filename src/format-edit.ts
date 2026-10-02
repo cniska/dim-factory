@@ -5,7 +5,7 @@ import { checkoutRoot } from "./git-checkout";
 import { HARNESSES } from "./harness-contract";
 import type { EditPayload } from "./hooks-payload";
 
-export const FORMAT_TIMEOUT_MS = 30_000;
+const FORMAT_TIMEOUT_MS = 30_000;
 
 export type FormatRun = { checkout: string; commandLine: string; exitCode: number | null };
 

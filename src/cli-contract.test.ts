@@ -8,7 +8,7 @@ import { scratchEnv } from "./fixtures.test-support";
 const COMMANDS = await allCommands();
 
 const SRC = import.meta.dir;
-const RAW_OUTPUT = ["hooks-start.ts", "trace-command.ts"];
+const RAW_OUTPUT = ["hooks-command.ts", "trace-command.ts"];
 
 function sources(): string[] {
   return readdirSync(SRC, { recursive: true })
