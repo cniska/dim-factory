@@ -26,12 +26,6 @@ import type { StationRole } from "./worker-contract";
 
 export const TURN_SOCKET_ENV = "DIM_TURN_SOCKET";
 
-const SKILLS: Readonly<Record<Station, SkillName>> = {
-  plan: "dim-plan",
-  build: "dim-build",
-  review: "dim-review",
-};
-
 export function modelOf(models: Models | undefined, role: StationRole): string | null {
   return models?.[role] ?? models?.default ?? null;
 }
@@ -94,39 +88,58 @@ type BriefFacts = {
   readonly check: string | null;
 };
 
-function briefAt(station: Station, { state, workspace, diff, check }: BriefFacts): string {
-  switch (station) {
-    case "plan":
-      return JSON.stringify({
-        skill: SKILLS.plan,
-        order: orderFacts(state),
-        workspace,
-        returned: state.returned,
-        committed: state.commits,
-      });
-    case "build":
-      return JSON.stringify({
-        skill: SKILLS.build,
-        order: orderFacts(state),
-        workspace,
-        check,
-        plan: state.plan === null ? null : { body: state.plan.body, slices: slicesOf(state) },
-        returned: state.returned,
-        findings: openFindings(state).map(({ id, area, file, line, failure, fix, severity }) => ({
-          id,
-          area,
-          file,
-          line,
-          failure,
-          fix,
-          severity,
-        })),
-        conflict: state.conflict,
-      });
-    case "review":
+type StationTurn = {
+  readonly skill: SkillName;
+  readonly policy: Policy["kind"];
+  readonly briefsDiff: boolean;
+  readonly briefsCheck: boolean;
+  readonly brief: (facts: BriefFacts) => Readonly<Record<string, unknown>>;
+};
+
+const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
+  plan: {
+    skill: "dim-plan",
+    policy: "read",
+    briefsDiff: false,
+    briefsCheck: false,
+    brief: ({ state, workspace }) => ({
+      order: orderFacts(state),
+      workspace,
+      returned: state.returned,
+      committed: state.commits,
+    }),
+  },
+  build: {
+    skill: "dim-build",
+    policy: "edit",
+    briefsDiff: false,
+    briefsCheck: true,
+    brief: ({ state, workspace, check }) => ({
+      order: orderFacts(state),
+      workspace,
+      check,
+      plan: state.plan === null ? null : { body: state.plan.body, slices: slicesOf(state) },
+      returned: state.returned,
+      findings: openFindings(state).map(({ id, area, file, line, failure, fix, severity }) => ({
+        id,
+        area,
+        file,
+        line,
+        failure,
+        fix,
+        severity,
+      })),
+      conflict: state.conflict,
+    }),
+  },
+  review: {
+    skill: "dim-review",
+    policy: "read",
+    briefsDiff: true,
+    briefsCheck: false,
+    brief: ({ state, workspace, diff }) => {
       invariant(diff !== null, `order ${state.id}'s review is briefed with its diff`);
-      return JSON.stringify({
-        skill: SKILLS.review,
+      return {
         order: orderFacts(state),
         workspace,
         build: state.buildArtifact,
@@ -135,11 +148,10 @@ function briefAt(station: Station, { state, workspace, diff, check }: BriefFacts
           answered === null ? [] : [{ finding: id, file, line, ...answered }],
         ),
         returned: state.returned,
-      });
-    default:
-      return unreachable(station);
-  }
-}
+      };
+    },
+  },
+};
 
 const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
   order_show: STATIONS,
@@ -154,14 +166,19 @@ const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
 
 export type Purpose = {
   readonly policy: Policy["kind"];
+  readonly briefsDiff: boolean;
+  readonly briefsCheck: boolean;
   readonly prompt: (facts: BriefFacts) => string;
   readonly refusal: (act: TurnRequest["act"]) => CodedError | null;
 };
 
 export function stationPurpose(station: Station): Purpose {
+  const { skill, policy, briefsDiff, briefsCheck, brief } = STATION_TURNS[station];
   return {
-    policy: station === "build" ? "edit" : "read",
-    prompt: (facts) => briefAt(station, facts),
+    policy,
+    briefsDiff,
+    briefsCheck,
+    prompt: (facts) => JSON.stringify({ skill, ...brief(facts) }),
     refusal: (act) =>
       STATIONS_OF[act].includes(station) ? null : refuseStation("wrong_station", { act, station }),
   };
@@ -170,6 +187,8 @@ export function stationPurpose(station: Station): Purpose {
 export function messagePurpose(text: string): Purpose {
   return {
     policy: "read",
+    briefsDiff: false,
+    briefsCheck: false,
     prompt: () => text,
     refusal: (act) => (act === "order_show" ? null : refuseStation("message_turn", { act })),
   };

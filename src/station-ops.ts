@@ -8,7 +8,7 @@ import { checkTask } from "./declared-tasks";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git";
 import type { Outcome, SessionStart, Spawned } from "./harness-contract";
 import { startHarness, stopHarness, WORKER_HARNESS } from "./harness-ops";
-import { type Death, type OrderState, phaseAfter, ROLE_AT, stepRefusal, type WorkBy } from "./order";
+import { type Death, type OrderState, phaseAfter, roleAt, stepRefusal, type WorkBy } from "./order";
 import { type DeathCode, type Later, type OperatorAct, refuseOrder, type Station } from "./order-contract";
 import {
   endRun,
@@ -266,7 +266,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   const { head } = state;
   invariant(head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
   const { worker, sessions } = stationWorker(db, {
-    role: ROLE_AT[station],
+    role: roleAt(station),
     project: state.project,
     order: turn.order,
     createdBy: turn.by.worker.name,
@@ -314,11 +314,11 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
 }
 
 function diffOf(turn: TurnOf, head: string): string | null {
-  return turn.station === "review" ? diffSince(turn.checkout, turn.defaultBranch, head) : null;
+  return turn.purpose.briefsDiff ? diffSince(turn.checkout, turn.defaultBranch, head) : null;
 }
 
 function checkOf(turn: TurnOf, workspace: string): string | null {
-  if (turn.station !== "build") return null;
+  if (!turn.purpose.briefsCheck) return null;
   return checkTask(workspace)?.commandLine ?? null;
 }
 
@@ -407,7 +407,7 @@ type Prepared = {
 };
 
 function prepareTurn(setup: ProjectSetup, station: Station, env: Env): Prepared {
-  const role = ROLE_AT[station];
+  const role = roleAt(station);
   const model = modelOf(setup.config.models, role);
   if (model === null) throw refuseStation("no_model", { role, file: userConfigPath() });
   return { model, identity: ownerIdentity(setup.root, env) };
@@ -576,7 +576,7 @@ export async function messageWorker(
   { station, text }: { readonly station: Station; readonly text: string },
   env: Env,
 ): Promise<string> {
-  const worker = stationWorkerAt(db, order, ROLE_AT[station]);
+  const worker = stationWorkerAt(db, order, roleAt(station));
   if (worker === null) throw refuseOrder("no_worker", { order, station });
   const act = { kind: "message", to: worker.name, text } as const;
   return withRun(db, order, caller, act, station, env, ({ turnOf }) =>

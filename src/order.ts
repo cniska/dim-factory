@@ -82,17 +82,22 @@ export type OrderState = {
   readonly lastSeq: number;
 };
 
-const STATION_AFTER: Readonly<Record<Station, Station | "ship">> = {
-  plan: "build",
-  build: "review",
-  review: "ship",
+type StationStep = {
+  readonly role: StationRole;
+  readonly after: Station | "ship";
+  readonly before: Station | null;
+  readonly approvesPlan: boolean;
 };
 
-const STATION_BEFORE: Readonly<Record<Station, Station | null>> = {
-  plan: null,
-  build: "plan",
-  review: "build",
+const STATION_STEPS: Readonly<Record<Station, StationStep>> = {
+  plan: { role: "planner", after: "build", before: null, approvesPlan: true },
+  build: { role: "builder", after: "review", before: "plan", approvesPlan: false },
+  review: { role: "reviewer", after: "ship", before: "build", approvesPlan: false },
 };
+
+export function roleAt(station: Station): StationRole {
+  return STATION_STEPS[station].role;
+}
 
 export function slicesOf(state: OrderState): readonly SliceView[] {
   if (state.plan === null) return [];
@@ -142,13 +147,13 @@ export function nextOf(phase: Phase): Next | null {
 const run = (station: Station): Phase => ({ kind: "run", station });
 
 function approved(state: OrderState, station: Station): OrderState {
-  const after = STATION_AFTER[station];
+  const { after, approvesPlan } = STATION_STEPS[station];
   if (after === "ship") return { ...state, phase: { kind: "ship" } };
-  return { ...state, phase: run(after), planApproved: state.planApproved || station === "plan" };
+  return { ...state, phase: run(after), planApproved: state.planApproved || approvesPlan };
 }
 
 function returnedByWorker(state: OrderState, station: Station): OrderState {
-  const before = STATION_BEFORE[station];
+  const { before } = STATION_STEPS[station];
   return { ...state, phase: before === null ? { kind: "update" } : run(before) };
 }
 
@@ -388,12 +393,6 @@ function busyRefusal(state: OrderState, act: ActKind, live: RunKind | null): Cod
   return refuseOrder("order_busy", { order: state.id, run: live });
 }
 
-export const ROLE_AT: Readonly<Record<Station, StationRole>> = {
-  plan: "planner",
-  build: "builder",
-  review: "reviewer",
-};
-
 export function atStation(state: OrderState, station: Station): boolean {
   const { phase } = state;
   return state.status === "running" && phase.kind === "run" && phase.station === station;
@@ -406,7 +405,7 @@ export type WorkBy =
 export function workRefusal(state: OrderState, station: Station, by: WorkBy): CodedError | null {
   if (by.kind === "worker") {
     const { worker } = by.acting;
-    if (worker.role !== ROLE_AT[station] || worker.order !== state.id) {
+    if (worker.role !== roleAt(station) || worker.order !== state.id) {
       return refuseWorker("not_station_worker", { order: state.id, station });
     }
   }

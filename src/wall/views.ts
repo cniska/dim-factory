@@ -1,5 +1,5 @@
 import { invariant, unreachable } from "../assert";
-import { ROLE_AT } from "../order";
+import { roleAt } from "../order";
 import type { LogEntry, OrderView, Station } from "../order-contract";
 import type {
   BoardOrder,
@@ -21,7 +21,7 @@ function workerNamed(view: OrderView, name: string): WallWorker {
 }
 
 function stationWorker(view: OrderView, station: Station): WallWorker | null {
-  const worker = view.workers.find((candidate) => candidate.role === ROLE_AT[station]);
+  const worker = view.workers.find((candidate) => candidate.role === roleAt(station));
   return worker === undefined ? null : { name: worker.name, role: worker.role };
 }
 
