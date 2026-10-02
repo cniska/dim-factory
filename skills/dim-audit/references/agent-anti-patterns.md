@@ -26,17 +26,17 @@ The same thing done by two routes — a synchronous twin beside the live runner,
 
 A thing is made to fit an existing concept because the shape was already there: shipping, an act the operator runs once every station is done, stored as a fourth station an order is moved to. The borrowed concept's rules then apply to something they do not describe, and every reader special-cases it. The same shape is a state invented to paper over a gap — a "ready to resume" flag where the order's real status was missing.
 
-**Fix.** Give it its own concept, its own word in [`glossary.md`](../../../docs/glossary.md), and its own code. Shipping is what approving the Review artifact does, with its own entry conditions; the stations are `plan`, `build` and `review`.
+**Fix.** Give it its own concept, its own word in the project's glossary, and its own code. Shipping is what approving the Review artifact does, with its own entry conditions; the stations are `plan`, `build` and `review`.
 
-**Holds it.** The closed vocabulary of the concept it was borrowed from ([`src/order-contract.ts`](../../../src/order-contract.ts) `STATIONS`), and review of any new member proposed for one.
+**Holds it.** The closed vocabulary of the concept it was borrowed from (in dim-factory, `src/order-contract.ts` `STATIONS`), and review of any new member proposed for one.
 
 ## A code comment
 
 A comment is where an agent excuses what the code should have fixed. A comment explaining why an odd line is fine makes the odd line look settled, so nobody fixes its cause, and the next agent copies both the line and its excuse. A comment carrying a design's rationale is a second copy of what the owning doc says, and the two drift apart. The rest narrate what the line below already says, and an agent matches the comment density of the file it is editing, so they multiply.
 
-**Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`todo.md`](../../../docs/todo.md).
+**Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed where the project keeps its debt.
 
-**Holds it.** A test in the project's suite that scans for comments and expects none ([`usage.md`](../../../docs/usage.md#comment-purge)). Elsewhere, review.
+**Holds it.** A test in the project's suite that scans for comments and expects none, as dim-factory's comment purge does. Elsewhere, review.
 
 ## A gate on the step before the act
 
@@ -58,7 +58,7 @@ A check placed on the move that usually precedes an act rather than on the act: 
 
 `dim-station-plan` and `plan` both stored as the station; "workspace command" and "command" meaning different things. Every reader has to accept both, and a third spelling follows. "the same concept shouldnt carry two names".
 
-**Fix.** One word, the ecosystem's own where one exists, settled in [`glossary.md`](../../../docs/glossary.md), and a rename of every other use in the same change with no alias kept for the old one.
+**Fix.** One word, the ecosystem's own where one exists, settled in the project's glossary, and a rename of every other use in the same change with no alias kept for the old one.
 
 **Holds it.** The glossary, and a closed type where the concept has one.
 
@@ -76,13 +76,13 @@ An owner's approval kept as a verdict row, an event repeating its decision, and 
 
 **Fix.** One row per fact, and every other view of it read from that row.
 
-**Holds it.** Review, against the rule in [`design.md`](../../../docs/design.md) that each column has one canonical source.
+**Holds it.** Review, against the rule that each stored fact has one canonical source.
 
 ## A heuristic where a record or the model should decide
 
 A regex, a word list or text parsing standing in for a field the record already holds, a structured output, or a judgement the model should make. "the model should make the decisions not heuristics".
 
-**Fix.** Read the recorded field, have the worker return structured JSON, or give the judgement to an agent with a fixed brief ([`AGENTS.md`](../../../AGENTS.md)).
+**Fix.** Read the recorded field, have the worker return structured JSON, or give the judgement to an agent with a fixed brief.
 
 **Holds it.** Review.
 

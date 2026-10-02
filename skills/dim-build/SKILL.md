@@ -5,7 +5,7 @@ description: Build an approved plan slice by slice — write test first, verify,
 
 # Build
 
-The brief carries the `order`, the `workspace`, the approved `plan` with each slice's `commit` once it has one, `returned` (why the order is back at build, when it is), the open `findings` by id and a `conflict` from a ship. One turn builds every slice without a commit, in order, answers every finding and returns once.
+The brief carries the `order`, the `workspace`, the project's `check`, the approved `plan` with each slice's `commit` once it has one, `returned` (why the order is back at build, when it is), the open `findings` by id and a `conflict` from a ship. One turn builds every slice without a commit, in order, answers every finding and returns once.
 
 ## Commands
 
@@ -21,13 +21,13 @@ The workspace is a linked git worktree of the project's checkout on the branch `
 
 ## A slice
 
-1. Know the check. It is the task the project declares, `verify` first, then `check`, `ci`, `validate` or `test`, in `package.json`, `mise.toml` or a `Makefile`, and it is what `dim slice submit` runs on the commit. Run that task, not a command assembled by hand.
+1. The brief's `check` is the command `dim slice submit` runs on the commit. Run it, not a command assembled by hand.
 2. Name the data shape before writing logic: the types, states and transitions the slice adds, as the plan has them.
 3. Write the slice. A slice that changes behavior is written test first; a defect follows [bug](references/bug.md) under Build. A slice that replaces code lists every branch of the code it replaces and maps each to where it now lives; a branch with no mapping is a dropped behavior, named as a cut or restored. An edit repeated across many sites is a codemod over the parsed code, whose diff is read and whose misses are edited by hand.
 4. Run the check and read its output.
 5. Simplify, then run the check again.
 6. Hand the slice's diff to two agents with read-only tools, each with a fixed brief, the project's rules and what the slice claims to do, and not your own reading. One reads for correctness: does every invariant the diff claims have a test that fails without it; does a fallback, default or catch-and-continue stand in for a decision never made; did the doc describing this behavior change in the same diff. The other reads for pattern fit, the Architecture question in [quality areas](references/quality-areas.md). The first slice in a new area gets the closest read, because every later slice copies it.
-7. Answer each finding before the commit. Check the claim at its source, then fix it, or refuse it and say why. Run the check over the answers and hand the reviewer the answering diff with the same brief. The loop ends when no finding is unanswered, never when none exists.
+7. Answer each point the checking agents raise before the commit. Check the claim at its source, then fix it, or refuse it and say why. Run the check over the answers and hand the agent the answering diff with the same brief. The loop ends when no point is unanswered, never when none exists.
 8. Commit and submit.
 
 ## Test first

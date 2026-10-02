@@ -119,6 +119,13 @@ describe("briefs", () => {
     expect(m.invocation("reviewer", 0).prompt).toContain("slice-2.txt");
   });
 
+  test("the builder is briefed with the check the project declares, as the gates will run it", async () => {
+    const m = await start({ script: happyPath() });
+    await shipThrough(m.operator, await addOrder(m.operator));
+
+    expect(briefFrom(m.invocation("builder", 0).prompt).check).toBe("bun run verify");
+  });
+
   test("each recorded slice of a plan has a title and an outcome", async () => {
     const m = await start({ script: happyPath() });
     const order = await showOrder(m.operator, await planned(m.operator));

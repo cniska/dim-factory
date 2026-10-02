@@ -9,6 +9,7 @@ import type { Adapter, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
 import { type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
 import type { Env } from "./paths";
+import type { SkillName } from "./skill";
 import {
   type BuildReturn,
   type FindingAnswer,
@@ -25,7 +26,7 @@ import type { StationRole } from "./worker-contract";
 
 export const TURN_SOCKET_ENV = "DIM_TURN_SOCKET";
 
-const SKILLS: Readonly<Record<Station, string>> = {
+const SKILLS: Readonly<Record<Station, SkillName>> = {
   plan: "dim-plan",
   build: "dim-build",
   review: "dim-review",
@@ -90,9 +91,10 @@ export type BriefFacts = {
   readonly state: OrderState;
   readonly workspace: string;
   readonly diff: string | null;
+  readonly check: string | null;
 };
 
-export function briefAt(station: Station, { state, workspace, diff }: BriefFacts): string {
+export function briefAt(station: Station, { state, workspace, diff, check }: BriefFacts): string {
   switch (station) {
     case "plan":
       return JSON.stringify({
@@ -107,6 +109,7 @@ export function briefAt(station: Station, { state, workspace, diff }: BriefFacts
         skill: SKILLS.build,
         order: orderFacts(state),
         workspace,
+        check,
         plan: state.plan === null ? null : { body: state.plan.body, slices: slicesOf(state) },
         returned: state.returned,
         findings: openFindings(state).map(({ id, area, file, line, failure, fix, severity }) => ({

@@ -4,6 +4,7 @@ import { invariant, unreachable } from "./assert";
 import { CodedError, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
+import { checkTask } from "./declared-tasks";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git-tree";
 import { claude } from "./harness-claude";
 import type { Outcome, SessionStart, Spawned } from "./harness-contract";
@@ -277,7 +278,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
       { db, turn, workspace, acting, config: guardFile(trace, join(turn.checkoutGit, "config")) },
       spawned,
       opened.socket,
-      turn.purpose.prompt({ state, workspace, diff: diffOf(turn, head) }),
+      turn.purpose.prompt({ state, workspace, diff: diffOf(turn, head), check: checkOf(turn, workspace) }),
     );
     const { stop } = served;
     if (stop?.kind === "fault") throw stop.error;
@@ -300,6 +301,11 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
 
 function diffOf(turn: TurnOf, head: string): string | null {
   return turn.station === "review" ? diffSince(turn.checkout, turn.defaultBranch, head) : null;
+}
+
+function checkOf(turn: TurnOf, workspace: string): string | null {
+  if (turn.station !== "build") return null;
+  return checkTask(workspace)?.commandLine ?? null;
 }
 
 function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: Turn): Spawned {

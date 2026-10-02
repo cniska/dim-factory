@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Glob } from "bun";
 import { LockHeldError, withPathLock } from "./db-lock";
 import { harnessesOnPath } from "./fixtures.test-support";
@@ -107,15 +107,31 @@ describe("skill install", () => {
           expect(lstatSync(link).isSymbolicLink()).toBe(true);
           expect(readlinkSync(link)).toBe(skillSourceDir(name));
         }
-        for (const name of ["dim-audit", "dim-build", "dim-review"]) {
-          expect(existsSync(join(dir, name, "references", "quality-areas.md"))).toBe(true);
-        }
-        for (const name of ["dim-plan", "dim-build", "dim-review"]) {
-          expect(existsSync(join(dir, name, "references", "bug.md"))).toBe(true);
-          expect(existsSync(join(dir, name, "references", "artifact.md"))).toBe(true);
-        }
       }
       expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("every relative link in an installed skill resolves from where it is installed", () => {
+    const home = newHome();
+    const env = { HOME: home };
+    try {
+      installSkill(env);
+      const [dir] = skillLinkDirs(env);
+      const unresolved = SKILL_NAMES.flatMap((name) => {
+        const skill = join(dir as string, name);
+        return [...new Glob("**/*.md").scanSync({ cwd: skill, followSymlinks: true })].flatMap((file) => {
+          const from = dirname(join(skill, file));
+          return [...readFileSync(join(skill, file), "utf8").matchAll(/\]\(([^)#\s]+)(?:#[^)]*)?\)/g)]
+            .map((match) => match[1] as string)
+            .filter((target) => !/^[a-z]+:/.test(target))
+            .filter((target) => !existsSync(join(from, target)))
+            .map((target) => `${name}/${file} -> ${target}`);
+        });
+      });
+      expect(unresolved).toEqual([]);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

@@ -13,7 +13,7 @@ A rule costs tokens on every session that loads it and changes nothing on the se
 1. Is this rule already settled? `dim query search "<words the rule would use>"` finds where it was said, across every session. Find what settled it and sharpen that instead.
 2. Is it being broken? The same search finds each time the owner had to say it again. A rule nobody breaks is a line paid for on every session to prevent nothing. A rule broken repeatedly under one skill belongs in that skill, not in the file every session loads.
 3. What does the repo already do? `git log` reads the commit format off the repo's own history. What a repo does is the rule; a file that states something else is the thing that is wrong.
-4. Does the concept already have a word? Read [`docs/glossary.md`](../../docs/glossary.md). A rule that introduces a second word for a thing already named costs more than it states, because from then on both words are searched and only one is found.
+4. Does the concept already have a word? Read the project's glossary, where it keeps one. A rule that introduces a second word for a thing already named costs more than it states, because from then on both words are searched and only one is found.
 
 ## Choose the layer
 

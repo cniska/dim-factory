@@ -60,7 +60,7 @@ A turn resumes or replaces the worker's session, spawns the harness with a brief
 
 ## Skills
 
-A skill under [`skills/`](../skills) is one the owner or a worker invokes by name. What only one skill reads sits inline in that skill, since a worker reads a skill it loads and sometimes skips what it links. What several skills read is one file in `skills/references/`, linked from each skill's own `references/` folder.
+A skill under [`skills/`](../skills) is one the owner or a worker invokes by name. What only one skill reads sits in that skill's folder: inline, since a worker reads a skill it loads and sometimes skips what it links, or in its own `references/` when the skill hands it to its agents. What several skills read is one file in `skills/references/`, linked from each skill's own `references/` folder.
 
 ## Slices
 
