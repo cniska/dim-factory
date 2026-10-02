@@ -144,7 +144,7 @@ export function parseCodexChunk(
       if (current.turnId) {
         turns.push({
           turnId: current.turnId,
-          tsEnd: ts,
+          tsStart: ts,
           status: "started",
           model: current.model,
         });
@@ -179,13 +179,18 @@ export function parseCodexChunk(
     }
 
     if (line.type === "event_msg" && (p.type === "task_complete" || p.type === "turn_aborted") && p.turn_id) {
+      const status = p.type === "task_complete" ? "completed" : nonEmpty(p.reason);
+      if (status === undefined) {
+        dropped.push(srcLine);
+        continue;
+      }
       turns.push({
         turnId: p.turn_id,
         tsStart: epochSeconds(p.started_at),
         tsEnd: epochSeconds(p.completed_at) ?? ts,
         durationMs: p.duration_ms,
         messageCount: undefined,
-        status: p.type === "task_complete" ? "completed" : (nonEmpty(p.reason) ?? "aborted"),
+        status,
         model: undefined,
         timeToFirstTokenMs: p.time_to_first_token_ms,
       });

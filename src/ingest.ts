@@ -145,8 +145,10 @@ export function createIngester(db: Database) {
      VALUES ($sessionId, $turnId, $tsStart, $tsEnd, $durationMs, $messageCount,
        $status, $model, $timeToFirstTokenMs)
      ON CONFLICT(session_id, turn_id) DO UPDATE SET
-       ts_start               = coalesce(excluded.ts_start, turn.ts_start),
-       ts_end                 = max(turn.ts_end, excluded.ts_end),
+       ts_start               = min(coalesce(turn.ts_start, excluded.ts_start),
+                                    coalesce(excluded.ts_start, turn.ts_start)),
+       ts_end                 = max(coalesce(turn.ts_end, excluded.ts_end),
+                                    coalesce(excluded.ts_end, turn.ts_end)),
        duration_ms            = coalesce(excluded.duration_ms, turn.duration_ms),
        message_count          = coalesce(excluded.message_count, turn.message_count),
        status                 = excluded.status,
@@ -303,7 +305,7 @@ export function createIngester(db: Database) {
         $sessionId: spec.sessionId,
         $turnId: t.turnId,
         $tsStart: t.tsStart ?? null,
-        $tsEnd: t.tsEnd,
+        $tsEnd: t.tsEnd ?? null,
         $durationMs: t.durationMs ?? null,
         $messageCount: t.messageCount ?? null,
         $status: t.status,

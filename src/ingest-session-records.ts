@@ -44,7 +44,7 @@ export type UsageRow = {
 export type TurnRow = {
   turnId: string;
   tsStart?: string;
-  tsEnd: string;
+  tsEnd?: string;
   durationMs?: number;
   messageCount?: number;
   status: string;

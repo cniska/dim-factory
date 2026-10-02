@@ -53,6 +53,29 @@ describe("parseCodexChunk", () => {
     expect(warm.messages[0]?.turnId).toBe("turn-1");
   });
 
+  test("records a turn that has started and not ended with its start and no end", () => {
+    const opened = parseCodexChunk(modern.slice(0, 2), 1, THREAD, {});
+    expect(opened.turns).toEqual([
+      {
+        turnId: "turn-1",
+        tsStart: JSON.parse(modern[1] ?? "{}").timestamp,
+        status: "started",
+        model: "gpt-5.6-luna",
+      },
+    ]);
+  });
+
+  test("names an abort that gives no reason as a line it could not read", () => {
+    const abort = JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-09-16T10:09:00.000Z",
+      payload: { type: "turn_aborted", turn_id: "turn-9" },
+    });
+    const parsed = parseCodexChunk([abort], 5, THREAD, {});
+    expect(parsed.turns).toEqual([]);
+    expect(parsed.dropped).toEqual([5]);
+  });
+
   test("hands back the turn state for the next chunk", () => {
     const parsed = parseCodexChunk(modern, 1, THREAD, {});
     expect(JSON.parse(parsed.cursorState ?? "{}")).toEqual({ model: "gpt-5.6-sol", turnId: "turn-2" });

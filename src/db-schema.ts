@@ -5,7 +5,7 @@ const sqlList = (values: readonly string[]): string => values.map((value) => `'$
 const TOOLS_SQL = sqlList(TOOLS);
 const HARNESSES_SQL = sqlList(HARNESSES);
 
-export const SCHEMA_VERSION = 93;
+export const SCHEMA_VERSION = 94;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS source_file (
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
   turn_id         TEXT NOT NULL,
   ts_start        TEXT,
-  ts_end          TEXT NOT NULL,
+  ts_end          TEXT,
   duration_ms     INTEGER,
   message_count   INTEGER,
   status          TEXT,
