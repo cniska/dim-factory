@@ -2,8 +2,9 @@ import type { FileSpec } from "./ingest";
 import { listClaudeSubagents, listClaudeTranscripts } from "./ingest-claude-source";
 import { codexTitlesPath, listCodexRollouts, readCodexTitles } from "./ingest-codex-source";
 import { listGrokSessions } from "./ingest-grok-source";
+import { listPiSessions } from "./ingest-pi-source";
 import type { Tool } from "./ingest-tools";
-import type { Env } from "./paths";
+import { type Env, ompSessionsDir, piSessionsDir } from "./paths";
 
 export type SessionSource = {
   tool: Tool;
@@ -24,5 +25,13 @@ export const SESSION_SOURCES: readonly SessionSource[] = [
   {
     tool: "grok",
     list: listGrokSessions,
+  },
+  {
+    tool: "pi",
+    list: (env) => listPiSessions("pi", piSessionsDir(env)),
+  },
+  {
+    tool: "omp",
+    list: (env) => listPiSessions("omp", ompSessionsDir(env)),
   },
 ];

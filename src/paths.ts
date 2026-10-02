@@ -78,3 +78,11 @@ export function codexDir(env: Env = process.env): string {
 export function grokDir(env: Env = process.env): string {
   return join(resolveHomeDir(env), ".grok");
 }
+
+export function piSessionsDir(env: Env = process.env): string {
+  return join(resolveHomeDir(env), ".pi", "agent", "sessions");
+}
+
+export function ompSessionsDir(env: Env = process.env): string {
+  return join(resolveHomeDir(env), ".omp", "agent", "sessions");
+}

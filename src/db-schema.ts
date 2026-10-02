@@ -1,6 +1,6 @@
 import { TOOLS_SQL } from "./ingest-tools";
 
-export const SCHEMA_VERSION = 91;
+export const SCHEMA_VERSION = 92;
 
 export const SCHEMA_SQL = `
 -- One row per source file on disk. The cursor is keyed by session, not by path:

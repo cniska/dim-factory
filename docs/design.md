@@ -9,6 +9,7 @@ Sessions are read from these files. Each one lands in the same tables.
 - **Claude Code.** `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line. Subagents are under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
 - **Codex.** `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record. Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
 - **Grok Build.** `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` in that directory holds the title, working directory, branch, model, and parent. A child session is an ordinary session whose summary names its parent. Grok is read from its files only; `dim` installs no hook for it.
+- **Pi and omp.** `~/.pi/agent/sessions/<encoded-cwd>/<time>_<session-id>.jsonl` and the same layout under `~/.omp`, omp being a fork of Pi that keeps its session format. One parser reads both; each is recorded under its own name. Read from their files only.
 
 These are read too.
 
@@ -42,11 +43,11 @@ dim sync: drain the spool → read changed files → derive session ends
 ```
 
 - **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
-- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
-- **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code, Codex, and Grok Build are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
+- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts), [`src/ingest-parse-pi.ts`](../src/ingest-parse-pi.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
+- **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code, Codex, Grok Build, Pi and omp are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero in one transaction with the removal of what it wrote: its session row stays, so a subagent's link to it holds, and only the fields the transcript supplies are cleared and read again.
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
-- **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`, Grok event ids and tool-call ids.
+- **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`, Grok event ids and tool-call ids, Pi entry ids and tool-call ids.
 - **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total.
 - **Schedule.** `dim agent install` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
 - **The lock** is a directory under the state directory's `locks/` that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
@@ -98,6 +99,6 @@ dim sync: drain the spool → read changed files → derive session ends
 - `src/db-schema.ts` — tables, and the reason for each shape
 - `src/ingest-sync.ts` — sync, rebuild and the tables carried through it
 - `src/db.ts`, `src/db-read.ts`, `src/db-lock.ts` — opening the database, and the lock
-- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts`, `src/ingest-parse-grok.ts` — ingestion
+- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts`, `src/ingest-parse-grok.ts`, `src/ingest-parse-pi.ts` — ingestion
 - `src/ingest-spool.ts`, `src/hooks.ts` — hook spool and install
 - `src/query-registry.ts`, `src/query-*.ts` — named queries
