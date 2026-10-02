@@ -20,9 +20,13 @@ export const sqlCommand: Command = {
     const maxRows = rowsOf(flags.rows);
     const db = openReadOnly(dbPath());
     try {
-      const rows = db.query<Record<string, unknown>, []>(statement).all();
+      const rows: Record<string, unknown>[] = [];
+      for (const row of db.query<Record<string, unknown>, []>(statement).iterate()) {
+        rows.push(row);
+        if (rows.length > maxRows) break;
+      }
       return {
-        denominator: `${rows.length} rows`,
+        denominator: rows.length > maxRows ? `more than ${maxRows} rows` : `${rows.length} rows`,
         ...capRows(rows, maxRows),
         note: rows.length === 0 ? "the statement ran and matched nothing" : null,
       };

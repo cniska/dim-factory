@@ -137,6 +137,22 @@ describe("each reader of the record", () => {
     }
   });
 
+  test("dim sql reads one row past the cap and no further", async () => {
+    const { home } = recordWithCommit();
+    try {
+      const failsAtRow50 = `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
+        SELECT CASE WHEN i = 50 THEN abs(-9223372036854775808) ELSE i END AS i FROM n`;
+      const result = await asDataHome(home, () => sqlCommand.run([failsAtRow50]));
+      expect(result).toMatchObject({
+        denominator: "more than 40 rows",
+        more: "more rows than 40; --rows <n> to widen",
+      });
+      expect((result as { rows: unknown[] }).rows).toHaveLength(40);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("dim query answers every query without changing the record, and creates none", async () => {
     const { home, path } = recordWithCommit();
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
