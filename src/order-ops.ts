@@ -5,11 +5,11 @@ import { readConfig, type UserConfig } from "./config";
 import { writeTransaction } from "./db";
 import { type Identity, identityOf } from "./git";
 import {
-  admitOperator,
-  asOperator,
   fold,
   type OrderState,
+  operatorActRefusal,
   operatorEntry,
+  operatorRefusal,
   orderIdOf,
   runKindOf,
   type WorkBy,
@@ -77,10 +77,10 @@ function act(db: Database, order: string, caller: Caller, operatorAct: OperatorA
   return writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
     const by = actingOperator(db, caller, state.project);
-    const admission = admitOperator(state, by, operatorAct.kind, liveRun(db, order, caller.running));
-    if (admission.kind === "refused") throw admission.refusal;
-    const appended = append(db, order, actorOf(admission.by), operatorEntry(state, operatorAct));
-    return { ...appended, by: admission.by, admitted: state };
+    const refusal = operatorActRefusal(state, by, operatorAct.kind, liveRun(db, order, caller.running));
+    if (refusal !== null) throw refusal;
+    const appended = append(db, order, actorOf(by), operatorEntry(state, operatorAct));
+    return { ...appended, by, admitted: state };
   });
 }
 
@@ -122,13 +122,14 @@ export function addOrder(db: Database, caller: Caller, fields: NewOrder): string
   if (project === undefined) throw refuseWorker("no_project", { cwd: caller.cwd });
   projectCheckout(db, project, caller.cwd);
   return writeTransaction(db, () => {
-    const admission = asOperator(actingOperator(db, caller, project), project);
-    if (admission.kind === "refused") throw admission.refusal;
+    const by = actingOperator(db, caller, project);
+    const refusal = operatorRefusal(by, project);
+    if (refusal !== null) throw refusal;
     const order = orderIdOf(crypto.getRandomValues(new Uint8Array(ORDER_ID_LENGTH)));
     appendEntry(db, order, {
       seq: 1,
       ts: new Date().toISOString(),
-      by: actorOf(admission.by),
+      by: actorOf(by),
       action: "order_added",
       details: { title: fields.title, description: fields.description, project },
     });

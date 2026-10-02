@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
-  admitOperator,
   admits,
   fold,
   nextOf,
   type OrderState,
+  operatorActRefusal,
   operatorEntry,
   orderIdOf,
   phaseAfter,
@@ -351,12 +351,9 @@ describe("which act an order admits", () => {
   const refusedCode = (
     order: OrderState,
     act: { readonly kind: OperatorAct["kind"] },
-    by: Acting | null = OPERATOR,
+    by: Acting = OPERATOR,
     live: RunKind | null = null,
-  ) => {
-    const admission = admitOperator(order, by, act.kind, live);
-    return admission.kind === "refused" ? admission.refusal.code : null;
-  };
+  ) => operatorActRefusal(order, by, act.kind, live)?.code ?? null;
 
   const workRefused = (order: OrderState, acting: Acting) =>
     workRefusal(order, "plan", { kind: "worker", acting })?.code ?? null;
@@ -369,8 +366,7 @@ describe("which act an order admits", () => {
   });
 
   test("refuses an act the order does not admit, naming what it admits and its next step", () => {
-    const admission = admitOperator(state(), OPERATOR, "approve", null);
-    expect(admission.kind === "refused" && admission.refusal.meta).toEqual({
+    expect(operatorActRefusal(state(), OPERATOR, "approve", null)?.meta).toEqual({
       order: "k7m2qx4d",
       act: "approve",
       admits: ["run", "update", "cancel", "message"],
@@ -383,12 +379,19 @@ describe("which act an order admits", () => {
 
   test("admits an act only from the operator of the order's project", () => {
     const elsewhere: Acting = { ...OPERATOR, worker: { ...OPERATOR.worker, project: "acme/gadgets" } };
+    const builder: Acting = {
+      ...OPERATOR,
+      worker: {
+        role: "builder",
+        name: "bolt-2",
+        project: "acme/widgets",
+        order: "k7m2qx4d",
+        createdBy: "nut-1",
+      },
+    };
     expect(refusedCode(state(), { kind: "run" }, elsewhere)).toBe("not_operator");
-    expect(refusedCode(state(), { kind: "run" }, null)).toBe("not_operator");
-    expect(admitOperator(state(), OPERATOR, "run", null)).toEqual({
-      kind: "admitted",
-      by: OPERATOR,
-    });
+    expect(refusedCode(state(), { kind: "run" }, builder)).toBe("not_operator");
+    expect(refusedCode(state(), { kind: "run" })).toBeNull();
   });
 
   test("admits an update until the plan is approved, and refuses one after", () => {

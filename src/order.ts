@@ -359,14 +359,10 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
   return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);
 }
 
-type Admission =
-  | { readonly kind: "admitted"; readonly by: Acting }
-  | { readonly kind: "refused"; readonly refusal: CodedError };
-
-export function asOperator(by: Acting | null, project: string): Admission {
-  return by?.worker.role === "operator" && by.worker.project === project
-    ? { kind: "admitted", by }
-    : { kind: "refused", refusal: refuseWorker("not_operator", { project }) };
+export function operatorRefusal(by: Acting, project: string): CodedError | null {
+  return by.worker.role === "operator" && by.worker.project === project
+    ? null
+    : refuseWorker("not_operator", { project });
 }
 
 const STEPS: Readonly<Record<Next, readonly ActKind[]>> = {
@@ -418,14 +414,11 @@ export function workRefusal(state: OrderState, station: Station, by: WorkBy): Co
   return atStation(state, station) ? null : refuseOrder("not_at_station", { order: state.id, station });
 }
 
-export function admitOperator(
+export function operatorActRefusal(
   state: OrderState,
-  by: Acting | null,
+  by: Acting,
   act: ActKind,
   live: RunKind | null,
-): Admission {
-  const operator = asOperator(by, state.project);
-  if (operator.kind === "refused") return operator;
-  const refusal = busyRefusal(state, act, live) ?? stepRefusal(state, act);
-  return refusal === null ? operator : { kind: "refused", refusal };
+): CodedError | null {
+  return operatorRefusal(by, state.project) ?? busyRefusal(state, act, live) ?? stepRefusal(state, act);
 }
