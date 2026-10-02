@@ -376,8 +376,8 @@ function closeMessageTurn(
   if (stop?.kind === "config_changed") return { end: "config_changed", session };
   invariant(stop === null, `a message turn on order ${turn.order} has no definition of done to miss`);
   if (outcome.kind === "died") {
-    if (outcome.code === "resume_failed" && resumed) return { end: "lost", session };
     recordAs(turn.trace, db, turn.order, byFactory(turn), deathOf(session, copied, outcome));
+    if (outcome.code === "resume_failed" && resumed) return { end: "lost", session };
     return { end: "died", session, code: outcome.code };
   }
   if (outcome.result === null) return { end: "no_reply", session };

@@ -134,6 +134,25 @@ describe("station workers", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
+  test("a message to a worker whose session file is lost is answered by a new session holding its context", async () => {
+    const m = await start({
+      script: {
+        ...happyPath(),
+        builder: [buildTurn(), [{ act: "say", text: "Both slices are committed." }]],
+      },
+    });
+    const id = await built(m.operator);
+    const first = m.invocation("builder", 0);
+    rmSync(transcriptPath(first.home, first.cwd, first.sessionId));
+
+    const replied = await messageWorker(m.operator, id, "build", "Where do the slices stand?");
+
+    expect(JSON.stringify(resultOf(replied))).toContain("Both slices are committed.");
+    const builder = workerOf(await showOrder(m.operator, id), "builder");
+    expect(builder.sessions).toHaveLength(2);
+    expect(sessionOf(builder, 0).died?.code).toBe("resume_failed");
+  });
+
   test("the operator's message runs a turn of the station worker's session and the reply reaches only the operator", async () => {
     const m = await start({
       script: {
