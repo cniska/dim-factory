@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { CodedError, recordOf } from "../coded-error";
-import { openFactoryReadOnly } from "../factory-db";
+import { openReadOnly } from "../db-read";
 import { OrderId } from "../order-contract";
 import { listOrders, showOrder } from "../order-ops";
 import wallPage from "./index.html";
@@ -22,7 +22,7 @@ const forbidden = (): Response => new Response("Forbidden", { status: 403 });
 const notFound = (): Response => new Response("Not found", { status: 404 });
 
 function readRecord<T>(path: string, read: (db: Database) => T): T {
-  const db = openFactoryReadOnly(path);
+  const db = openReadOnly(path);
   try {
     return read(db);
   } finally {

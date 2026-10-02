@@ -17,7 +17,7 @@ const FACTORY_MODULES = [
   "trace",
 ];
 
-const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|factory-db)$/;
+const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|db-read|factory-db|paths)$/;
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 

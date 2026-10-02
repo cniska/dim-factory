@@ -78,7 +78,7 @@ export function tryClaimPathLock(path: string): (() => void) | null {
   return claim(path).kind === "claimed" ? releaser(path) : null;
 }
 
-export function claimPathLock(path: string): () => void {
+function claimPathLock(path: string): () => void {
   const claimed = claim(path);
   if (claimed.kind === "held") throw refuseRecord("lock_held", { path, pid: claimed.holder });
   return releaser(path);

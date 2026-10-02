@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { claimPathLock, tryClaimPathLock, withLock } from "./db-lock";
+import { tryClaimPathLock, withLock } from "./db-lock";
 
 const LOCK_HELD = expect.objectContaining({ code: "lock_held" });
 
@@ -119,7 +119,8 @@ describe("the write lock", () => {
 
   test("a try while the lock is held claims nothing, and claims it once released", () => {
     const { lock } = newRoot();
-    const release = claimPathLock(lock);
+    const release = tryClaimPathLock(lock);
+    if (release === null) throw new Error("the free lock was not claimed");
     expect(tryClaimPathLock(lock)).toBeNull();
     expect(readdirSync(dirname(lock))).toEqual(["record"]);
     release();

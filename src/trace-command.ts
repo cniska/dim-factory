@@ -1,15 +1,16 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
-import { openFactoryReadOnly } from "./factory-db";
+import { openReadOnly } from "./db-read";
 import { OrderId } from "./order-contract";
 import { orderState, runAlive } from "./order-ops";
+import { dbPath } from "./paths";
 import { followTrace } from "./trace-ops";
 import { runningProcesses } from "./worker-ops";
 
 const USAGE = "usage: dim trace <order>";
 
 function readFactory<T>(read: (db: Database) => T): T {
-  const db = openFactoryReadOnly();
+  const db = openReadOnly(dbPath());
   try {
     return read(db);
   } finally {
