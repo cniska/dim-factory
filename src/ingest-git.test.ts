@@ -18,11 +18,11 @@ function dir(name: string): string {
   return made;
 }
 
-function repoWithCommit(): string {
+function repoWithCommit(content = "x"): string {
   const repo = dir("healthy");
   const git = (...args: string[]) => Bun.spawnSync(["git", "-C", repo, ...args]);
   git("init", "-q");
-  writeFileSync(join(repo, "a.ts"), "x");
+  writeFileSync(join(repo, "a.ts"), content);
   git("add", "a.ts");
   git("-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "--no-verify", "-q", "-m", "feat: a");
   return repo;
@@ -35,6 +35,22 @@ function brokenCheckout(): string {
 }
 
 describe("reading the repos the sessions ran in", () => {
+  test("labels a repo by its origin remote alone", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const withOrigin = repoWithCommit();
+    const upstreamOnly = repoWithCommit("y");
+    Bun.spawnSync(["git", "-C", withOrigin, "remote", "add", "origin", "git@github.com:Acme/Widgets.git"]);
+    Bun.spawnSync(["git", "-C", upstreamOnly, "remote", "add", "upstream", "git@github.com:acme/other.git"]);
+
+    ingestCommits(db, [withOrigin, upstreamOnly], () => {});
+    expect(db.query("SELECT repo, label FROM repo_commit ORDER BY label IS NULL").all()).toEqual([
+      { repo: withOrigin, label: "acme/widgets" },
+      { repo: upstreamOnly, label: null },
+    ]);
+    db.close();
+  });
+
   test("names a checkout git cannot read as a failure and reads the others", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);

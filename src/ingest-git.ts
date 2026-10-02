@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import { labelFor } from "./git-remote";
+import { originLabel } from "./git-remote";
 import { readCommits, repoRoot } from "./ingest-git-source";
 import { isScratchRepo } from "./ingest-scratch";
 
@@ -49,7 +49,7 @@ export function ingestCommits(db: Database, roots: readonly string[], fail: Repo
       const since = newest ? new Date(Date.parse(newest) - OVERLAP_DAYS * 86_400_000).toISOString() : null;
       let read: { label: string | null; commits: ReturnType<typeof readCommits> };
       try {
-        read = { label: labelFor(repo), commits: readCommits(repo, since) };
+        read = { label: originLabel(repo), commits: readCommits(repo, since) };
       } catch (error) {
         fail(repo, error);
         continue;

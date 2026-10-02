@@ -22,8 +22,3 @@ export function originLabel(repoRoot: string): string | null {
   const url = configValue(repoRoot, "remote.origin.url");
   return url ? repositoryLabel(url) : null;
 }
-
-export function labelFor(repoRoot: string): string | null {
-  const url = configValue(repoRoot, "remote.origin.url") ?? configValue(repoRoot, "remote.upstream.url");
-  return url ? repositoryLabel(url) : null;
-}

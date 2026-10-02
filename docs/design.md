@@ -87,7 +87,7 @@ dim sync: drain the spool → read changed files → derive session ends
 - **Capped rows.** A result longer than 40 rows says so and names `--rows`, the one cap on what a query returns. `search` reads one row past the cap and no further, since a common word matches most of the record.
 - **Arguments are refused, not guessed.** A missing or malformed argument, an ambiguous prefix, a second positional or an unknown flag is a usage error; a prefix that matches nothing is an empty result that says so.
 - **Read-only.** A query opens the database through `openReadOnly`, because `hook_event` has no source to restore it from.
-- **A repository is named by its remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label. A path under `<repo>/.claude/worktrees/<name>/` folds onto the checkout it copies ([`src/worktree.ts`](../src/worktree.ts)).
+- **A repository is named by its `origin` remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label. A path under `<repo>/.claude/worktrees/<name>/` folds onto the checkout it copies ([`src/worktree.ts`](../src/worktree.ts)).
 - **A scratch tree is not work.** [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos.
 
 ## Search
