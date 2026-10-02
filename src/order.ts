@@ -12,10 +12,10 @@ import {
   type OperatorAct,
   ORDER_ID_LENGTH,
   type OrderAdded,
+  type Plan,
   type RecordedFinding,
   type RunKind,
   refuseOrder,
-  type Slice,
   type Station,
   type Status,
 } from "./order-contract";
@@ -33,7 +33,7 @@ type Phase =
   | { readonly kind: "ship" }
   | { readonly kind: "done"; readonly station: Station | null };
 
-export type Plan = { readonly body: string; readonly slices: readonly Slice[]; readonly base: number };
+type RecordedPlan = Plan & { readonly base: number };
 
 type FindingState = RecordedFinding & {
   readonly answered: { readonly answer: Answer; readonly reason: string } | null;
@@ -72,7 +72,7 @@ export type OrderState = {
   readonly status: Status;
   readonly phase: Phase;
   readonly planApproved: boolean;
-  readonly plan: Plan | null;
+  readonly plan: RecordedPlan | null;
   readonly commits: readonly string[];
   readonly head: string | null;
   readonly findings: readonly FindingState[];
