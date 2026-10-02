@@ -7,7 +7,7 @@ A local SQLite database, fed from the coding-agent sessions on this machine, tha
 Sessions are read from these files. Each one lands in the same tables.
 
 - **Claude Code.** `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line. Subagents are under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
-- **Codex.** `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record. Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
+- **Codex.** `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record. Codex's own SQLite files are a projection of it, and only the rollout holds token usage. A session's title comes from `state_5.sqlite`, opened immutable: a read-only open of that WAL database fails once Codex has exited and removed its `-wal` and `-shm` files.
 - **Grok Build.** `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` in that directory holds the title, working directory, branch and parent. A child session is an ordinary session whose summary names its parent. Grok is read from its files only; `dim` installs no hook for it.
 - **Pi and omp.** `~/.pi/agent/sessions/<encoded-cwd>/<time>_<session-id>.jsonl` and the same layout under `~/.omp`, omp being a fork of Pi that keeps its session format. One parser reads both; each is recorded under its own name. Read from their files only.
 

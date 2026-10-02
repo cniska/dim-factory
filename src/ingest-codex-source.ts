@@ -48,7 +48,7 @@ export function codexTitlesPath(env: Env = process.env): string {
 export function readCodexTitles(statePath: string): Map<string, string> {
   const titles = new Map<string, string>();
   if (!existsSync(statePath)) return titles;
-  const db = new Database(statePath, { readonly: true });
+  const db = new Database(`file:${statePath}?immutable=1`, { readonly: true });
   try {
     for (const row of db
       .prepare<{ id: string; title: string | null }, []>("SELECT id, title FROM threads")

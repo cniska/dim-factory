@@ -337,14 +337,18 @@ describe("ingest", () => {
     }
   });
 
-  test("titles a Codex session from the thread Codex keeps", () => {
+  test("titles a Codex session from the thread Codex keeps, while Codex is not running", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     writeCodexRollout(env, "sessions", THREAD);
-    const state = new Database(join(codexDir(env), "state_5.sqlite"));
+    const statePath = join(codexDir(env), "state_5.sqlite");
+    const state = new Database(statePath);
+    state.run("PRAGMA journal_mode = WAL");
     state.run("CREATE TABLE threads (id TEXT, title TEXT)");
     state.run("INSERT INTO threads VALUES (?, ?)", [THREAD, "Read the slice"]);
     state.close();
+    rmSync(`${statePath}-wal`, { force: true });
+    rmSync(`${statePath}-shm`, { force: true });
 
     const db = openDb(dbPath(env));
     try {
