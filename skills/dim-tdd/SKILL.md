@@ -15,7 +15,7 @@ Make the smallest change that passes. No second behavior and no cleanup before t
 
 ## Refactor
 
-With the test green, simplify the implementation under `dim-simplify`. The test does not change.
+Refactoring is the slice's `dim-simplify` pass, run once the test is green.
 
 ## Prove the test
 

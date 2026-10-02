@@ -34,9 +34,7 @@ A `message_sent` entry from a worker in the log is a note for the operator; read
 
 The artifact is the worker's explanation; the record is the evidence. Read the artifact, then check each claim against `dim order show`: the plan's slices against the description and the commits already on the branch; the Build artifact against the `slice_committed` entries and their check evidence, the branch's commits and the answers to findings; the Review artifact's `covered` against the areas `dim-review` runs and its `unverified` against what the order needs. The result names what the record confirmed and what it did not, never the worker's summary repeated.
 
-- A plan answers the order, names the data shape, cuts slices each verified on its own, and keeps the owner's decisions to the hard-to-reverse and the outward-facing.
-- A build has every slice committed through the gates, every finding answered with a reason the code bears out, and an artifact that explains the result rather than listing files.
-- A review says whether the diff does what the Build artifact says, with every area covered or named under `unverified`.
+Each artifact is held to what its station's skill asks of it, `dim-plan`, `dim-build` or `dim-review`, and a refused finding to a reason the code bears out.
 
 Approving the Review artifact ships the order. `--decided owner` carries the owner's decision; `--decided operator` only where the owner has handed that decision to the operator. The reason is recorded with it.
 

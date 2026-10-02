@@ -5,8 +5,7 @@ description: Review an order's whole diff against its Build artifact, one agent 
 
 # Review
 
-The brief carries the `order`, the `workspace`, the `build` (the Build artifact), the `diff` (the order's whole diff against the default branch), the `answers` the builder gave the last round's findings and `returned` (why the order is back at review, when it is). The reviewer reads and changes nothing.
-
+The brief carries the `order`, the `workspace`, the `build` (the Build artifact), the `diff` (the order's whole diff against the default branch), the `answers` the builder gave the last round's findings and `returned` (why the order is back at review, when it is).
 ## Returns
 
 - Findings. Write a JSON array to a file under `$TMPDIR`, each `{"area", "file", "line", "failure", "fix", "severity"}` with severity `critical`, `high` or `medium`, and run `dim review return --findings <file>`. Every finding blocks; a point that would not block is left out. The order goes back to build, and the builder answers each finding once.
@@ -17,7 +16,7 @@ A reply naming what is missing records nothing: fix the return and send it again
 
 ## What the gates proved
 
-Each commit on the branch passed the project's check on exactly that code, with the check's declaration unchanged. Read for what reading alone can show.
+Each commit passed the project's check on its own code when the gates kept it, with the check's declaration unchanged. After a rebase only the branch's head was checked again. Read for what reading alone can show.
 
 ## The passes
 
@@ -32,7 +31,6 @@ Architecture takes `dim query prior-art "<path fragment>"` as grounding. For a d
 
 ## Before returning
 
-- Each finding was checked at its source and names a file the diff changed, a line that file has at the head commit, what fails, the fix and its severity. A finding with no failure case is an opinion.
+- Each finding names a file the diff changed, a line that file has at the head commit, what fails, the fix and its severity.
 - An earlier finding whose answer does not settle it at this head is raised again, saying why.
-- Findings that contradict each other are resolved here.
 - An area whose agent did not return is named under `unverified`.

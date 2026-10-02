@@ -1,6 +1,6 @@
 # Quality areas
 
-The questions a review of a change and an audit of existing code read against, one reader per area. A finding needs a concrete consequence and source evidence; a preference or a hypothetical cost is not a finding.
+The questions a review of a change and an audit of existing code read against, one reader per area. A finding needs a concrete consequence and source evidence; a preference or a hypothetical cost is not a finding. Each finding is checked at its source before it is reported, and findings that duplicate or contradict each other are resolved first.
 
 | Area | Question |
 |---|---|

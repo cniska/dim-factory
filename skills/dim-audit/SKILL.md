@@ -16,7 +16,7 @@ Name the project, revision and scope. Read its rules and the docs that state the
 
 One read-only agent per area in [quality areas](references/quality-areas.md), plus one for every entry in [agent anti-patterns](references/agent-anti-patterns.md), each given the same scope and revision, the project's rules and only its own brief. A reader may search to find candidates, but judges each only after reading the surrounding implementation, callers, tests and contracts. The anti-pattern examples are from dim-factory; apply a project rule only where the audited project has adopted it, and translate each fix to that project's own files and commands. A test that must change for a behavior-preserving refactor is suspect, while a guard for a wire value, a model-facing instruction, security or storage stays.
 
-Each reader returns source-backed findings, the paths it checked and the paths it could not judge. For a proposed test deletion, it names the failure the test can detect, the production owner, overlapping tests and the stronger proof that would remain. Recheck each candidate at its source, resolve duplicates and contradictions, and keep responsibility for the result in this session.
+Each reader returns source-backed findings, the paths it checked and the paths it could not judge. For a proposed test deletion, it names the failure the test can detect, the production owner, overlapping tests and the stronger proof that would remain. Responsibility for the result stays in this session.
 
 ## Report
 

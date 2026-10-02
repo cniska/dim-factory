@@ -13,11 +13,11 @@ An order is built in its workspace: a linked git worktree of the project's check
 
 One slice is one commit, handed in with `dim slice submit`. The subject takes its form from the project's `git log`.
 
-The record holds the branch's head, and the factory moves the branch back to it whenever they disagree. A submitted commit that is amended, reset or rebased is refused as `head_moved` and the rewrite is lost. An unwanted commit that is not yet submitted is reset out, never reverted.
+The record holds the branch's head, and the factory moves the branch back to it whenever they disagree. A submitted commit that is amended, reset or rebased is refused as `head_moved`: the branch goes back to the recorded head and the changes stay in the workspace. An unwanted commit that is not yet submitted is reset out, never reverted.
 
 ## A ship's conflict
 
-Shipping rebases the order onto the default branch as it stands. When the rebase conflicts, the order comes back to build with the brief's `conflict` naming the commit to rebase onto and the paths, and the workspace at the order's recorded head. Run `git rebase --reapply-cherry-picks --empty=keep <onto>`; in each conflicted path keep both the order's change and the default branch's with no marker left, change nothing else, `git add` it and `git rebase --continue`. With the rebase finished, `dim slice submit` hands in the branch, which the gates keep when it is the order's commits, one per slice, on `<onto>`, with the check passing.
+Shipping rebases the order onto the default branch as it stands. When the rebase conflicts, the order comes back to build with the brief's `conflict` naming the commit to rebase onto and the paths, and the workspace at the order's recorded head. Run `git rebase --reapply-cherry-picks --empty=keep <onto>`; in each conflicted path keep both the order's change and the default branch's with no marker left, change nothing else, `git add` it and `git rebase --continue`. With the rebase finished, `dim slice submit` hands in the branch, which the gates keep when it holds every commit they kept for the order, on `<onto>`, with the check passing.
 
 ## Landing
 

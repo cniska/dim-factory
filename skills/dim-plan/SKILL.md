@@ -5,8 +5,7 @@ description: Plan a factory order — find what was already built and decided, n
 
 # Plan
 
-The brief carries the `order` (its id, title, project and description), the `workspace` to read, `returned` (why the order is back at plan, when it is) and `committed` (the commits already on the order's branch). The planner reads the workspace and the record and changes nothing.
-
+The brief carries the `order` (its id, title, project and description), the `workspace` to read, `returned` (why the order is back at plan, when it is) and `committed` (the commits already on the order's branch).
 ## Returns
 
 Write the plan as JSON, `{"body": "<the plan>", "slices": [{"title": "…", "outcome": "…"}]}`, to a file under `$TMPDIR` and run `dim plan return <file>`. A reply naming what is missing records nothing: fix the plan and return it again. A second miss fails the station.
@@ -17,7 +16,7 @@ When the order cannot be planned as written, run `dim order return --reason "<wh
 
 ## Read before designing
 
-1. Has this shape been built here before? `dim query prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk. Read the repo column before the file, then read the file: recency and commit count say where to look, never whether it was got right.
+1. Has this shape been built here before? `dim query prior-art "<path fragment>"` ranks the most recently touched tracked files whose path matches, in each repo on disk. Read the repo column before the file, then read the file: recency and commit count say where to look, never whether it was got right.
 2. Was this already decided? `dim query search "<words the decision would use>"` finds where it was said, and `dim query thread <session>@<when>` reads the exchange a hit sits in. A decision already taken is not yours to re-take; find it and say what it settled.
 3. What does the project hold? Its rules, the code the change touches and the docs that own it, in the project's own words.
 

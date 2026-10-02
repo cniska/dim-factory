@@ -111,7 +111,7 @@ describe("skill install", () => {
           expect(lstatSync(link).isSymbolicLink()).toBe(true);
           expect(readlinkSync(link)).toBe(skillSourceDir(name));
         }
-        for (const name of ["dim-audit", "dim-review"]) {
+        for (const name of ["dim-audit", "dim-build", "dim-review"]) {
           expect(existsSync(join(dir, name, "references", "quality-areas.md"))).toBe(true);
         }
         for (const name of ["dim-plan", "dim-build", "dim-review"]) {
