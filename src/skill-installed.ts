@@ -1,16 +1,10 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { claudeDir, type Env, resolveHomeDir } from "./paths";
+import { HARNESSES } from "./harness-contract";
+import type { Env } from "./paths";
 
 export function listInstalledSkills(env: Env = process.env): Set<string> {
-  const home = resolveHomeDir(env);
-  const roots = [join(home, ".agents", "skills"), join(claudeDir(env), "skills")];
-  const names = new Set<string>();
-  for (const root of roots) {
-    if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root)) {
-      if (existsSync(join(root, entry, "SKILL.md"))) names.add(entry);
-    }
-  }
-  return names;
+  const root = HARNESSES.claude.skillDir(env);
+  if (!existsSync(root)) return new Set();
+  return new Set(readdirSync(root).filter((entry) => existsSync(join(root, entry, "SKILL.md"))));
 }

@@ -108,7 +108,7 @@ describe("doctor", () => {
     installSkill(env);
     expect(check(env, "skill")?.state).toBe("ok");
 
-    const stale = join(env.HOME as string, ".codex", "skills", "dim-retired");
+    const stale = join(env.HOME as string, ".agents", "skills", "dim-retired");
     symlinkSync(join(dirname(import.meta.dir), "skills", "dim-retired"), stale);
     const retired = check(env, "skill");
     expect(retired?.state).toBe("warn");

@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   symlinkSync,
   unlinkSync,
@@ -11,9 +12,8 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
 import { nextBackupPath } from "./file-backup";
-import { HARNESSES } from "./harness-contract";
-import { harnessInstalled } from "./harness-ops";
-import { type Env, locksDir, resolveHomeDir } from "./paths";
+import { installedHarnesses } from "./harness-ops";
+import { type Env, locksDir } from "./paths";
 
 const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");
 
@@ -33,10 +33,13 @@ export function skillSourceDir(name: SkillName): string {
   return join(SKILLS_DIR, name);
 }
 
+function realDir(dir: string): string {
+  return existsSync(dir) ? realpathSync(dir) : dir;
+}
+
 export function skillLinkDirs(env: Env = process.env): string[] {
-  const home = resolveHomeDir(env);
-  const shared = join(home, ".agents", "skills");
-  return harnessInstalled(HARNESSES.codex, env) ? [shared, join(home, ".codex", "skills")] : [shared];
+  const dirs = installedHarnesses(env).map((harness) => harness.skillDir(env));
+  return dirs.filter((dir, index) => dirs.findIndex((other) => realDir(other) === realDir(dir)) === index);
 }
 
 export type SkillPlan = { name: SkillName; link: string; target: string } & (

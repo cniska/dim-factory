@@ -33,7 +33,7 @@ dim skills install
 
 - Each install writes at once and copies aside any file it replaces.
 - Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
-- Hooks, Codex rules, Codex hook trust and `~/.codex/skills` are installed and checked only for a harness whose executable is on `PATH`; `~/.agents/skills` is linked whatever is installed.
+- Hooks, Codex rules, Codex hook trust and skill links are installed and checked only for a harness whose executable is on `PATH`. Skills link into `~/.claude/skills` for Claude Code and `~/.agents/skills` for Codex, once where both are the same directory.
 - `dim doctor` reports missing, stale or retired hooks, missing Codex trust, database drift and unloaded agents, each with its repair.
 
 A project's gates are its own: its hooks, its tests and its CI, which the factory runs as any contributor does.
