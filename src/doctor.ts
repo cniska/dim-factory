@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { ConfigError } from "./config-error";
+import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
@@ -32,19 +32,19 @@ function text(db: Database, sql: string): string | null {
   return db.query<{ v: string | null }, []>(sql).get()?.v ?? null;
 }
 
-function unreadable(name: string, error: ConfigError): Health {
-  return { name, state: "fail", detail: error.message, fix: `repair ${error.path} by hand` };
+function unreadable(name: string, error: ConfigRefusal): Health {
+  return { name, state: "fail", detail: error.message, fix: `repair ${error.meta.path} by hand` };
 }
 
 type HookRead =
   | { read: true; harnesses: number; missing: HookPlan[]; stale: HookPlan[] }
-  | { read: false; error: ConfigError };
+  | { read: false; error: ConfigRefusal };
 
 function readHooks(env: Env): HookRead {
   try {
     return { read: true, harnesses: installedHarnesses(env).length, ...hookGaps(env) };
   } catch (error) {
-    if (!(error instanceof ConfigError)) throw error;
+    if (!isConfigRefusal(error)) throw error;
     return { read: false, error };
   }
 }
@@ -84,7 +84,7 @@ function codexTrust(env: Env): Health {
   try {
     untrusted = planCodexTrust(env).filter((t) => !t.recorded);
   } catch (error) {
-    if (!(error instanceof ConfigError)) throw error;
+    if (!isConfigRefusal(error)) throw error;
     return unreadable("codex trust", error);
   }
   if (untrusted.length === 0) {
@@ -158,7 +158,7 @@ function retention(env: Env): Health {
   try {
     days = readJsonc<Record<string, unknown>>(path)?.cleanupPeriodDays;
   } catch (error) {
-    if (!(error instanceof ConfigError)) throw error;
+    if (!isConfigRefusal(error)) throw error;
     return unreadable("retention", error);
   }
   if (typeof days !== "number") {

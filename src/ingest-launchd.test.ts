@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LockHeldError, withLock } from "./db-lock";
+import { withLock } from "./db-lock";
 import { AGENT_LABEL, agentPlist, agentPlistPath, bunPath, installAgent, planAgent } from "./ingest-launchd";
 import type { Env } from "./paths";
 
@@ -74,7 +74,7 @@ describe("lock", () => {
   test("refuses to run while another run holds it", () => {
     const e = env(newRoot());
     withLock(() => {
-      expect(() => withLock(() => 0, e)).toThrow(LockHeldError);
+      expect(() => withLock(() => 0, e)).toThrow(expect.objectContaining({ code: "lock_held" }));
     }, e);
   });
 

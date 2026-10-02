@@ -1,27 +1,37 @@
-import { CodedError } from "./coded-error";
+import { CodedError, type RefusalTable, refuser } from "./coded-error";
 
-const CONFIG_CODES = {
-  parse: "config_unparsed",
-  invalid: "config_invalid",
-  "not-an-array": "config_not_an_array",
-  "not-an-object": "config_not_an_object",
-  unwritable: "config_unwritable",
-  absent: "config_absent",
-} as const;
+type In = { readonly path: string };
 
-export type ConfigErrorKind = keyof typeof CONFIG_CODES;
+type At = In & { readonly at: string };
 
-export type ConfigErrorCode = (typeof CONFIG_CODES)[ConfigErrorKind];
+type ConfigMetas = {
+  readonly config_unparsed: In & { readonly detail: string };
+  readonly config_invalid: In & { readonly at: string | null; readonly problem: string };
+  readonly config_not_an_object: At & { readonly holds: string };
+  readonly config_not_an_array: At & { readonly holds: string };
+  readonly config_unwritable: At & { readonly event: string };
+  readonly config_absent: At;
+};
 
-export type ConfigErrorMeta = { readonly path: string; readonly at: string | null };
+const resolve = () => "dim config";
 
-export class ConfigError extends CodedError<ConfigErrorCode, ConfigErrorMeta> {
-  constructor(
-    readonly kind: ConfigErrorKind,
-    readonly path: string,
-    message: string,
-    readonly at?: string,
-  ) {
-    super(CONFIG_CODES[kind], message, { path, at: at ?? null }, "dim config");
-  }
+const CONFIG_REFUSALS: RefusalTable<ConfigMetas> = {
+  config_unparsed: { message: ({ path, detail }) => `${path}: ${detail}`, resolve },
+  config_invalid: { message: ({ path, problem }) => `${path}: ${problem}`, resolve },
+  config_not_an_object: { message: ({ at, holds }) => `${at} holds a ${holds}`, resolve },
+  config_not_an_array: { message: ({ at, holds }) => `${at} holds a ${holds}`, resolve },
+  config_unwritable: {
+    message: ({ path, event }) =>
+      `${path}: the ${event} hook would not land where a reader looks, so nothing was written`,
+    resolve,
+  },
+  config_absent: { message: ({ path, at }) => `${path}: ${at} is not there to replace`, resolve },
+};
+
+export const refuseConfig = refuser(CONFIG_REFUSALS);
+
+export type ConfigRefusal = CodedError<keyof ConfigMetas, In>;
+
+export function isConfigRefusal(error: unknown): error is ConfigRefusal {
+  return error instanceof CodedError && Object.hasOwn(CONFIG_REFUSALS, error.code);
 }

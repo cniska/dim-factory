@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigError } from "./config-error";
 import { harnessesOnPath } from "./fixtures.test-support";
 import { hookCommand } from "./hook-commands";
 import { planHooks } from "./hooks";
@@ -62,6 +61,6 @@ describe("reading the codex hooks a trust key points at", () => {
 
   test("raises the parse failure rather than reporting every hook untrusted", () => {
     const env = codexEnv(() => '{ "hooks": ');
-    expect(() => planCodexTrust(env)).toThrow(ConfigError);
+    expect(() => planCodexTrust(env)).toThrow(expect.objectContaining({ code: "config_unparsed" }));
   });
 });

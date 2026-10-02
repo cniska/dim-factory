@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigError } from "./config-error";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
 
 function newDir(): string {
@@ -27,7 +26,7 @@ describe("reading a config from disk", () => {
 
     expect(readJsonc(absent)).toBeNull();
     expect(readJsoncText(absent)).toBe("");
-    expect(() => readJsonc(empty)).toThrow(ConfigError);
+    expect(() => readJsonc(empty)).toThrow(expect.objectContaining({ code: "config_unparsed" }));
   });
 
   test("raises a parse error naming the file it read", () => {
@@ -35,14 +34,9 @@ describe("reading a config from disk", () => {
     const path = join(dir, "settings.json");
     writeFileSync(path, '{ "hooks": ');
 
-    try {
-      readJsonc(path);
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).kind).toBe("parse");
-      expect((e as ConfigError).path).toBe(path);
-    }
+    expect(() => readJsonc(path)).toThrow(
+      expect.objectContaining({ code: "config_unparsed", meta: expect.objectContaining({ path }) }),
+    );
   });
 });
 

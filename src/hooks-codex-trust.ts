@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ConfigError } from "./config-error";
+import { refuseConfig } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { type HookEntry, wantedHooks } from "./hook-commands";
 import { hookConfigPath } from "./hooks";
@@ -28,7 +28,7 @@ function recordedKeys(path: string): Set<string> {
     parsed = Bun.TOML.parse(readFileSync(path, "utf8")) as typeof parsed;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new ConfigError("parse", path, `${path}: ${detail}`);
+    throw refuseConfig("config_unparsed", { path, detail });
   }
   const state = parsed.hooks?.state ?? {};
   return new Set(Object.keys(state).filter((k) => typeof state[k]?.trusted_hash === "string"));

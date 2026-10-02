@@ -59,7 +59,7 @@ describe("flatten", () => {
     const dir = join(root, ".codex");
     writeFileSync(join(dir, "first.md"), "@second.md");
     writeFileSync(join(dir, "second.md"), "@first.md");
-    expect(() => flatten("@first.md", dir)).toThrow("rules import cycle");
+    expect(() => flatten("@first.md", dir)).toThrow(expect.objectContaining({ code: "rules_import_cycle" }));
   });
 
   test("leaves ordinary text alone, including an address mid-line", () => {

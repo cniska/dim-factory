@@ -2,21 +2,8 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { invariant } from "./assert";
-import { CodedError } from "./coded-error";
+import { refuseRecord } from "./db-contract";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
-
-export type RecordVersionMeta = { readonly found: number; readonly expected: number };
-
-export class RecordVersionError extends CodedError<"record_version", RecordVersionMeta> {
-  constructor(found: number) {
-    super(
-      "record_version",
-      `the record is schema version ${found} and this dim reads version ${SCHEMA_VERSION}; run \`dim rebuild\``,
-      { found, expected: SCHEMA_VERSION },
-      "dim rebuild",
-    );
-  }
-}
 
 export function recordVersion(db: Database): number {
   const row = db.query<{ user_version: number }, []>("PRAGMA user_version").get();
@@ -33,7 +20,7 @@ function isFresh(db: Database): boolean {
 
 export function refuseOtherVersion(db: Database): void {
   const found = recordVersion(db);
-  if (found !== SCHEMA_VERSION) throw new RecordVersionError(found);
+  if (found !== SCHEMA_VERSION) throw refuseRecord("record_version", { found, expected: SCHEMA_VERSION });
 }
 
 const CONCURRENT_WRITER_WAIT_MS = 5000;

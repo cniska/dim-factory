@@ -10,7 +10,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { claimPathLock, LockHeldError, tryClaimPathLock, withLock } from "./db-lock";
+import { claimPathLock, tryClaimPathLock, withLock } from "./db-lock";
+
+const LOCK_HELD = expect.objectContaining({ code: "lock_held" });
+
 import type { Env } from "./paths";
 
 const roots: string[] = [];
@@ -62,7 +65,7 @@ describe("the write lock", () => {
       await Bun.sleep(20);
     }, env);
 
-    expect(() => withLock(() => null, env)).toThrow(LockHeldError);
+    expect(() => withLock(() => null, env)).toThrow(LOCK_HELD);
     await running;
     expect(existsSync(lock)).toBe(false);
   });
@@ -110,7 +113,7 @@ describe("the write lock", () => {
     const { env, lock } = newRoot();
     mkdirSync(lock, { recursive: true });
     writeFileSync(join(lock, "pid"), String(process.pid));
-    expect(() => withLock(() => "ran", env)).toThrow(LockHeldError);
+    expect(() => withLock(() => "ran", env)).toThrow(LOCK_HELD);
     expect(readdirSync(dirname(lock))).toEqual(["record"]);
   });
 

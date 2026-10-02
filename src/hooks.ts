@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import type { JSONPath } from "jsonc-parser";
-import { ConfigError } from "./config-error";
+import { refuseConfig } from "./config-error";
 import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
 import { installedHarnesses } from "./harness-installed";
@@ -141,12 +141,11 @@ function refuseIneffective(text: string, configPath: string, plans: HookPlan[]):
   const config = parseJsonc<HookConfig>(text, configPath);
   for (const plan of plans) {
     if (hasCommand(config.hooks?.[plan.event] ?? [], plan.command, plan.matcher)) continue;
-    throw new ConfigError(
-      "unwritable",
-      configPath,
-      `${configPath}: the ${plan.event} hook would not land where a reader looks, so nothing was written`,
-      `hooks.${plan.event}`,
-    );
+    throw refuseConfig("config_unwritable", {
+      path: configPath,
+      at: `hooks.${plan.event}`,
+      event: plan.event,
+    });
   }
 }
 

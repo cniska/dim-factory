@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { refuseGit } from "./git-contract";
 
 export type CommittedTree = {
   has(path: string): boolean;
@@ -18,10 +19,15 @@ function git(root: string, args: string[]): { status: number | null; out: string
 export function committedTree(root: string, at: string, paths: readonly string[]): CommittedTree | null {
   const commit = git(root, ["rev-parse", "--verify", "-q", `${at}^{commit}`]);
   if (commit.status === 1) return null;
-  if (commit.status !== 0) throw new Error(`cannot read ${at} in ${root}: ${commit.err}`);
+  if (commit.status !== 0) throw refuseGit("git_unreadable", { root, what: at, detail: commit.err });
   const listed = git(root, ["ls-tree", "-l", "-z", at, "--", ...paths]);
-  if (listed.status !== 0)
-    throw new Error(`cannot list ${paths.join(", ")} at ${at} in ${root}: ${listed.err}`);
+  if (listed.status !== 0) {
+    throw refuseGit("git_unreadable", {
+      root,
+      what: `the listing of ${paths.join(", ")} at ${at}`,
+      detail: listed.err,
+    });
+  }
   const entries = new Map<string, { mode: string; oid: string; size: number }>();
   for (const entry of listed.out.split("\0").filter(Boolean)) {
     const [meta = "", path = ""] = entry.split("\t");
@@ -34,7 +40,8 @@ export function committedTree(root: string, at: string, paths: readonly string[]
       const entry = entries.get(path);
       if (!entry || !REGULAR_FILE_MODES.has(entry.mode) || entry.size > maxBytes) return null;
       const shown = git(root, ["cat-file", "blob", entry.oid]);
-      if (shown.status !== 0) throw new Error(`cannot read ${path} at ${at} in ${root}: ${shown.err}`);
+      if (shown.status !== 0)
+        throw refuseGit("git_unreadable", { root, what: `${path} at ${at}`, detail: shown.err });
       return shown.out;
     },
   };

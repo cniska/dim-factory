@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { applyEdits, modify } from "jsonc-parser";
 import { z } from "zod";
-import { ConfigError } from "./config-error";
+import { unreachable } from "./assert";
+import { type ConfigRefusal, refuseConfig } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
 import { committedTree } from "./git-committed";
@@ -36,26 +37,31 @@ export function projectConfigPath(root: string): string {
   return join(root, PROJECT_CONFIG);
 }
 
-function refusal(file: string, defect: SettingDefect): ConfigError {
-  const known = Object.keys(SETTINGS).join(", ");
-  const message =
-    defect.kind === "duplicate-key"
-      ? `${file}: names ${defect.keys.join(", ")} twice, so one value silently replaced another`
-      : defect.kind === "not-object"
-        ? `${file}: the config is not an object of settings`
-        : `${file}: names ${defect.keys.join(", ")}, which is no setting; the settings are ${known}`;
-  return new ConfigError("invalid", file, message);
+function problemOf(defect: SettingDefect): string {
+  switch (defect.kind) {
+    case "duplicate-key":
+      return `names ${defect.keys.join(", ")} twice, so one value silently replaced another`;
+    case "not-object":
+      return "the config is not an object of settings";
+    case "unknown-key":
+      return `names ${defect.keys.join(", ")}, which is no setting; the settings are ${Object.keys(SETTINGS).join(", ")}`;
+    default:
+      return unreachable(defect);
+  }
+}
+
+function refusal(file: string, defect: SettingDefect): ConfigRefusal {
+  return refuseConfig("config_invalid", { path: file, at: null, problem: problemOf(defect) });
 }
 
 function refuseValue(file: string, name: Setting, value: unknown): void {
   const allowed: readonly string[] = SETTINGS[name];
   if (typeof value !== "string" || !allowed.includes(value)) {
-    throw new ConfigError(
-      "invalid",
-      file,
-      `${file}: ${name} is ${JSON.stringify(value)}, where it takes one of ${allowed.join(", ")}`,
-      name,
-    );
+    throw refuseConfig("config_invalid", {
+      path: file,
+      at: name,
+      problem: `${name} is ${JSON.stringify(value)}, where it takes one of ${allowed.join(", ")}`,
+    });
   }
 }
 
@@ -76,7 +82,11 @@ function parseModels(value: unknown, file: string): Models {
   const parsed = Models.safeParse(value);
   if (parsed.success) return parsed.data;
   const roles = Object.keys(Models.shape).join(", ");
-  throw new ConfigError("invalid", file, `${file}: models maps ${roles} each to a model name`, "models");
+  throw refuseConfig("config_invalid", {
+    path: file,
+    at: "models",
+    problem: `models maps ${roles} each to a model name`,
+  });
 }
 
 function parseUserConfig(text: string, file: string): UserConfig {

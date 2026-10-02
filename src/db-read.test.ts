@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb, RecordVersionError } from "./db";
-import { NoDatabaseError, openReadOnly } from "./db-read";
+import { closeDb, openDb } from "./db";
+import { openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
 import { dbPath } from "./paths";
 import { queryCommand } from "./query-command";
@@ -52,7 +52,7 @@ describe("opening the database to read", () => {
   test("names a missing database without creating one", () => {
     const path = join(mkdtempSync(join(tmpdir(), "dim-db-read-")), "sessions.db");
 
-    expect(() => openReadOnly(path)).toThrow(NoDatabaseError);
+    expect(() => openReadOnly(path)).toThrow(expect.objectContaining({ code: "no_database" }));
     expect(existsSync(path)).toBe(false);
   });
 });
@@ -145,9 +145,9 @@ describe("each reader of the record", () => {
       for (const query of QUERIES) await asDataHome(home, () => queryCommand.run([query.name, "stay"]));
       expect(recordOf(path)).toEqual(before);
 
-      await expect(asDataHome(empty, () => queryCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
-        NoDatabaseError,
-      );
+      await expect(asDataHome(empty, () => queryCommand.run(["search", "stay"]))).rejects.toMatchObject({
+        code: "no_database",
+      });
       expect(existsSync(dbPath({ XDG_DATA_HOME: empty }))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
@@ -186,10 +186,9 @@ describe("a reader of a record built by another schema version", () => {
         };
         for (const [reader, run] of Object.entries(readers)) {
           const error = await asDataHome(home, () => refusal(run));
-          expect({ reader, error }).toEqual({ reader, error: expect.any(RecordVersionError) });
-          expect({ reader, code: (error as RecordVersionError).code }).toEqual({
+          expect({ reader, error }).toEqual({
             reader,
-            code: "record_version",
+            error: expect.objectContaining({ code: "record_version" }),
           });
         }
         const sent: string[] = [];
@@ -207,9 +206,9 @@ describe("a reader of a record built by another schema version", () => {
   test("dim sql creates no database where there is none", async () => {
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
-      expect(await asDataHome(empty, () => refusal(() => sqlCommand.run(["SELECT 1"])))).toBeInstanceOf(
-        NoDatabaseError,
-      );
+      expect(await asDataHome(empty, () => refusal(() => sqlCommand.run(["SELECT 1"])))).toMatchObject({
+        code: "no_database",
+      });
       expect(existsSync(dbPath({ XDG_DATA_HOME: empty }))).toBe(false);
     } finally {
       rmSync(empty, { recursive: true, force: true });

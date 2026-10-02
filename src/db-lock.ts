@@ -1,19 +1,8 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { CodedError } from "./coded-error";
+import { refuseRecord } from "./db-contract";
 import { type Env, locksDir } from "./paths";
 import { pidIsAlive } from "./pid";
-
-export class LockHeldError extends CodedError<"lock_held", { readonly path: string; readonly pid: number }> {
-  constructor(path: string, pid: number) {
-    super(
-      "lock_held",
-      `another dim run holds ${path} (pid ${pid}); run this again once it ends`,
-      { path, pid },
-      "dim doctor",
-    );
-  }
-}
 
 function holderIsAlive(holder: number): boolean {
   return Number.isInteger(holder) && holder > 0 && pidIsAlive(holder);
@@ -91,7 +80,7 @@ export function tryClaimPathLock(path: string): (() => void) | null {
 
 export function claimPathLock(path: string): () => void {
   const claimed = claim(path);
-  if (claimed.kind === "held") throw new LockHeldError(path, claimed.holder);
+  if (claimed.kind === "held") throw refuseRecord("lock_held", { path, pid: claimed.holder });
   return releaser(path);
 }
 

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { refuseGit } from "./git-contract";
 
 const LARGE_REPO_GIT_OUTPUT_BYTES = 256 * 1024 * 1024;
 
@@ -14,7 +15,9 @@ export function git(root: string, args: string[], input?: string): string {
 
 export function nulFields(output: string, command: string): string[] {
   if (output === "") return [];
-  if (!output.endsWith("\0")) throw new Error(`${command} printed a record that does not end in NUL`);
+  if (!output.endsWith("\0")) {
+    throw refuseGit("git_output_malformed", { command, problem: "a record that does not end in NUL" });
+  }
   return output.slice(0, -1).split("\0");
 }
 
@@ -29,7 +32,9 @@ export function outsideTheCode(root: string, paths: string[]): Set<string> {
     ),
     command,
   );
-  if (fields.length % 3 !== 0) throw new Error(`${command} printed ${fields.length} fields, not triples`);
+  if (fields.length % 3 !== 0) {
+    throw refuseGit("git_output_malformed", { command, problem: `${fields.length} fields, not triples` });
+  }
   const skipped = new Set<string>();
   for (let at = 0; at < fields.length; at += 3) {
     const value = fields[at + 2];

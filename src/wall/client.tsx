@@ -1,7 +1,7 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { unreachable } from "../assert";
+import { invariant, unreachable } from "../assert";
 import type { RefusalRecord } from "../coded-error";
 import type { Status } from "../order-contract";
 import type { Role } from "../worker-contract";
@@ -792,7 +792,7 @@ function App() {
 }
 
 const root = document.getElementById("root");
-if (!root) throw new Error("wall page must provide a #root element");
+invariant(root !== null, "the wall page provides a #root element");
 
 createRoot(root).render(
   <StrictMode>

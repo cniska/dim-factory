@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc } from "./config-jsonc";
 
 const entry = { hooks: [{ type: "command", command: "dim-spool" }] };
@@ -15,14 +14,12 @@ describe("reading a config a person edits", () => {
   });
 
   test("raises a parse error rather than a half-read config", () => {
-    try {
-      parseJsonc('{ "hooks": ', "settings.json");
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).kind).toBe("parse");
-      expect((e as ConfigError).path).toBe("settings.json");
-    }
+    expect(() => parseJsonc('{ "hooks": ', "settings.json")).toThrow(
+      expect.objectContaining({
+        code: "config_unparsed",
+        meta: expect.objectContaining({ path: "settings.json" }),
+      }),
+    );
   });
 });
 
@@ -91,23 +88,19 @@ describe("appending to an array in place", () => {
 
   test("refuses a path holding something that is not an array", () => {
     const text = '{"hooks":{"SessionEnd":"not-an-array"}}';
-    try {
-      appendToJsoncArray(text, ["hooks", "SessionEnd"], entry, "settings.json");
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).kind).toBe("not-an-array");
-    }
+    expect(() => appendToJsoncArray(text, ["hooks", "SessionEnd"], entry, "settings.json")).toThrow(
+      expect.objectContaining({ code: "config_not_an_array" }),
+    );
   });
 
   test("refuses a parent holding something that is not an object", () => {
-    try {
-      appendToJsoncArray('{"hooks":"x"}', ["hooks", "SessionEnd"], entry, "settings.json");
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).kind).toBe("not-an-object");
-      expect((e as ConfigError).at).toBe("hooks");
-    }
+    expect(() =>
+      appendToJsoncArray('{"hooks":"x"}', ["hooks", "SessionEnd"], entry, "settings.json"),
+    ).toThrow(
+      expect.objectContaining({
+        code: "config_not_an_object",
+        meta: expect.objectContaining({ at: "hooks" }),
+      }),
+    );
   });
 });

@@ -1,8 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
+import { refuser } from "./coded-error";
 import { copyBackup } from "./file-backup";
 import { harnessInstalled } from "./harness-installed";
 import { type Env, resolveHomeDir } from "./paths";
+
+const refuseRules = refuser<{ readonly rules_import_cycle: { readonly path: string } }>({
+  rules_import_cycle: {
+    message: ({ path }) => `rules import cycle at ${path}`,
+    resolve: ({ path }) => `remove the @-import of ${path} that leads back to itself`,
+  },
+});
 
 export const CANONICAL = [".claude", "CLAUDE.md"];
 export const GENERATED = [".codex", "AGENTS.md"];
@@ -27,7 +35,7 @@ function expand(text: string, targetDir: string, active: Set<string>): string {
       const path = isAbsolute(ref) ? ref : join(targetDir, ref);
       if (!existsSync(path)) return `<!-- dim: ${ref} not found for this tool -->`;
       const resolved = realpathSync(path);
-      if (active.has(resolved)) throw new Error(`rules import cycle at ${path}`);
+      if (active.has(resolved)) throw refuseRules("rules_import_cycle", { path });
       active.add(resolved);
       try {
         return expand(readFileSync(path, "utf8").trimEnd(), dirname(path), active);

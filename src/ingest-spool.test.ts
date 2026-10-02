@@ -11,7 +11,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import type { HarnessName } from "./harness-name";
@@ -30,6 +29,7 @@ import { rebuild, sync } from "./ingest-sync";
 import { dbPath, type Env, resolveHomeDir, spoolDir } from "./paths";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
+const HOOK_UNWRITABLE = expect.objectContaining({ code: "config_unwritable" });
 const roots: string[] = [];
 
 function newRoot(): string {
@@ -486,7 +486,7 @@ describe("installHooks", () => {
     const before = '{"hooks":{"SessionStart":[]},"hooks":{"SessionStart":[]}}';
     writeFileSync(paths.claude, before);
 
-    expect(() => installHooks(env)).toThrow(ConfigError);
+    expect(() => installHooks(env)).toThrow(HOOK_UNWRITABLE);
     expect(readFileSync(paths.claude, "utf8")).toBe(before);
     expect(existsSync(`${paths.claude}.dim-backup`)).toBe(false);
   });
@@ -498,7 +498,7 @@ describe("installHooks", () => {
     mkdirSync(join(dir, ".codex"), { recursive: true });
     writeFileSync(paths.codex, '{"hooks":{"SessionStart":[]},"hooks":{"SessionStart":[]}}');
 
-    expect(() => installHooks(env)).toThrow(ConfigError);
+    expect(() => installHooks(env)).toThrow(HOOK_UNWRITABLE);
     expect(existsSync(paths.claude)).toBe(false);
   });
 

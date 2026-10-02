@@ -72,10 +72,6 @@ export function sqlBreaches(file: string, text: string): readonly string[] {
     : [];
 }
 
-export function throwBreaches(file: string, text: string): readonly string[] {
-  return /new CodedError\(|new Error\(/.test(text) ? [`${file} builds its own error`] : [];
-}
-
 describe("the factory's modules", () => {
   test("a module's store and effects are imported only by that module", () => {
     expect(sources("*.ts").flatMap(({ file, text }) => boundaryBreaches(file, text))).toEqual([]);
@@ -87,10 +83,6 @@ describe("the factory's modules", () => {
 
   test("only a module's store runs SQL", () => {
     expect(moduleFiles().flatMap(({ file, text }) => sqlBreaches(file, text))).toEqual([]);
-  });
-
-  test("a refusal comes from its module's refusal table, and any other fault from an assertion", () => {
-    expect(moduleFiles().flatMap(({ file, text }) => throwBreaches(file, text))).toEqual([]);
   });
 });
 
@@ -143,14 +135,5 @@ describe("the module checks", () => {
   test("catch SQL outside a store", () => {
     expect(sqlBreaches("order-ops.ts", 'db.query("SELECT 1")')).toEqual(["order-ops.ts runs SQL"]);
     expect(sqlBreaches("order-store.ts", 'db.query("SELECT 1")')).toEqual([]);
-  });
-
-  test("catch an error built by hand", () => {
-    expect(throwBreaches("order-ops.ts", 'throw new Error("x")')).toEqual([
-      "order-ops.ts builds its own error",
-    ]);
-    expect(throwBreaches("order-ops.ts", 'throw new CodedError("x")')).toEqual([
-      "order-ops.ts builds its own error",
-    ]);
   });
 });

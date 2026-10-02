@@ -10,18 +10,17 @@ import {
   parseTree,
   printParseErrorCode,
 } from "jsonc-parser";
-import { ConfigError } from "./config-error";
+import { refuseConfig } from "./config-error";
 
 export function parseJsonc<T>(text: string, file: string): T {
   const errors: ParseError[] = [];
   const value = parse(text, errors, { allowTrailingComma: true }) as T;
   if (errors.length > 0) {
     const first = errors[0] as ParseError;
-    throw new ConfigError(
-      "parse",
-      file,
-      `${file}: ${printParseErrorCode(first.error)} at offset ${first.offset}`,
-    );
+    throw refuseConfig("config_unparsed", {
+      path: file,
+      detail: `${printParseErrorCode(first.error)} at offset ${first.offset}`,
+    });
   }
   return value;
 }
@@ -58,13 +57,13 @@ function refuseWrongShape(root: Node, path: JSONPath, file: string): void {
     if (!parent) return;
     if (parent.type !== "object") {
       const label = pathLabel(path, depth);
-      throw new ConfigError("not-an-object", file, `${label} holds a ${parent.type}`, label);
+      throw refuseConfig("config_not_an_object", { path: file, at: label, holds: parent.type });
     }
   }
   const target = findNodeAtLocation(root, path);
   if (target && target.type !== "array") {
     const label = pathLabel(path, path.length);
-    throw new ConfigError("not-an-array", file, `${label} holds a ${target.type}`, label);
+    throw refuseConfig("config_not_an_array", { path: file, at: label, holds: target.type });
   }
 }
 
@@ -76,7 +75,7 @@ export function setJsoncValue(text: string, path: JSONPath, value: unknown, file
   const root = parseTree(text, [], { allowTrailingComma: true });
   const label = path.join(".");
   if (!root || !findNodeAtLocation(root, path)) {
-    throw new ConfigError("absent", file, `${file}: ${label} is not there to replace`, label);
+    throw refuseConfig("config_absent", { path: file, at: label });
   }
   return applyEdits(text, modify(text, path, value, { formattingOptions: indentOf(text) }));
 }

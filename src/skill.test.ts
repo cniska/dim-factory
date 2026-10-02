@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Glob } from "bun";
-import { LockHeldError, withPathLock } from "./db-lock";
+import { withPathLock } from "./db-lock";
 import { harnessesOnPath } from "./fixtures.test-support";
 import { installSkill, planSkill, retiredLinks, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
 
@@ -212,7 +212,7 @@ describe("skill install", () => {
       mkdirSync(link, { recursive: true });
       writeFileSync(join(link, "SKILL.md"), "owner skill");
       withPathLock(join(home, ".local", "state", "dim-factory", "locks", "skill-install"), () => {
-        expect(() => installSkill(env)).toThrow(LockHeldError);
+        expect(() => installSkill(env)).toThrow(expect.objectContaining({ code: "lock_held" }));
       });
       await expect(Bun.file(join(link, "SKILL.md")).text()).resolves.toBe("owner skill");
       expect(existsSync(`${link}.dim-backup`)).toBe(false);
