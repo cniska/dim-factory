@@ -8,9 +8,8 @@ export class CodedError<Code extends string = string, Meta extends object = obje
     message: string,
     readonly meta: Meta,
     readonly resolve: string,
-    options?: { cause?: unknown },
   ) {
-    super(message, options);
+    super(message);
   }
 }
 
@@ -30,7 +29,7 @@ export function refusalOf({ code, message, meta, resolve }: RefusalRecord): Code
   return new CodedError(code, message, meta, resolve);
 }
 
-export type RefusalTable<Metas extends Record<string, object>> = {
+type RefusalTable<Metas extends Record<string, object>> = {
   readonly [Code in keyof Metas]: {
     readonly message: (meta: Metas[Code]) => string;
     readonly resolve: (meta: Metas[Code]) => string;

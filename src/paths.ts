@@ -12,12 +12,6 @@ export function resolveHomeDir(env: Env = process.env): string {
   return homedir();
 }
 
-export function tildePath(path: string, env: Env = process.env): string {
-  const home = resolveHomeDir(env);
-  if (path === home) return "~";
-  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
-}
-
 function xdgBase(env: Env, variable: string, fallback: readonly string[]): string {
   const value = env[variable];
   return value && isAbsolute(value) ? value : join(resolveHomeDir(env), ...fallback);

@@ -82,7 +82,7 @@ describe("read path", () => {
       db.run(SCHEMA_SQL);
       expect(() => findQuery("prior-art")?.run(db, ctx)).toThrow(
         expect.objectContaining({
-          name: "UsageError",
+          code: "usage",
           message: 'usage: dim query prior-art "<path fragment>"',
         }),
       );
@@ -128,12 +128,12 @@ describe("read path", () => {
 
       expect(() => findQuery("thread")?.run(db, ctx)).toThrow(
         expect.objectContaining({
-          name: "UsageError",
+          code: "usage",
           message: "usage: dim query thread <id-prefix>[@<ts>]",
         }),
       );
       expect(() => findQuery("thread")?.run(db, { ...ctx, arg: "" })).toThrow(
-        expect.objectContaining({ name: "UsageError" }),
+        expect.objectContaining({ code: "usage" }),
       );
     } finally {
       db.close();
