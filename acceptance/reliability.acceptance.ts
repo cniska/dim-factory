@@ -6,7 +6,7 @@ import { everyHookCommand, settingsHooks } from "./support/claude-hooks";
 import { commandLine, parseDim, refusal, resultOf } from "./support/dim-output";
 import type { HarnessScript, HarnessTurn } from "./support/harness-script";
 import { checkHeld, holdCheck, holdingCheck, releaseCheck } from "./support/holds";
-import { type Machine, machines } from "./support/machine";
+import { type Machine, machines, manifest } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -298,7 +298,7 @@ describe("hooks", () => {
     });
     writeFileSync(
       join(m.repo, "package.json"),
-      JSON.stringify({ scripts: { verify: "true", format: "touch formatted.marker" } }),
+      manifest({ verify: "true", format: "touch formatted.marker" }),
     );
     mkdirSync(join(m.repo, ".claude"), { recursive: true });
     writeFileSync(

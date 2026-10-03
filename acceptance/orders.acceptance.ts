@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { commandLine, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
 import { checkHeld, holdCheck, holdingCheck, holdWhenMainMoves, releaseCheck } from "./support/holds";
-import { type Machine, machines } from "./support/machine";
+import { DEPENDENCY, type Machine, machines } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -46,6 +46,34 @@ const killApproval = (m: Machine, id: string) =>
 
 const shipping = (order: OrderView) =>
   actions(order).includes(ACTION.shipStarted) && !actions(order).includes(ACTION.shipLanded);
+
+describe("a project's dependencies", () => {
+  test("AC-73 an order whose check needs a locked dependency ships, with the dependency installed before the plan", async () => {
+    const m = await start({ script: happyPath(), check: `test -e node_modules/${DEPENDENCY}/index.js` });
+    const id = await planned(m.operator);
+    const { workspace } = await showOrder(m.operator, id);
+    expect(existsSync(join(workspace, "node_modules", DEPENDENCY, "index.js"))).toBe(true);
+
+    for (let artifact = 0; artifact < 3; artifact++) resultOf(await approve(m.operator, id));
+
+    expect((await showOrder(m.operator, id)).status).toBe("shipped");
+  });
+
+  test("AC-74 an install that fails stops the run with a refusal naming the command, before any station works", async () => {
+    const m = await start({ script: happyPath() });
+    m.ownerCommits(
+      "package.json",
+      `${JSON.stringify({ scripts: { verify: "true" }, dependencies: { unlocked: "file:./vendor/unlocked" } })}\n`,
+    );
+    const id = await addOrder(m.operator);
+
+    const refused = refusal(await runOrder(m.operator, id));
+
+    expect(refused.code).toBe("install_failed");
+    expect(refused.meta.command).toBe("bun install --frozen-lockfile");
+    expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.sessionStarted);
+  });
+});
 
 describe("an order from added to shipped", () => {
   test("AC-1 an order approved at every station lands on the default branch and is recorded as shipped", async () => {

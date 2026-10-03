@@ -60,15 +60,26 @@ export function manifestsIn(repo: string): Manifests {
   };
 }
 
-const LOCKS: readonly (readonly [string, string])[] = [
-  ["bun.lock", "bun"],
-  ["bun.lockb", "bun"],
-  ["pnpm-lock.yaml", "pnpm"],
-  ["yarn.lock", "yarn"],
-  ["package-lock.json", "npm"],
+type Lock = { readonly lock: string; readonly manager: string; readonly install: string };
+
+const LOCKS: readonly Lock[] = [
+  { lock: "bun.lock", manager: "bun", install: "bun install --frozen-lockfile" },
+  { lock: "bun.lockb", manager: "bun", install: "bun install --frozen-lockfile" },
+  { lock: "pnpm-lock.yaml", manager: "pnpm", install: "pnpm install --frozen-lockfile" },
+  { lock: "yarn.lock", manager: "yarn", install: "yarn install --frozen-lockfile" },
+  { lock: "package-lock.json", manager: "npm", install: "npm ci" },
 ];
 
-const MANIFESTS = ["package.json", "mise.toml", "Makefile", ...LOCKS.map(([lock]) => lock)];
+const lockIn = (manifests: Manifests): Lock | null => LOCKS.find(({ lock }) => manifests.has(lock)) ?? null;
+
+export type InstallCommand = { readonly commandLine: string; readonly source: string };
+
+export function installCommand(repo: string): InstallCommand | null {
+  const found = lockIn(manifestsIn(repo));
+  return found === null ? null : { commandLine: found.install, source: found.lock };
+}
+
+const MANIFESTS = ["package.json", "mise.toml", "Makefile", ...LOCKS.map(({ lock }) => lock)];
 
 export function manifestsAt(root: string, at: string): Manifests | null {
   return committedTree(root, at, MANIFESTS);
@@ -81,11 +92,6 @@ export type DeclaredTask = {
   readonly body: string;
 };
 
-function managerOf(manifests: Manifests): string | null {
-  for (const [lock, pm] of LOCKS) if (manifests.has(lock)) return pm;
-  return null;
-}
-
 const readText = (manifests: Manifests, file: string) => manifests.read(file, LONGEST_MANIFEST);
 
 function fromPackageJson(manifests: Manifests): DeclaredTask[] {
@@ -97,12 +103,12 @@ function fromPackageJson(manifests: Manifests): DeclaredTask[] {
   } catch (error) {
     throw refuseManifest("manifest_unparseable", { file: "package.json", detail: String(error) });
   }
-  const pm = managerOf(manifests);
-  if (pm === null) return [];
+  const lock = lockIn(manifests);
+  if (lock === null) return [];
   const body = JSON.stringify(scripts);
   return Object.keys(scripts).map((name) => ({
     name,
-    commandLine: `${pm} run ${name}`,
+    commandLine: `${lock.manager} run ${name}`,
     source: "package.json",
     body,
   }));

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkDeclared, checkTask, formatTask, manifestsAt } from "./declared-tasks";
+import { checkDeclared, checkTask, formatTask, installCommand, manifestsAt } from "./declared-tasks";
 
 const roots: string[] = [];
 
@@ -132,6 +132,28 @@ describe("the check task", () => {
 
   test("finds this repo's own check task", () => {
     expect(checkTask(new URL("..", import.meta.url).pathname)?.commandLine).toBe("bun run verify");
+  });
+});
+
+describe("the install command", () => {
+  test("installs exactly what the committed lockfile pins, through the package manager it names", () => {
+    const installs: readonly (readonly [string, string])[] = [
+      ["bun.lock", "bun install --frozen-lockfile"],
+      ["bun.lockb", "bun install --frozen-lockfile"],
+      ["pnpm-lock.yaml", "pnpm install --frozen-lockfile"],
+      ["yarn.lock", "yarn install --frozen-lockfile"],
+      ["package-lock.json", "npm ci"],
+    ];
+    for (const [lock, commandLine] of installs) {
+      expect(installCommand(repo({ "package.json": "{}", [lock]: "" }))).toEqual({
+        commandLine,
+        source: lock,
+      });
+    }
+  });
+
+  test("is nothing for a repo with no lockfile", () => {
+    expect(installCommand(repo({ "package.json": "{}" }))).toBeNull();
   });
 });
 

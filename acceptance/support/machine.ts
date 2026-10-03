@@ -97,6 +97,27 @@ function git(args: readonly string[], cwd: string): string {
   return ran.stdout.toString().trim();
 }
 
+export const DEPENDENCY = "greet";
+
+export const manifest = (scripts: Readonly<Record<string, string>>): string =>
+  `${JSON.stringify({ scripts, dependencies: { [DEPENDENCY]: `file:./vendor/${DEPENDENCY}` } })}\n`;
+
+function lockDependencies(repo: string): void {
+  const vendored = join(repo, "vendor", DEPENDENCY);
+  mkdirSync(vendored, { recursive: true });
+  writeFileSync(
+    join(vendored, "package.json"),
+    `${JSON.stringify({ name: DEPENDENCY, version: "1.0.0" })}\n`,
+  );
+  writeFileSync(join(vendored, "index.js"), "module.exports = 'hello';\n");
+  const installed = Bun.spawnSync(["bun", "install"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (installed.exitCode !== 0) throw new Error(`bun install failed: ${installed.stderr.toString()}`);
+}
+
 function initRepo(repo: string, project: string, check: string): void {
   mkdirSync(join(repo, ".dim"), { recursive: true });
   git(["init", "-q", "-b", "main"], repo);
@@ -105,9 +126,9 @@ function initRepo(repo: string, project: string, check: string): void {
   git(["config", "commit.gpgsign", "false"], repo);
   git(["remote", "add", "origin", `git@github.com:${project}.git`], repo);
   writeFileSync(join(repo, ".dim", "config.json"), `${JSON.stringify(PROJECT_SETTINGS)}\n`);
-  writeFileSync(join(repo, "package.json"), `${JSON.stringify({ scripts: { verify: check } })}\n`);
-  writeFileSync(join(repo, "bun.lock"), "");
-  writeFileSync(join(repo, ".gitignore"), ".claude/\n");
+  writeFileSync(join(repo, "package.json"), manifest({ verify: check }));
+  lockDependencies(repo);
+  writeFileSync(join(repo, ".gitignore"), ".claude/\nnode_modules/\n");
   writeFileSync(join(repo, "README.md"), "# widgets\n");
   git(["add", "."], repo);
   git(["commit", "-q", "-m", "chore: start"], repo);

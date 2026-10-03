@@ -1,10 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { invariant, unreachable } from "./assert";
+import { install } from "./check-ops";
 import { isRefusal, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
-import { checkTask } from "./declared-tasks";
+import { checkTask, installCommand } from "./declared-tasks";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git";
 import type { SessionStart, Spawned } from "./harness-contract";
 import { startHarness, stopHarness, WORKER_HARNESS } from "./harness-ops";
@@ -238,6 +239,19 @@ async function serveTurn(
 
 type Closing = TurnClose & { readonly acting: Acting };
 
+function installDependencies(turn: TurnOf, dir: string): void {
+  const command = installCommand(dir);
+  if (command === null) return;
+  const installed = install(turn.trace, dir, command.commandLine, turn.env);
+  if (installed.exitCode === 0) return;
+  throw refuseStation("install_failed", {
+    order: turn.order,
+    station: turn.station,
+    command: command.commandLine,
+    output: installed.output,
+  });
+}
+
 function settleLostSubmission(db: Database, turn: TurnOf): void {
   const { submitted, project } = orderState(db, turn.order);
   if (submitted === null) return;
@@ -263,6 +277,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   const { dir } = workspace;
   const { trace } = turn;
   alignBranch(trace, workspace, head);
+  installDependencies(turn, dir);
   const opened = openTurn(trace, workerHomeDir(worker.name));
   try {
     if (session.kind === "fork") {

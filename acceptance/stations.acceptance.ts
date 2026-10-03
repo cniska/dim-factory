@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { briefFrom } from "./support/brief";
 import { refusal, resultOf } from "./support/dim-output";
 import { type HarnessScript, type HarnessTurn, TMPDIR_PLACEHOLDER } from "./support/harness-script";
-import { type Machine, type MachineOptions, machines, RECORD_PROBE } from "./support/machine";
+import { type Machine, type MachineOptions, machines, manifest, RECORD_PROBE } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -281,7 +281,7 @@ describe("slice gates", () => {
       options: { check: "[ ! -e red.txt ]" },
       acts: [
         { act: "write", path: "red.txt", content: "x\n" },
-        { act: "write", path: "package.json", content: '{"scripts":{"verify":"true"}}\n' },
+        { act: "write", path: "package.json", content: manifest({ verify: "true" }) },
       ],
     },
     {
