@@ -319,6 +319,22 @@ describe("slice gates", () => {
     });
   }
 
+  test("AC-75 a slice whose check writes in the workspace, its temp directory and outside both is kept, with only the write outside refused", async () => {
+    const m = await start({
+      check: ({ root }) =>
+        `mkdir -p node_modules && touch node_modules/inside && touch "$TMPDIR/tmp" && { touch "${root}/escaped" 2>/dev/null; true; }`,
+      script: oneSlice([
+        { act: "write", path: "one.txt", content: "x\n" },
+        { act: "commit", subject: "feat: add one" },
+      ]),
+    });
+    const order = await showOrder(m.operator, await built(m.operator));
+
+    expect(m.commitsOn(order.branch)).toEqual(["feat: add one"]);
+    expect(existsSync(join(order.workspace, "node_modules", "inside"))).toBe(true);
+    expect(existsSync(join(m.root, "escaped"))).toBe(false);
+  });
+
   test("AC-22 a builder's amended commit is refused as a moved head and the branch is put back at the recorded head", async () => {
     const m = await start({
       script: {

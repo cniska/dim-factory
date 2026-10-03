@@ -1,20 +1,13 @@
 import type { Spawn, Spawned } from "./harness-contract";
+import { killProcessGroup } from "./process-group";
 import type { Trace } from "./trace-contract";
 
 async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly string[]> {
   return (await new Response(stream).text()).split("\n").filter((line) => line.trim() !== "");
 }
 
-function killed(pid: number): void {
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-  }
-}
-
 export function killGroup(trace: Trace, pid: number): void {
-  trace.step("harness_kill", { harness: pid }, () => killed(pid));
+  trace.step("harness_kill", { harness: pid }, () => killProcessGroup(pid));
 }
 
 export function spawnHarness(trace: Trace, { argv, cwd, env, session }: Spawn): Spawned {
