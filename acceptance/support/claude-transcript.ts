@@ -2,16 +2,19 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-export type TranscriptEntry =
-  | { readonly type: "user"; readonly text: string }
-  | {
-      readonly type: "tool_use";
-      readonly id: string;
-      readonly name: string;
-      readonly input: Readonly<Record<string, unknown>>;
-    }
-  | { readonly type: "tool_result"; readonly id: string; readonly output: string }
-  | { readonly type: "assistant"; readonly text: string };
+export const TranscriptEntry = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("user"), text: z.string() }),
+  z.strictObject({
+    type: z.literal("tool_use"),
+    id: z.string(),
+    name: z.string(),
+    input: z.record(z.string(), z.unknown()),
+  }),
+  z.strictObject({ type: z.literal("tool_result"), id: z.string(), output: z.string() }),
+  z.strictObject({ type: z.literal("assistant"), text: z.string() }),
+]);
+
+export type TranscriptEntry = z.infer<typeof TranscriptEntry>;
 
 const Block = z.looseObject({ type: z.string() });
 

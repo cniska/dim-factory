@@ -1,23 +1,34 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { TranscriptEntry } from "./claude-transcript";
-import type { HarnessScript, HarnessTurn } from "./harness-script";
+import { z } from "zod";
+import { TranscriptEntry } from "./claude-transcript";
+import { HarnessScript, type HarnessTurn } from "./harness-script";
 import { STATION_ROLES, type StationRole } from "./vocabulary";
 
-export type Invocation = {
-  readonly role: StationRole;
-  readonly turn: number;
-  readonly sessionId: string;
-  readonly resumed: string | null;
-  readonly forked: boolean;
-  readonly model: string | null;
-  readonly prompt: string;
-  readonly cwd: string;
-  readonly home: string;
-  readonly pid: number;
-  readonly env: Readonly<Record<string, string>>;
-  readonly history: readonly TranscriptEntry[];
-};
+const Role = z.enum(["planner", "builder", "reviewer"]);
+
+const Invocation = z.strictObject({
+  role: Role,
+  turn: z.number(),
+  sessionId: z.string(),
+  resumed: z.string().nullable(),
+  forked: z.boolean(),
+  model: z.string().nullable(),
+  prompt: z.string(),
+  cwd: z.string(),
+  home: z.string(),
+  pid: z.number(),
+  env: z.record(z.string(), z.string()),
+  history: z.array(TranscriptEntry).readonly(),
+});
+
+export type Invocation = z.infer<typeof Invocation>;
+
+const Consumed = z.strictObject({
+  planner: z.number().optional(),
+  builder: z.number().optional(),
+  reviewer: z.number().optional(),
+});
 
 const scriptPath = (state: string) => join(state, "script.json");
 const consumedPath = (state: string) => join(state, "consumed.json");
@@ -35,10 +46,8 @@ export function takeTurn(
   state: string,
   role: StationRole,
 ): { readonly turn: number; readonly acts: HarnessTurn } {
-  const script = JSON.parse(readFileSync(scriptPath(state), "utf8")) as HarnessScript;
-  const consumed = JSON.parse(readFileSync(consumedPath(state), "utf8")) as Partial<
-    Record<StationRole, number>
-  >;
+  const script = HarnessScript.parse(JSON.parse(readFileSync(scriptPath(state), "utf8")));
+  const consumed = Consumed.parse(JSON.parse(readFileSync(consumedPath(state), "utf8")));
   const turn = consumed[role] ?? 0;
   const acts = script[role]?.[turn];
   if (!acts) throw new Error(`the script holds no turn ${turn + 1} for the ${role}`);
@@ -68,5 +77,5 @@ export function invocations(state: string): readonly Invocation[] {
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Invocation);
+    .map((line) => Invocation.parse(JSON.parse(line)));
 }

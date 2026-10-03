@@ -1,14 +1,18 @@
-export type Brief = { readonly skill: string; readonly [field: string]: unknown };
+import { z } from "zod";
+
+const Brief = z.looseObject({ skill: z.string() });
+
+type Brief = z.infer<typeof Brief>;
 
 export function briefOf(prompt: string): Brief | null {
-  let parsed: unknown;
+  let json: unknown;
   try {
-    parsed = JSON.parse(prompt);
+    json = JSON.parse(prompt);
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null || !("skill" in parsed)) return null;
-  return typeof parsed.skill === "string" ? (parsed as Brief) : null;
+  const brief = Brief.safeParse(json);
+  return brief.success ? brief.data : null;
 }
 
 export function briefFrom(prompt: string): Brief {

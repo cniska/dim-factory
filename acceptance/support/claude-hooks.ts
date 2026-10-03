@@ -1,19 +1,26 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 
-type HookEntry = {
-  readonly matcher?: string;
-  readonly hooks?: readonly { readonly type?: string; readonly command?: string }[];
-};
+const HookEntry = z.looseObject({
+  matcher: z.string().optional(),
+  hooks: z.array(z.looseObject({ type: z.string(), command: z.string().optional() })).readonly(),
+});
 
-export type ClaudeHooks = Readonly<Record<string, readonly HookEntry[]>>;
+type HookEntry = z.infer<typeof HookEntry>;
+
+const ClaudeHooks = z.record(z.string(), z.array(HookEntry).readonly());
+
+export type ClaudeHooks = z.infer<typeof ClaudeHooks>;
+
+const Settings = z.looseObject({ hooks: ClaudeHooks.optional() });
 
 export const settingsPath = (root: string): string => join(root, ".claude", "settings.json");
 
 export function settingsHooks(root: string): ClaudeHooks {
   const path = settingsPath(root);
   if (!existsSync(path)) return {};
-  return (JSON.parse(readFileSync(path, "utf8")) as { readonly hooks?: ClaudeHooks }).hooks ?? {};
+  return Settings.parse(JSON.parse(readFileSync(path, "utf8"))).hooks ?? {};
 }
 
 export function mergeHooks(...sources: readonly ClaudeHooks[]): ClaudeHooks {
@@ -24,7 +31,7 @@ export function mergeHooks(...sources: readonly ClaudeHooks[]): ClaudeHooks {
 }
 
 const commandsOf = (entries: readonly HookEntry[]): readonly string[] =>
-  entries.flatMap((entry) => entry.hooks ?? []).flatMap((hook) => (hook.command ? [hook.command] : []));
+  entries.flatMap((entry) => entry.hooks).flatMap((hook) => (hook.command ? [hook.command] : []));
 
 export function hookCommands(hooks: ClaudeHooks, event: string, tool?: string): readonly string[] {
   return commandsOf(

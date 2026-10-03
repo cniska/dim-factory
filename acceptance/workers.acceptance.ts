@@ -32,7 +32,7 @@ describe("the operator", () => {
     const m = await start({
       script: {
         planner: [planTurn()],
-        builder: [[{ act: "message", text: "Is the second slice still wanted?" }, ...buildTurn()]],
+        builder: [[{ act: "message", text: "Is the second slice still wanted?", to: null }, ...buildTurn()]],
         reviewer: [reviewTurn()],
       },
     });

@@ -1,44 +1,53 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { z } from "zod";
+import { z } from "zod";
 import { commandLine, type DimResult, quote, resultOf } from "./dim-output";
 import { OrderView } from "./order-view";
 import { unreachable } from "./unreachable";
 
-export type Slice = { readonly title: string; readonly outcome: string };
+const Slice = z.strictObject({ title: z.string(), outcome: z.string() });
 
-export type Finding = {
-  readonly area: string;
-  readonly file: string;
-  readonly line: number;
-  readonly failure: string;
-  readonly fix: string;
-  readonly severity: "critical" | "high" | "medium";
-};
+export type Slice = z.infer<typeof Slice>;
 
-export type ReviewArtifact = {
-  readonly body: string;
-  readonly covered: readonly string[];
-  readonly setAside: readonly string[];
-  readonly unverified: readonly string[];
-};
+const Finding = z.strictObject({
+  area: z.string(),
+  file: z.string(),
+  line: z.number(),
+  failure: z.string(),
+  fix: z.string(),
+  severity: z.enum(["critical", "high", "medium"]),
+});
 
-export type WorkerAct =
-  | { readonly act: "plan"; readonly body: string; readonly slices: readonly Slice[] }
-  | { readonly act: "order-return"; readonly reason: string }
-  | { readonly act: "commit"; readonly subject: string }
-  | {
-      readonly act: "answer";
-      readonly file: string;
-      readonly line: number;
-      readonly answer: "fixed" | "refused";
-      readonly reason: string;
-    }
-  | { readonly act: "build-return"; readonly artifact: string }
-  | { readonly act: "findings"; readonly findings: readonly Finding[] }
-  | { readonly act: "review-return"; readonly artifact: ReviewArtifact }
-  | { readonly act: "message"; readonly text: string; readonly to?: string }
-  | { readonly act: "dim"; readonly args: readonly string[] };
+export type Finding = z.infer<typeof Finding>;
+
+const ReviewArtifact = z.strictObject({
+  body: z.string(),
+  covered: z.array(z.string()).readonly(),
+  setAside: z.array(z.string()).readonly(),
+  unverified: z.array(z.string()).readonly(),
+});
+
+export type ReviewArtifact = z.infer<typeof ReviewArtifact>;
+
+export const WorkerAct = z.discriminatedUnion("act", [
+  z.strictObject({ act: z.literal("plan"), body: z.string(), slices: z.array(Slice).readonly() }),
+  z.strictObject({ act: z.literal("order-return"), reason: z.string() }),
+  z.strictObject({ act: z.literal("commit"), subject: z.string() }),
+  z.strictObject({
+    act: z.literal("answer"),
+    file: z.string(),
+    line: z.number(),
+    answer: z.enum(["fixed", "refused"]),
+    reason: z.string(),
+  }),
+  z.strictObject({ act: z.literal("build-return"), artifact: z.string() }),
+  z.strictObject({ act: z.literal("findings"), findings: z.array(Finding).readonly() }),
+  z.strictObject({ act: z.literal("review-return"), artifact: ReviewArtifact }),
+  z.strictObject({ act: z.literal("message"), text: z.string(), to: z.string().nullable() }),
+  z.strictObject({ act: z.literal("dim"), args: z.array(z.string()).readonly() }),
+]);
+
+export type WorkerAct = z.infer<typeof WorkerAct>;
 
 const WORKER_ACTS: Readonly<Record<WorkerAct["act"], true>> = {
   plan: true,
@@ -112,7 +121,7 @@ function dimArgs(
         written(scratch, "review.json", JSON.stringify(act.artifact)),
       ];
     case "message":
-      return ["message", "send", act.text, ...(act.to === undefined ? [] : ["--to", act.to])];
+      return ["message", "send", act.text, ...(act.to === null ? [] : ["--to", act.to])];
     case "dim":
       return act.args;
     default:

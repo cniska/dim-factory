@@ -1,20 +1,31 @@
-import type { StationRole } from "./vocabulary";
-import type { WorkerAct } from "./worker-acts";
+import { z } from "zod";
+import { WorkerAct } from "./worker-acts";
 
-export type HarnessAct =
-  | WorkerAct
-  | { readonly act: "sh"; readonly command: string }
-  | { readonly act: "write"; readonly path: string; readonly content: string }
-  | { readonly act: "say"; readonly text: string }
-  | { readonly act: "signal"; readonly name: string }
-  | { readonly act: "wait"; readonly name: string }
-  | { readonly act: "build-remaining"; readonly artifact: string }
-  | { readonly act: "die" }
-  | { readonly act: "limit"; readonly resetsAt: string };
+const HarnessAct = z.union([
+  WorkerAct,
+  z.discriminatedUnion("act", [
+    z.strictObject({ act: z.literal("sh"), command: z.string() }),
+    z.strictObject({ act: z.literal("write"), path: z.string(), content: z.string() }),
+    z.strictObject({ act: z.literal("say"), text: z.string() }),
+    z.strictObject({ act: z.literal("signal"), name: z.string() }),
+    z.strictObject({ act: z.literal("wait"), name: z.string() }),
+    z.strictObject({ act: z.literal("build-remaining"), artifact: z.string() }),
+    z.strictObject({ act: z.literal("die") }),
+    z.strictObject({ act: z.literal("limit"), resetsAt: z.string() }),
+  ]),
+]);
 
-export type HarnessTurn = readonly HarnessAct[];
+export type HarnessAct = z.infer<typeof HarnessAct>;
 
-export type HarnessScript = Readonly<Partial<Record<StationRole, readonly HarnessTurn[]>>>;
+const HarnessTurn = z.array(HarnessAct).readonly();
+
+export type HarnessTurn = z.infer<typeof HarnessTurn>;
+
+const turns = z.array(HarnessTurn).readonly().optional();
+
+export const HarnessScript = z.strictObject({ planner: turns, builder: turns, reviewer: turns });
+
+export type HarnessScript = z.infer<typeof HarnessScript>;
 
 export const ORDER_PLACEHOLDER = "{order}";
 
