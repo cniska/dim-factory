@@ -14,6 +14,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-6** — Each order is built in its own workspace and branch, so several orders can be built at once.
 - **FR-6a** — Before a station works in an order's workspace, the factory installs the project's dependencies there with the package manager its committed lockfile names, matching the lockfile exactly. A project with no lockfile gets no install.
 - **FR-6b** — An install that fails stops the run before any station works, with a refusal naming the install command and what it printed.
+- **FR-6c** — The install runs none of the project's lifecycle scripts.
 - **FR-7** — A running order goes through the plan, build and review stations in that order, and then ships.
 - **FR-8** — At each station, one worker is briefed, does the station's work and returns its artifact.
 - **FR-9** — The owner approves or returns each artifact, and the operator carries out that decision. Approval runs the next station. A return runs the same station again, and its worker revises the artifact.
@@ -205,7 +206,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-70** — In a checkout whose config signs commits, every commit that lands on the default branch is signed with the owner's key, and a landing whose key cannot be reached leaves the default branch where it was and the order ready to ship again. (FR-16)
 - **AC-71** — An opened order shows its facts, each artifact it has rendered as a document and every entry of its log in order, and a new artifact or log entry appears on an open order and on the board without a reload. With the record unreadable, the wall says so and shows no order as current. (FR-85, FR-86)
 - **AC-72** — With the wall served in development mode, an edit to the wall's code shows on the open page without a manual reload. (FR-87)
-- **AC-73** — An order in a project whose check needs a dependency its lockfile pins ships, with that dependency installed in the workspace before the plan station works. (FR-6a)
+- **AC-73** — An order in a project whose check needs a dependency its lockfile pins ships, with that dependency installed in the workspace before the plan station works and none of the project's lifecycle scripts run. (FR-6a, FR-6c)
 - **AC-74** — An install that fails stops the run with a refusal naming the command, and no station works on the order. (FR-6b)
 
 ## 10. Constraints

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { commandLine, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
 import { checkHeld, holdCheck, holdingCheck, holdWhenMainMoves, releaseCheck } from "./support/holds";
-import { DEPENDENCY, type Machine, machines } from "./support/machine";
+import { DEPENDENCY, type Machine, machines, manifest } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -49,10 +49,13 @@ const shipping = (order: OrderView) =>
 
 describe("a project's dependencies", () => {
   test("AC-73 an order whose check needs a locked dependency ships, with the dependency installed before the plan", async () => {
-    const m = await start({ script: happyPath(), check: `test -e node_modules/${DEPENDENCY}/index.js` });
+    const check = `test -e node_modules/${DEPENDENCY}/index.js`;
+    const m = await start({ script: happyPath(), check });
+    m.ownerCommits("package.json", manifest({ verify: check, prepare: "touch prepared.marker" }));
     const id = await planned(m.operator);
     const { workspace } = await showOrder(m.operator, id);
     expect(existsSync(join(workspace, "node_modules", DEPENDENCY, "index.js"))).toBe(true);
+    expect(existsSync(join(workspace, "prepared.marker"))).toBe(false);
 
     for (let artifact = 0; artifact < 3; artifact++) resultOf(await approve(m.operator, id));
 
@@ -70,7 +73,7 @@ describe("a project's dependencies", () => {
     const refused = refusal(await runOrder(m.operator, id));
 
     expect(refused.code).toBe("install_failed");
-    expect(refused.meta.command).toBe("bun install --frozen-lockfile");
+    expect(refused.meta.command).toBe("bun install --frozen-lockfile --ignore-scripts");
     expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.sessionStarted);
   });
 });

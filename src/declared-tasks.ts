@@ -63,11 +63,11 @@ export function manifestsIn(repo: string): Manifests {
 type Lock = { readonly lock: string; readonly manager: string; readonly install: string };
 
 const LOCKS: readonly Lock[] = [
-  { lock: "bun.lock", manager: "bun", install: "bun install --frozen-lockfile" },
-  { lock: "bun.lockb", manager: "bun", install: "bun install --frozen-lockfile" },
-  { lock: "pnpm-lock.yaml", manager: "pnpm", install: "pnpm install --frozen-lockfile" },
-  { lock: "yarn.lock", manager: "yarn", install: "yarn install --frozen-lockfile" },
-  { lock: "package-lock.json", manager: "npm", install: "npm ci" },
+  { lock: "bun.lock", manager: "bun", install: "bun install --frozen-lockfile --ignore-scripts" },
+  { lock: "bun.lockb", manager: "bun", install: "bun install --frozen-lockfile --ignore-scripts" },
+  { lock: "pnpm-lock.yaml", manager: "pnpm", install: "pnpm install --frozen-lockfile --ignore-scripts" },
+  { lock: "yarn.lock", manager: "yarn", install: "yarn install --frozen-lockfile --ignore-scripts" },
+  { lock: "package-lock.json", manager: "npm", install: "npm ci --ignore-scripts" },
 ];
 
 const lockIn = (manifests: Manifests): Lock | null => LOCKS.find(({ lock }) => manifests.has(lock)) ?? null;

@@ -138,11 +138,11 @@ describe("the check task", () => {
 describe("the install command", () => {
   test("installs exactly what the committed lockfile pins, through the package manager it names", () => {
     const installs: readonly (readonly [string, string])[] = [
-      ["bun.lock", "bun install --frozen-lockfile"],
-      ["bun.lockb", "bun install --frozen-lockfile"],
-      ["pnpm-lock.yaml", "pnpm install --frozen-lockfile"],
-      ["yarn.lock", "yarn install --frozen-lockfile"],
-      ["package-lock.json", "npm ci"],
+      ["bun.lock", "bun install --frozen-lockfile --ignore-scripts"],
+      ["bun.lockb", "bun install --frozen-lockfile --ignore-scripts"],
+      ["pnpm-lock.yaml", "pnpm install --frozen-lockfile --ignore-scripts"],
+      ["yarn.lock", "yarn install --frozen-lockfile --ignore-scripts"],
+      ["package-lock.json", "npm ci --ignore-scripts"],
     ];
     for (const [lock, commandLine] of installs) {
       expect(installCommand(repo({ "package.json": "{}", [lock]: "" }))).toEqual({
