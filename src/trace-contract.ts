@@ -35,6 +35,7 @@ export type Steps = {
     { readonly tree: string; readonly command: string },
     { readonly exitCode: number | null }
   >;
+  readonly toolchain: Step<{ readonly checkout: string }, { readonly bins: readonly string[] }>;
   readonly lock: Step<{ readonly path: string }>;
   readonly turn_open: Step<{ readonly home: string }, { readonly dir: string }>;
   readonly turn_close: Step<{ readonly dir: string }>;

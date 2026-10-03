@@ -59,6 +59,7 @@ import {
   sessionHeld,
   sessionWritten,
 } from "./station-effects";
+import { pinnedEnv } from "./toolchain-ops";
 import type { Trace } from "./trace-contract";
 import { traceOf } from "./trace-ops";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
@@ -399,6 +400,7 @@ async function turnAt(db: Database, turn: TurnOf): Promise<string | null> {
 
 type Running = {
   readonly trace: Trace;
+  readonly env: Env;
   readonly setup: ProjectSetup;
   readonly cause: number;
   readonly state: OrderState;
@@ -441,7 +443,8 @@ async function withRun<T>(
   return trace.stepAsync("run", { act: act.kind, station }, async () => {
     const { project } = orderState(db, order);
     const setup = projectSetup(db, project, caller.cwd);
-    const prepared = station === null ? null : prepareTurn(setup, station, env);
+    const runEnv = pinnedEnv(trace, order, setup.root, env);
+    const prepared = station === null ? null : prepareTurn(setup, station, runEnv);
     const base = tipOf(setup.root, setup.branch);
     const { by, cause, created, state: started, orphan } = startRun(trace, db, order, caller, act);
     try {
@@ -451,6 +454,7 @@ async function withRun<T>(
         : started;
       return await body({
         trace,
+        env: runEnv,
         setup,
         cause,
         state,
@@ -467,7 +471,7 @@ async function withRun<T>(
             checkoutGit,
             gitConfig: join(checkoutGit, "config"),
             defaultBranch: setup.branch,
-            env,
+            env: runEnv,
             purpose,
             ...prepared,
           };
@@ -488,23 +492,31 @@ export async function advanceOrder(
 ): Promise<void> {
   const expected = phaseAfter(orderState(db, order), act);
   const station = expected?.kind === "run" ? expected.station : null;
-  await withRun(db, order, caller, act, station, env, async ({ trace, setup, cause, state, turnOf }) => {
-    if (station !== null) {
-      await turnAt(db, turnOf(stationPurpose(station)));
-      return;
-    }
-    invariant(expected?.kind === "ship", `order ${order} runs a station or ships after ${act.kind}`);
-    await shipOrder(db, {
-      trace,
-      order,
-      project: state.project,
-      checkout: setup.root,
-      defaultBranch: setup.branch,
-      config: setup.config,
-      cause,
-      env,
-    });
-  });
+  await withRun(
+    db,
+    order,
+    caller,
+    act,
+    station,
+    env,
+    async ({ trace, env: runEnv, setup, cause, state, turnOf }) => {
+      if (station !== null) {
+        await turnAt(db, turnOf(stationPurpose(station)));
+        return;
+      }
+      invariant(expected?.kind === "ship", `order ${order} runs a station or ships after ${act.kind}`);
+      await shipOrder(db, {
+        trace,
+        order,
+        project: state.project,
+        checkout: setup.root,
+        defaultBranch: setup.branch,
+        config: setup.config,
+        cause,
+        env: runEnv,
+      });
+    },
+  );
 }
 
 export async function messageWorker(

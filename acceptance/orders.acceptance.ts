@@ -17,8 +17,9 @@ import {
   runOrder,
   shipThrough,
   showOrder,
+  transcriptOf,
 } from "./support/operator-acts";
-import { actions, entriesOf, entryOf, finalStop, OrderView, workerOf } from "./support/order-view";
+import { actions, entriesOf, entryOf, finalStop, OrderView, sessionOf, workerOf } from "./support/order-view";
 import { descendantRunning, killPid } from "./support/processes";
 import { buildTurn, happyPath, planTurn, reviewTurn } from "./support/scripts";
 import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
@@ -77,6 +78,33 @@ describe("a project's dependencies", () => {
     const order = await showOrder(m.operator, id);
     expect(actions(order)).not.toContain(ACTION.sessionStarted);
     expect(finalStop(order)).toMatchObject({ action: "station_failed", code: "install_failed" });
+  });
+
+  test("AC-76 the check and a station's worker run the tool version the project pins, not the operator's", async () => {
+    const m = await start({
+      script: { ...happyPath(), planner: [[{ act: "sh", command: "pinned-tool" }, ...planTurn()]] },
+      check: '[ "$(pinned-tool)" = pinned ]',
+      mise: { pinned: { "pinned-tool": "pinned" } },
+    });
+    const id = await addOrder(m.operator);
+    const order = await shipThrough(m.operator, id);
+
+    expect(order.status).toBe("shipped");
+    const results = (await transcriptOf(m.operator, sessionOf(workerOf(order, "planner"), 0).id)).flatMap(
+      (entry) => (entry.type === "tool_result" ? [entry.output] : []),
+    );
+    expect(results[0]).toStartWith("pinned\n");
+  });
+
+  test("AC-77 a toolchain that cannot be resolved stops the run with a refusal naming its cause, before any station works", async () => {
+    const m = await start({ script: happyPath(), mise: { fails: "mise: tool missing" } });
+    const id = await addOrder(m.operator);
+
+    const refused = refusal(await runOrder(m.operator, id));
+
+    expect(refused.code).toBe("toolchain_unresolved");
+    expect(String(refused.meta.output)).toContain("mise: tool missing");
+    expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.sessionStarted);
   });
 });
 

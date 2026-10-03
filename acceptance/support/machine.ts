@@ -81,7 +81,26 @@ export type MachineOptions = {
   readonly project?: string;
   readonly check?: string | ((paths: MachinePaths) => string);
   readonly ownerEnv?: Readonly<Record<string, string>>;
+  readonly mise?: { readonly pinned: Readonly<Record<string, string>> } | { readonly fails: string };
 };
+
+function fakeMise(root: string, bin: string, mise: MachineOptions["mise"]): void {
+  if (mise === undefined) {
+    executable(join(bin, "mise"), "#!/bin/sh\n");
+    return;
+  }
+  if ("fails" in mise) {
+    executable(join(bin, "mise"), `#!/bin/sh\necho "${mise.fails}" >&2\nexit 1\n`);
+    return;
+  }
+  const pinned = join(root, "pinned");
+  mkdirSync(pinned, { recursive: true });
+  for (const [tool, output] of Object.entries(mise.pinned)) {
+    executable(join(pinned, tool), `#!/bin/sh\necho ${output}\n`);
+    executable(join(bin, tool), "#!/bin/sh\necho operator\n");
+  }
+  executable(join(bin, "mise"), `#!/bin/sh\n[ "$1" = bin-paths ] && echo "${pinned}"\n`);
+}
 
 function executable(path: string, body: string): void {
   writeFileSync(path, body);
@@ -148,6 +167,7 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     join(bin, "claude"),
     `#!/bin/sh\nexec bun "${join(import.meta.dir, "scripted-claude.ts")}" "${state}" "$@"\n`,
   );
+  fakeMise(root, bin, options.mise);
 
   const env: MachineEnv = {
     ...options.ownerEnv,

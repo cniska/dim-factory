@@ -39,6 +39,11 @@ type OrderRefusalMeta = {
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
   readonly no_git_identity: { readonly checkout: string };
+  readonly toolchain_unresolved: {
+    readonly order: string;
+    readonly checkout: string;
+    readonly output: string;
+  };
   readonly no_worker: { readonly order: string; readonly station: Station };
   readonly workspace_kept: { readonly order: string; readonly root: string; readonly kept: readonly Kept[] };
 };
@@ -76,6 +81,12 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
     message: ({ project }) =>
       `no session on record ran in a checkout of ${project}, so its settings cannot be read; add the order from inside that checkout`,
     resolve: () => ADD_ORDER,
+  },
+  toolchain_unresolved: {
+    message: ({ order, checkout, output }) =>
+      `\`mise bin-paths\` failed in ${checkout}, so order ${order} could not run its pinned toolchain and nothing started: ${output}`,
+    resolve: ({ order }) =>
+      `stop and hand this error to the owner: the project's pinned tools must install with mise, then dim order run ${order}`,
   },
   no_git_identity: {
     message: ({ checkout }) =>
