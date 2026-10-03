@@ -2,3 +2,8 @@
 # rather than from a build call.
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
+
+# The plugin's peer `bun` package, installed without its postinstall as the factory installs, puts a
+# placeholder `bun` first on `bun run`'s PATH.
+[install]
+peer = false
