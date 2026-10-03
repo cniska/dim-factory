@@ -79,7 +79,7 @@ describe("a station worker's session killed in its turn", () => {
   ];
 
   for (const [point, role, dying, continuing] of points) {
-    test(`a ${role} killed ${point} gets a new session for the same worker and the order ships with only runs and approvals`, async () => {
+    test(`AC-39 a ${role} killed ${point} gets a new session for the same worker and the order ships with only runs and approvals`, async () => {
       const script: HarnessScript = {
         planner: [planTurn()],
         builder: [fullBuild],
@@ -131,7 +131,7 @@ describe("random kills", () => {
   const KILLABLE = /cli\.ts order (run|approve)|scripted-claude/;
 
   test(
-    "an order whose stations, ships and sessions are killed at random ends shipped or reported, recording nothing twice",
+    "AC-54 an order whose stations, ships and sessions are killed at random ends shipped or reported, recording nothing twice",
     async () => {
       const baseline = await start({ script: idempotent });
       const expected = undisturbed(await carryToShipped(baseline, await addOrder(baseline.operator)));
@@ -174,7 +174,7 @@ describe("random kills", () => {
 });
 
 describe("command output", () => {
-  test("each command prints one structured result, and each refusal carries a code, its details and the command that resolves it", async () => {
+  test("AC-55 each command prints one structured result, and each refusal carries a code, its details and the command that resolves it", async () => {
     const m = await start({ script: { planner: [planTurn()] } });
     const id = await addOrder(m.operator);
     for (const args of [
@@ -203,14 +203,16 @@ describe("command output", () => {
     return listed.commands.map((command) => command.name);
   }
 
-  test("every command is one whole word, without a hyphen", async () => {
+  test("AC-21 every command is one whole word, without a hyphen", async () => {
     const m = await start();
     for (const name of await commandNames(m)) expect(name).toMatch(/^[a-z]{2,}$/);
   });
 });
 
 describe("hooks", () => {
-  test("a session hook whose dim command fails or is missing still lets the session carry on", async () => {
+  test.todo("AC-57 a git hook that cannot read the owner, settings or check lets the commit through, and one that blocks says why", () => {});
+
+  test("AC-56 a session hook whose dim command fails or is missing still lets the session carry on", async () => {
     const m = await start();
     const failing = join(m.root, "failing-bin");
     mkdirSync(failing);
@@ -231,7 +233,7 @@ describe("hooks", () => {
     }
   });
 
-  test("an edit in a station worker's session runs neither the workspace's format command nor its settings' hooks", async () => {
+  test("AC-60 an edit in a station worker's session runs neither the workspace's format command nor its settings' hooks", async () => {
     const m = await start({
       script: {
         planner: [planTurn([{ title: "One", outcome: "One file." }])],
@@ -261,7 +263,7 @@ describe("hooks", () => {
     expect(existsSync(join(workspace, "project-hook.marker"))).toBe(false);
   });
 
-  test("a planner writes no git data, and a builder's write to the checkout's git hooks is refused", async () => {
+  test("AC-61 a planner writes no git data, and a builder's write to the checkout's git hooks is refused", async () => {
     const checkoutGit = (m: Machine) => join(m.repo, ".git");
     const m = await start({ script: {} });
     m.script({
@@ -294,7 +296,7 @@ describe("hooks", () => {
     expect(readFileSync(join(checkoutGit(m), "config"), "utf8")).toBe(config);
   });
 
-  test("a builder that changes the checkout's git config fails its station, with the config put back", async () => {
+  test("AC-61 a builder that changes the checkout's git config fails its station, with the config put back", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -335,7 +337,7 @@ describe("reading the record", () => {
     return read.rows;
   }
 
-  test("a write sent through a reader fails and leaves the database unchanged", async () => {
+  test("AC-58 a write sent through a reader fails and leaves the database unchanged", async () => {
     const m = await start({ script: happyPath() });
     await shipThrough(m.operator, await addOrder(m.operator));
     const [first] = await rows(
@@ -353,7 +355,7 @@ describe("reading the record", () => {
     expect(await rows(m, count)).toEqual([...before]);
   });
 
-  test("a query, dim sql and dim trace refuse a record from another version with the writer's error and leave it unchanged", async () => {
+  test("AC-59 a query, dim sql and dim trace refuse a record from another version with the writer's error and leave it unchanged", async () => {
     const m = await start();
     const id = await addOrder(m.operator);
     bumpRecordVersionPastTheWriters(m);

@@ -43,7 +43,7 @@ const factoryEntries = (order: OrderView): readonly FactoryEntry[] =>
   order.log.filter((entry): entry is FactoryEntry => entry.by.kind === "factory");
 
 describe("attribution", () => {
-  test("a finished order links each worker to every session it had and names the session behind every action", async () => {
+  test("AC-40 a finished order links each worker to every session it had and names the session behind every action", async () => {
     const m = await start({ script: happyPath() });
     const order = await shipThrough(m.operator, await addOrder(m.operator));
 
@@ -58,7 +58,7 @@ describe("attribution", () => {
     for (const id of stationSessions) expect(sessions.has(id)).toBe(true);
   });
 
-  test("a factory action names the factory's version and the action that caused it", async () => {
+  test("AC-64 a factory action names the factory's version and the action that caused it", async () => {
     const m = await start({ script: happyPath() });
     const order = await shippedAfterMainMoved(m);
 
@@ -69,7 +69,7 @@ describe("attribution", () => {
     expect(causeOf(order, entryOf(order, ACTION.shipLanded)).action).toBe(ACTION.approved);
   });
 
-  test("a refused slice names the commit that caused it, and a replaced session the session that died", async () => {
+  test("AC-64 a refused slice names the commit that caused it, and a replaced session the session that died", async () => {
     const m = await start({
       check: "[ ! -e red.txt ]",
       script: {
@@ -101,7 +101,7 @@ describe("attribution", () => {
     expect(entryOf(order, ACTION.sessionDied).details.session).toBe(sessionOf(builder, 0).id);
   });
 
-  test("an action from a process the factory cannot tie to a session is refused", async () => {
+  test("AC-63 an action from a process the factory cannot tie to a session is refused", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
     const env = { ...m.env, DIM_WORKER_NAME: workerOf(await showOrder(m.operator, id), "operator").name };
@@ -122,7 +122,7 @@ describe("attribution", () => {
     expect((await showOrder(m.operator, id)).status).toBe("queued");
   });
 
-  test("no command sets or changes who took an action", async () => {
+  test("AC-63 no command sets or changes who took an action", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
     for (const flag of ["--by", "--worker", "--session", "--as"]) {
@@ -133,7 +133,7 @@ describe("attribution", () => {
 });
 
 describe("the order log", () => {
-  test("one log holds every action on the order once, in order, with the factory's checks, rebase and landing and their evidence", async () => {
+  test("AC-48 one log holds every action on the order once, in order, with the factory's checks, rebase and landing and their evidence", async () => {
     const m = await start({ script: happyPath() });
     const order = await shippedAfterMainMoved(m);
 
@@ -150,7 +150,7 @@ describe("the order log", () => {
     expect(landed.details.kept).toEqual([]);
   });
 
-  test("no command changes or removes an entry the log already holds", async () => {
+  test("AC-48 no command changes or removes an entry the log already holds", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
     let previous: readonly LogEntry[] = [];
@@ -166,7 +166,7 @@ describe("the order log", () => {
     }
   });
 
-  test("a worker's session is readable in full: everything it was sent and everything it did", async () => {
+  test("AC-40 a worker's session is readable in full: everything it was sent and everything it did", async () => {
     const m = await start({ script: happyPath() });
     const order = await shipThrough(m.operator, await addOrder(m.operator));
     const session = sessionOf(workerOf(order, "builder"), 0).id;
@@ -182,7 +182,7 @@ describe("the order log", () => {
 });
 
 describe("decisions", () => {
-  test("a decision without a reason is refused, from the operator or a station's worker", async () => {
+  test("AC-49 a decision without a reason is refused, from the operator or a station's worker", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -206,7 +206,7 @@ describe("decisions", () => {
     expect(actions(order)).not.toContain(ACTION.artifactReturned);
   });
 
-  test("each decision shows who decided it and why", async () => {
+  test("AC-49 each decision shows who decided it and why", async () => {
     const m = await start({ script: happyPath() });
     const id = await planned(m.operator);
     await approve(m.operator, id, "the plan covers the description", "owner");
@@ -219,7 +219,7 @@ describe("decisions", () => {
     ]);
   });
 
-  test("each failed station, refused slice and stopped ship shows its cause as a code", async () => {
+  test("AC-49 each failed station, refused slice and stopped ship shows its cause as a code", async () => {
     const m = await start({
       check: "[ ! -e red.txt ]",
       script: {
@@ -254,7 +254,7 @@ describe("decisions", () => {
 });
 
 describe("turns", () => {
-  test("a commit made after its worker's turn closed is not recorded, and the next run takes it off the branch", async () => {
+  test("AC-50 a commit made after its worker's turn closed is not recorded, and the next run takes it off the branch", async () => {
     const m = await start();
     const late = "feat: late";
     const turnClosed = quote(releasePath(m.state, "turn-closed"));
@@ -295,8 +295,12 @@ describe("turns", () => {
   });
 });
 
+describe("measurements", () => {
+  test.todo("AC-66 station time, returns and review rounds per order, and session deaths are each answered by a query", () => {});
+});
+
 describe("the trace", () => {
-  test("deleting the trace leaves every order's log and next step unchanged", async () => {
+  test("AC-65 deleting the trace leaves every order's log and next step unchanged", async () => {
     const m = await start({ script: happyPath() });
     const id = await planned(m.operator);
     const before = await showOrder(m.operator, id);
@@ -308,7 +312,7 @@ describe("the trace", () => {
     expect(await showOrder(m.operator, id)).toEqual(before);
   });
 
-  test("the trace follows one order's factory steps while it runs, and ends once the run does", async () => {
+  test("AC-65 the trace follows one order's factory steps while it runs, and ends once the run does", async () => {
     const m = await start({
       script: {
         planner: [[{ act: "signal", name: "planning" }, { act: "wait", name: "plan" }, ...planTurn()]],

@@ -49,7 +49,7 @@ async function expectOnlyAdmitted(m: Machine, id: string, admitted: readonly str
 }
 
 describe("what an order admits", () => {
-  test("in every state, only the acts it admits are allowed and every other one is refused naming them", async () => {
+  test("AC-13 in every state, only the acts it admits are allowed and every other one is refused naming them", async () => {
     const m = await start({
       script: {
         planner: [[{ act: "order-return", reason: "the description names no language" }], planTurn()],
@@ -78,7 +78,7 @@ describe("what an order admits", () => {
     expect(refusal(await cancelOrder(m.operator, id)).code).toBe(REFUSAL.notAdmitted);
   });
 
-  test("an update is accepted until the plan is approved, replans the order, and is refused after", async () => {
+  test("AC-26 an update is accepted until the plan is approved, replans the order, and is refused after", async () => {
     const m = await start({
       script: { planner: [planTurn(), planTurn()], builder: [buildTurn()] },
     });
@@ -100,7 +100,7 @@ describe("what an order admits", () => {
     expect(await showOrder(m.operator, id)).toEqual(building);
   });
 
-  test("a cancelled order refuses every action", async () => {
+  test("AC-13 a cancelled order refuses every action", async () => {
     const m = await start({ script: happyPath() });
     const id = await planned(m.operator);
     resultOf(await cancelOrder(m.operator, id));
@@ -113,7 +113,7 @@ describe("what an order admits", () => {
 });
 
 describe("an order that is busy", () => {
-  test("while a station's worker runs, a second run, an approval and a return are refused until its process ends", async () => {
+  test("AC-14 while a station's worker runs, a second run, an approval and a return are refused until its process ends", async () => {
     const m = await start({
       script: {
         planner: [[{ act: "signal", name: "planning" }, { act: "wait", name: "plan" }, ...planTurn()]],
@@ -138,7 +138,7 @@ describe("an order that is busy", () => {
     resultOf(await approve(m.operator, id));
   });
 
-  test("while an order ships, a run, an approval, a return and a cancel are refused", async () => {
+  test("AC-14 while an order ships, a run, an approval, a return and a cancel are refused", async () => {
     const m = await start({ script: happyPath(), check: holdingCheck });
     const id = await reviewed(m.operator);
     m.ownerCommits("CHANGELOG.md", "moved on\n");
@@ -161,7 +161,7 @@ describe("an order that is busy", () => {
 });
 
 describe("cancelling and failing", () => {
-  test("cancelling mid-build stops the builder, records nothing of its turn, removes its workspace and keeps its commits on its branch", async () => {
+  test("AC-15 cancelling mid-build stops the builder, records nothing of its turn, removes its workspace and keeps its commits on its branch", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -194,7 +194,7 @@ describe("cancelling and failing", () => {
     expect(existsSync(order.workspace)).toBe(false);
   });
 
-  test("after a failed station, running the order again resumes the same worker where the record puts it", async () => {
+  test("AC-16 after a failed station, running the order again resumes the same worker where the record puts it", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],

@@ -25,7 +25,9 @@ import { ACTION, NEXT, REFUSAL, STATION_ROLES, WORKER_ROLES } from "./support/vo
 const start = machines();
 
 describe("the operator", () => {
-  test("the operator's next session carries on with the orders and replies of its session that is gone", async () => {
+  test.todo("AC-44 a claimed operator with no registered process above it, a reused process id and a process started before its worker registers are each refused", () => {});
+
+  test("AC-24 the operator's next session carries on with the orders and replies of its session that is gone", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -49,7 +51,7 @@ describe("the operator", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a second live operator session in a project is refused", async () => {
+  test("AC-24 a second live operator session in a project is refused", async () => {
     const m = await start({ script: happyPath() });
     await addOrder(m.operator);
     const second = m.createOperator();
@@ -60,7 +62,7 @@ describe("the operator", () => {
     expect(refusal(refused).code).toBe(REFUSAL.notOperator);
   });
 
-  test("an operator action from a process with no active session of the project above it is refused", async () => {
+  test("AC-41 an operator action from a process with no active session of the project above it is refused", async () => {
     const m = await start({ script: happyPath() });
     const ran = Bun.spawnSync(["dim", "order", "add", "--title", "Mine", "--description", "Do my thing."], {
       cwd: m.repo,
@@ -77,7 +79,7 @@ describe("the operator", () => {
     expect(refusal(result).code).toBe(REFUSAL.noSession);
   });
 
-  test("an order action from a session that is not the operator's is refused", async () => {
+  test("AC-36 an order action from a session that is not the operator's is refused", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
     const bystander = m.createOperator();
@@ -93,7 +95,7 @@ describe("the operator", () => {
     expect((await showOrder(m.operator, id)).status).toBe("queued");
   });
 
-  test("the operator's attempt to record a plan, a commit or findings itself is refused", async () => {
+  test("AC-35 the operator's attempt to record a plan, a commit or findings itself is refused", async () => {
     const m = await start({ script: happyPath() });
     const id = await planned(m.operator);
     const plan = join(m.root, "plan.json");
@@ -115,7 +117,7 @@ describe("the operator", () => {
 });
 
 describe("station workers", () => {
-  test("a station worker is refused every operator action and leaves the order unchanged", async () => {
+  test("AC-34 a station worker is refused every operator action and leaves the order unchanged", async () => {
     const operatorActs: HarnessTurn = [
       ["order", "add", "--title", "Mine", "--description", "Do my thing."],
       ["order", "approve", ORDER_PLACEHOLDER, "--reason", "self", "--decided", "owner"],
@@ -134,7 +136,7 @@ describe("station workers", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a message to a worker whose session file is lost is answered by a new session holding its context", async () => {
+  test("AC-38 a message to a worker whose session file is lost is answered by a new session holding its context", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -153,7 +155,7 @@ describe("station workers", () => {
     expect(sessionOf(builder, 0).died?.code).toBe("resume_failed");
   });
 
-  test("the operator's message runs a turn of the station worker's session and the reply reaches only the operator", async () => {
+  test("AC-37 the operator's message runs a turn of the station worker's session and the reply reaches only the operator", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -177,7 +179,7 @@ describe("station workers", () => {
     ]);
   });
 
-  test("a message turn only reads: its worker's write to the workspace and its slice submit are refused", async () => {
+  test("AC-37 a message turn only reads: its worker's write to the workspace and its slice submit are refused", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -204,7 +206,7 @@ describe("station workers", () => {
     ]);
   });
 
-  test("a station worker's message to another station's worker or to the owner is refused and recorded as refused", async () => {
+  test("AC-37 a station worker's message to another station's worker or to the owner is refused and recorded as refused", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -230,7 +232,7 @@ describe("station workers", () => {
     expect(actions(order)).not.toContain(ACTION.messageSent);
   });
 
-  test("a session the factory did not start for a station's worker cannot act as it", async () => {
+  test("AC-41 a session the factory did not start for a station's worker cannot act as it", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -253,7 +255,7 @@ describe("station workers", () => {
     expect(m.commitsOn(branch)).toEqual(["feat: add slice 1"]);
   });
 
-  test("every worker on a finished order has a generated name, a role and sessions with a harness and a process", async () => {
+  test("AC-42 every worker on a finished order has a generated name, a role and sessions with a harness and a process", async () => {
     const m = await start({ script: happyPath() });
     const order = await shipThrough(m.operator, await addOrder(m.operator));
 
@@ -272,7 +274,7 @@ describe("station workers", () => {
     for (const role of STATION_ROLES) expect(workerOf(order, role).sessions).toHaveLength(1);
   });
 
-  test("each station's worker starts on the model named for its role", async () => {
+  test("AC-43 each station's worker starts on the model named for its role", async () => {
     const m = await start({ script: happyPath() });
     await shipThrough(m.operator, await addOrder(m.operator));
 
@@ -280,7 +282,7 @@ describe("station workers", () => {
     expect(models).toEqual(MODELS);
   });
 
-  test("a role with no model named starts on the default, and with no default is refused", async () => {
+  test("AC-43 a role with no model named starts on the default, and with no default is refused", async () => {
     const m = await start({ script: { planner: [planTurn(), planTurn()] } });
     m.models({ default: "scripted-default" });
     const id = await planned(m.operator);
@@ -296,7 +298,7 @@ describe("station workers", () => {
 });
 
 describe("a session that dies", () => {
-  test("a builder whose session hit a usage limit carries on in a new session holding the dead one's context", async () => {
+  test("AC-38 a builder whose session hit a usage limit carries on in a new session holding the dead one's context", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -332,7 +334,7 @@ describe("a session that dies", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a builder whose session file is lost carries on in a new session holding the lost one's context", async () => {
+  test("AC-38 a builder whose session file is lost carries on in a new session holding the lost one's context", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -371,7 +373,7 @@ describe("what a station worker can reach", () => {
   };
   const CLAUDE_LOGIN = "owner-claude-login";
 
-  test("neither a station's worker nor the check sees the owner's keys, tokens or agent socket", async () => {
+  test("AC-45 neither a station's worker nor the check sees the owner's keys, tokens or agent socket", async () => {
     const unset = [...Object.keys(OWNER_SECRETS), "CLAUDE_CODE_OAUTH_TOKEN"]
       .map((name) => `$${name}`)
       .join("");
@@ -389,7 +391,7 @@ describe("what a station worker can reach", () => {
     }
   });
 
-  test("a file one worker leaves in its temp directory is not in the next worker's", async () => {
+  test("AC-45 a file one worker leaves in its temp directory is not in the next worker's", async () => {
     const leftover = `left-by-planner-${crypto.randomUUID()}`;
     const m = await start({
       script: {
@@ -404,7 +406,7 @@ describe("what a station worker can reach", () => {
     expect(listing).not.toContain(leftover);
   });
 
-  test("a station worker's writes to the record, the factory's code, its installed skills, hooks or settings are refused", async () => {
+  test("AC-46 a station worker's writes to the record, the factory's code, its installed skills, hooks or settings are refused", async () => {
     const probe = join(CHECKOUT, ".dim-acceptance-probe");
     const m = await start({
       script: {

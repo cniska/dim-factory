@@ -9,7 +9,7 @@ import { ACTION } from "./support/vocabulary";
 const start = machines();
 
 describe("settings", () => {
-  test("a project whose settings do not say how it ships is not shipped", async () => {
+  test("AC-67 a project whose settings do not say how it ships is not shipped", async () => {
     const m = await start({ script: happyPath() });
     m.projectSettings({});
     const id = await reviewed(m.operator);
@@ -26,7 +26,7 @@ describe("settings", () => {
     expect(m.git(["rev-parse", "main"])).toBe(main);
   });
 
-  test("a setting the factory does not know is refused", async () => {
+  test("AC-67 a setting the factory does not know is refused", async () => {
     const m = await start({ script: happyPath() });
     m.projectSettings({ ...PROJECT_SETTINGS, shipping: "default-branch" });
 
@@ -43,7 +43,7 @@ describe("settings", () => {
     expect(JSON.stringify(refusal(refused))).toContain("shipping");
   });
 
-  test("the settings are read from the default branch, not from an order's changes", async () => {
+  test("AC-67 the settings are read from the default branch, not from an order's changes", async () => {
     const m = await start({
       script: {
         ...happyPath(),

@@ -79,8 +79,15 @@ async function twoShippedOrders(): Promise<Machine> {
   return m;
 }
 
+describe("skills", () => {
+  test.todo("AC-18 the operator's instructions and intake are their own skills, and a shared instruction is a linked reference", () => {});
+  test.todo("AC-19 no instruction is stated in two shipped skills, and none adds nothing in the record of orders using it", () => {});
+  test.todo("AC-20 a project with no factory files runs an order to shipped, and the factory's own skills reach no user skill directory", () => {});
+  test.todo("AC-27 every skill a brief names ships with the factory, and a machine with no personal skills runs an order to shipped", () => {});
+});
+
 describe("briefs", () => {
-  test("each station's brief is a fixed set of fields that names its skill", async () => {
+  test("AC-17 each station's brief is a fixed set of fields that names its skill", async () => {
     const m = await twoShippedOrders();
 
     for (const { role, skill } of Object.values(STATIONS)) {
@@ -91,7 +98,7 @@ describe("briefs", () => {
     }
   });
 
-  test("no sentence of a brief repeats in the brief of an order with a different description", async () => {
+  test("AC-23 no sentence of a brief repeats in the brief of an order with a different description", async () => {
     const m = await twoShippedOrders();
 
     const sentences = (brief: string) =>
@@ -106,7 +113,7 @@ describe("briefs", () => {
     }
   });
 
-  test("the planner is briefed with the description, the builder with the approved plan, the reviewer with the Build artifact and the diff", async () => {
+  test("AC-23 the planner is briefed with the description, the builder with the approved plan, the reviewer with the Build artifact and the diff", async () => {
     const m = await start({ script: happyPath() });
     await shipThrough(
       m.operator,
@@ -119,20 +126,20 @@ describe("briefs", () => {
     expect(m.invocation("reviewer", 0).prompt).toContain("slice-2.txt");
   });
 
-  test("the builder is briefed with the check the project declares, as the gates will run it", async () => {
+  test("AC-23 the builder is briefed with the check the project declares, as the gates will run it", async () => {
     const m = await start({ script: happyPath() });
     await shipThrough(m.operator, await addOrder(m.operator));
 
     expect(briefFrom(m.invocation("builder", 0).prompt).check).toBe("bun run verify");
   });
 
-  test("each recorded slice of a plan has a title and an outcome", async () => {
+  test("AC-17 each recorded slice of a plan has a title and an outcome", async () => {
     const m = await start({ script: happyPath() });
     const order = await showOrder(m.operator, await planned(m.operator));
     expect(order.slices.map(({ title, outcome }) => ({ title, outcome }))).toEqual([...SLICES]);
   });
 
-  test("an updated description briefs the next plan", async () => {
+  test("AC-26 an updated description briefs the next plan", async () => {
     const m = await start({
       script: { planner: [[{ act: "order-return", reason: "which README?" }], planTurn()] },
     });
@@ -147,7 +154,7 @@ describe("briefs", () => {
 });
 
 describe("a builder's commits", () => {
-  test("carry the owner's git identity and no signature, in a checkout that signs commits", async () => {
+  test("AC-68 carry the owner's git identity and no signature, in a checkout that signs commits", async () => {
     const m = await start({ script: happyPath() });
     m.git(["config", "commit.gpgsign", "true"]);
     const id = await built(m.operator);
@@ -160,7 +167,7 @@ describe("a builder's commits", () => {
     ]);
   });
 
-  test("run the project's own hooks, so a hook that refuses a commit leaves it uncommitted", async () => {
+  test("AC-69 run the project's own hooks, so a hook that refuses a commit leaves it uncommitted", async () => {
     const m = await start({ script: happyPath() });
     const hook = join(m.repo, ".git", "hooks", "pre-commit");
     writeFileSync(hook, "#!/bin/sh\necho 'refused by the project' >&2\nexit 1\n");
@@ -176,7 +183,7 @@ describe("a builder's commits", () => {
 });
 
 describe("what a station worker may change", () => {
-  test("a planner's writes to the workspace and the record are refused and its plan comes only from its return", async () => {
+  test("AC-28 a planner's writes to the workspace and the record are refused and its plan comes only from its return", async () => {
     const m = await start({
       script: {
         planner: [
@@ -197,7 +204,7 @@ describe("what a station worker may change", () => {
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
   });
 
-  test("a planner that may not write the record still reads it, through its turn", async () => {
+  test("AC-28 a planner that may not write the record still reads it, through its turn", async () => {
     const m = await start({
       script: { planner: [[{ act: "dim", args: ["query", "search", "greeting"] }, ...planTurn()]] },
     });
@@ -209,7 +216,7 @@ describe("what a station worker may change", () => {
     expect(results[0]).toContain('"command":"query","ok":true');
   });
 
-  test("a reviewer's writes to the workspace and the record are refused", async () => {
+  test("AC-33 a reviewer's writes to the workspace and the record are refused", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -238,7 +245,7 @@ describe("slice gates", () => {
     builder: [[...acts, { act: "build-return", artifact: BUILD_ARTIFACT }]],
   });
 
-  test("a slice with a comment, an unchanged test and an unusual subject is kept when the check passes", async () => {
+  test("AC-22 a slice with a comment, an unchanged test and an unusual subject is kept when the check passes", async () => {
     const m = await start({
       script: oneSlice([
         { act: "write", path: "greet.ts", content: "// says hello\nexport const greet = 'hello';\n" },
@@ -295,7 +302,7 @@ describe("slice gates", () => {
   ];
 
   for (const { name, options, acts, during } of refusedCases) {
-    test(`a slice ${name} is refused and leaves the order's branch as it was`, async () => {
+    test(`AC-22 a slice ${name} is refused and leaves the order's branch as it was`, async () => {
       const m = await start({
         ...options,
         script: oneSlice([...acts, { act: "commit", subject: "feat: add one" }]),
@@ -312,7 +319,7 @@ describe("slice gates", () => {
     });
   }
 
-  test("a builder's amended commit is refused as a moved head and the branch is put back at the recorded head", async () => {
+  test("AC-22 a builder's amended commit is refused as a moved head and the branch is put back at the recorded head", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -338,7 +345,7 @@ describe("slice gates", () => {
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
   });
 
-  test("a refused slice's log entry carries the check's output", async () => {
+  test("AC-31 a refused slice's log entry carries the check's output", async () => {
     const m = await start({
       check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]",
       script: oneSlice([
@@ -357,7 +364,7 @@ describe("slice gates", () => {
     expect(refused.details.exitCode).toBe(1);
   });
 
-  test("a builder returns a Build artifact it wrote in its temp directory", async () => {
+  test("AC-62 a builder returns a Build artifact it wrote in its temp directory", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -375,7 +382,7 @@ describe("slice gates", () => {
     expect(entryOf(order, ACTION.buildReturned).details.artifact).toBe(BUILD_ARTIFACT);
   });
 
-  test("a reviewer, which may not edit the workspace, returns a Review artifact it wrote in its temp directory", async () => {
+  test("AC-62 a reviewer, which may not edit the workspace, returns a Review artifact it wrote in its temp directory", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -399,7 +406,7 @@ describe("slice gates", () => {
     });
   });
 
-  test("one build commits each slice in order through the gates and returns once", async () => {
+  test("AC-30 one build commits each slice in order through the gates and returns once", async () => {
     const m = await start({ script: happyPath() });
     const order = await showOrder(m.operator, await built(m.operator));
 
@@ -412,7 +419,7 @@ describe("slice gates", () => {
 });
 
 describe("definitions of done", () => {
-  test("a plan with no slice records nothing and goes back to the planner, whose corrected plan is accepted", async () => {
+  test("AC-29 a plan with no slice records nothing and goes back to the planner, whose corrected plan is accepted", async () => {
     const m = await start({ script: { planner: [[...planTurn([]), ...planTurn()]] } });
     const order = await showOrder(m.operator, await planned(m.operator));
 
@@ -422,7 +429,7 @@ describe("definitions of done", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a second return that misses the definition of done fails the station, and a later return is not taken", async () => {
+  test("AC-29 a second return that misses the definition of done fails the station, and a later return is not taken", async () => {
     const m = await start({ script: { planner: [[...planTurn([]), ...planTurn([]), ...planTurn()]] } });
     const id = await addOrder(m.operator);
 
@@ -435,7 +442,7 @@ describe("definitions of done", () => {
     expect(order.slices).toHaveLength(0);
   });
 
-  test("a slice commit with no subject line is refused by git, records nothing, and the builder's corrected commit is kept", async () => {
+  test("AC-29 a slice commit with no subject line is refused by git, records nothing, and the builder's corrected commit is kept", async () => {
     const m = await start({
       script: {
         planner: [planTurn([{ title: "One", outcome: "One file." }])],
@@ -457,7 +464,7 @@ describe("definitions of done", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a review finding with no file records nothing and the reviewer's corrected findings are accepted", async () => {
+  test("AC-29 a review finding with no file records nothing and the reviewer's corrected findings are accepted", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -474,7 +481,7 @@ describe("definitions of done", () => {
     expect(order.station).toBe("build");
   });
 
-  test("a build with an uncommitted slice does not hand over", async () => {
+  test("AC-62 a build with an uncommitted slice does not hand over", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -491,7 +498,7 @@ describe("definitions of done", () => {
     expect(order.next).toBe(NEXT.run);
   });
 
-  test("every artifact a station hands over waits for approval", async () => {
+  test("AC-62 every artifact a station hands over waits for approval", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
     for (const station of STATION_NAMES) {
@@ -502,7 +509,7 @@ describe("definitions of done", () => {
     }
   });
 
-  test("a Review artifact that does not say which areas it covered is refused", async () => {
+  test("AC-32 a Review artifact that does not say which areas it covered is refused", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -539,7 +546,7 @@ describe("review findings", () => {
     return id;
   }
 
-  test("findings put the order at build, where the builder's fix passes the slice gates and answers each finding once", async () => {
+  test("AC-33 findings put the order at build, where the builder's fix passes the slice gates and answers each finding once", async () => {
     const m = await start({
       script: reviewedWithFinding([
         { act: "write", path: "slice-1.txt", content: "hello\n" },
@@ -561,7 +568,7 @@ describe("review findings", () => {
     expect(m.invocation("reviewer", 1).prompt).toContain("it says hello now");
   });
 
-  test("a build turn that leaves a finding unanswered is refused", async () => {
+  test("AC-33 AC-62 a build turn that leaves a finding unanswered is refused", async () => {
     const m = await start({
       script: reviewedWithFinding([{ act: "build-return", artifact: BUILD_ARTIFACT }]),
     });
@@ -575,7 +582,7 @@ describe("review findings", () => {
     expect(actions(order).filter((action) => action === ACTION.buildReturned)).toHaveLength(1);
   });
 
-  test("a finding answered twice is refused the second time", async () => {
+  test("AC-33 a finding answered twice is refused the second time", async () => {
     const answer = { act: "answer", file: "slice-1.txt", line: 1, reason: "it holds" } as const;
     const m = await start({
       script: reviewedWithFinding([
@@ -594,7 +601,7 @@ describe("review findings", () => {
 });
 
 describe("going back to plan", () => {
-  test("slices committed before a builder's return to plan stay, and the revised plan decides which stay", async () => {
+  test("AC-25 slices committed before a builder's return to plan stay, and the revised plan decides which stay", async () => {
     const m = await start({
       script: {
         planner: [
@@ -638,7 +645,7 @@ describe("going back to plan", () => {
 });
 
 describe("the operator's decisions", () => {
-  test("a returned Build artifact runs the same builder again, briefed with the reason", async () => {
+  test("AC-5 a returned Build artifact runs the same builder again, briefed with the reason", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
