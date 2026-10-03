@@ -45,10 +45,6 @@ export function alignBranch(trace: Trace, { dir, branch }: Workspace, head: stri
   if (tip !== head) moveBranch(trace, dir, branch, head, tip);
 }
 
-export function removeWorktree(trace: Trace, root: string, { dir }: Workspace): string | null {
-  return effects.removeWorktree(trace, root, dir);
-}
-
 export function removeWorkspace(trace: Trace, root: string, { dir, branch }: Workspace): readonly Kept[] {
   const keptDir = effects.removeWorktree(trace, root, dir);
   if (keptDir !== null) {

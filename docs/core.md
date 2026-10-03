@@ -82,7 +82,7 @@ The rebase runs under the owner's git config, so the landed commits are signed w
 
 ## Workspaces
 
-A workspace is a linked worktree of the project's checkout on the branch `dim/<order>`, outside the project. Before each station turn the factory installs the project's dependencies there from its lockfile, in the check's sandbox. Cancelling removes it and keeps the branch.
+A workspace is a linked worktree of the project's checkout on the branch `dim/<order>`, outside the project. Before each station turn the factory installs the project's dependencies there from its lockfile, in the check's sandbox. Cancelling removes it and its branch.
 
 ## The trace
 

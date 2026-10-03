@@ -161,7 +161,7 @@ describe("an order that is busy", () => {
 });
 
 describe("cancelling and failing", () => {
-  test("AC-15 cancelling mid-build stops the builder, records nothing of its turn, removes its workspace and keeps its commits on its branch", async () => {
+  test("AC-15 cancelling mid-build stops the builder, records nothing of its turn, and removes its workspace and its branch", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -190,7 +190,7 @@ describe("cancelling and failing", () => {
     expect(order.status).toBe("cancelled");
     expect(order.log.slice(0, before.log.length)).toEqual([...before.log]);
     expect(actions(order).slice(before.log.length)).toEqual([ACTION.cancelled]);
-    expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
+    expect(m.git(["branch", "--list", order.branch])).toBe("");
     expect(existsSync(order.workspace)).toBe(false);
   });
 

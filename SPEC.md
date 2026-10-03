@@ -35,7 +35,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-24** — An action the order does not admit is refused, the refusal names the actions it admits, and the record is left unchanged.
 - **FR-25** — Nothing more can happen to a shipped or cancelled order beyond reading it.
 - **FR-26** — While a station is working on an order and its worker is still running, or while the order is shipping, no other station run, approval, return or ship is allowed on that order.
-- **FR-27** — An order can be cancelled at any point until it ships, except while its ship is running. Cancelling stops any station working on it, removes its workspace, keeps its branch to look at, and ends the order.
+- **FR-27** — An order can be cancelled at any point until it ships, except while its ship is running. Cancelling stops any station working on it, removes its workspace and its branch, and ends the order.
 - **FR-28** — A station or ship that fails leaves the order where its record puts it, and the operator is told why. Running the order again, once any cause outside the order is cleared, continues from there.
 
 ## 3. Stations
@@ -148,7 +148,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-12** — Shipping an order whose workspace cannot be removed lands its commits, records it as shipped, and names the kept workspace and branch with the reasons. (FR-22)
 - **AC-13** — For every state an order can be in and every action, the action is allowed exactly when the order admits it. Each refused action names the actions the order admits and leaves the record unchanged, and a shipped or cancelled order refuses them all. (FR-23, FR-24, FR-25)
 - **AC-14** — While a station works on an order, or the order ships, a second station run, an approval, a return and a ship are each refused. Once the station's worker process has ended, they are allowed again. (FR-26, FR-59)
-- **AC-15** — Cancelling an order in the middle of a build stops its builder, records nothing of the unfinished turn, removes its workspace, keeps its committed slices on its branch, and leaves the order cancelled. A cancel the checkout cannot carry out is refused and leaves the order as it was. (FR-27, FR-86)
+- **AC-15** — Cancelling an order in the middle of a build stops its builder, records nothing of the unfinished turn, removes its workspace and its branch, and leaves the order cancelled. A cancel the checkout cannot carry out is refused and leaves the order as it was. (FR-27, FR-86)
 - **AC-16** — After a failed station run, running the order again resumes the same worker from where the record puts the order. (FR-28, FR-54)
 - **AC-17** — The plan, build and review briefs each name their skill and contain no instructions, and each recorded slice of a plan has a title and an outcome. (FR-29, FR-33)
 - **AC-18** — Each station's brief names its station's skill, the operator's instructions are `dim-factory` and intake is `dim-add`, and an instruction several skills share is a reference they link rather than repeated in them. (FR-65, FR-66, FR-67, FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75, FR-76)

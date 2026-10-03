@@ -64,7 +64,7 @@ import { traceOf } from "./trace-ops";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
 import type { Workspace } from "./workspace";
-import { alignBranch, branchFacts, createWorkspace, removeWorktree, workspaceOf } from "./workspace-ops";
+import { alignBranch, branchFacts, createWorkspace, removeWorkspace, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
   readonly trace: Trace;
@@ -532,9 +532,8 @@ export function cancelOrder(db: Database, order: string, caller: Caller, reason:
     const { harness } = recordCancel(trace, db, order, caller, reason);
     if (harness !== null) stopHarness(trace, harness);
     if (root === null) return;
-    const workspace = workspaceOf(project, order);
-    const kept = removeWorktree(trace, root, workspace);
-    if (kept !== null) throw refuseOrder("worktree_kept", { order, dir: workspace.dir, reason: kept });
+    const kept = removeWorkspace(trace, root, workspaceOf(project, order));
+    if (kept.length > 0) throw refuseOrder("workspace_kept", { order, root, kept });
   });
 }
 

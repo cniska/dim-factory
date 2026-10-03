@@ -2,6 +2,7 @@ import { z } from "zod";
 import { refuser } from "./coded-error";
 import { HarnessName } from "./harness-contract";
 import type { Role } from "./worker-contract";
+import type { Kept } from "./workspace";
 
 export const STATIONS = ["plan", "build", "review"] as const;
 export const Station = z.enum(STATIONS);
@@ -39,7 +40,7 @@ type OrderRefusalMeta = {
   readonly no_default_branch: { readonly checkout: string };
   readonly no_git_identity: { readonly checkout: string };
   readonly no_worker: { readonly order: string; readonly station: Station };
-  readonly worktree_kept: { readonly order: string; readonly dir: string; readonly reason: string };
+  readonly workspace_kept: { readonly order: string; readonly root: string; readonly kept: readonly Kept[] };
 };
 
 const ADD_ORDER = "dim order add --title <title> --description <description>";
@@ -87,10 +88,23 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
       `order ${order} has no ${station} worker yet, so there is no session to message; one starts when the order runs its ${station} station`,
     resolve: ({ order }) => `dim order show ${order}`,
   },
-  worktree_kept: {
-    message: ({ order, dir, reason }) =>
-      `order ${order} is cancelled and its branch kept, but its worktree at ${dir} could not be removed: ${reason}`,
-    resolve: ({ dir }) => `git worktree remove --force ${dir}`,
+  workspace_kept: {
+    message: ({ order, kept }) =>
+      `order ${order} is cancelled, but ${kept
+        .map((left) =>
+          left.kind === "workspace"
+            ? `its worktree at ${left.dir} could not be removed: ${left.reason}`
+            : `its branch ${left.branch} could not be deleted: ${left.reason}`,
+        )
+        .join("; ")}`,
+    resolve: ({ root, kept }) =>
+      kept
+        .map((left) =>
+          left.kind === "workspace"
+            ? `git -C ${root} worktree remove --force ${left.dir}`
+            : `git -C ${root} branch -D ${left.branch}`,
+        )
+        .join(" && "),
   },
   no_default_branch: {
     message: ({ checkout }) =>
