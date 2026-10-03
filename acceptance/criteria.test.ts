@@ -12,9 +12,11 @@ const spec = readFileSync(join(ROOT, "SPEC.md"), "utf8");
 const criteria = firstGroups(spec, /^- \*\*(AC-\d+)\*\*/gm);
 const ids = firstGroups(spec, /^- \*\*([^*]+)\*\* —/gm);
 const requirements = ids.filter((id) => /^(FR|NF)-/.test(id));
-const citations = firstGroups(spec, /^- \*\*AC-\d+\*\* — .*\(([^)]*)\)$/gm).flatMap((list) =>
-  list.split(", "),
-);
+const criterionLines = spec.split("\n").filter((line) => /^- \*\*AC-\d+\*\*/.test(line));
+const CITATION_LIST = /\(((?:FR|NF)-\d+(?:, (?:FR|NF)-\d+)*)\)$/;
+const citationsOf = (line: string): readonly string[] => CITATION_LIST.exec(line)?.[1]?.split(", ") ?? [];
+const citations = criterionLines.flatMap(citationsOf);
+const mentioned = firstGroups(spec, /\b((?:FR|NF|AC|C)-\d+)\b/g);
 
 const names = readdirSync(import.meta.dir)
   .filter((file) => file.endsWith(".acceptance.ts"))
@@ -32,8 +34,15 @@ describe("the spec's ids", () => {
     }
   });
 
-  test("every requirement a criterion cites is in the spec, and every requirement is cited", () => {
-    expect(citations.filter((id) => !requirements.includes(id))).toEqual([]);
+  test("every criterion ends with the requirements it cites", () => {
+    expect(criterionLines.filter((line) => citationsOf(line).length === 0)).toEqual([]);
+  });
+
+  test("every id the spec mentions, in a citation or in prose, is defined in it", () => {
+    expect(mentioned.filter((id) => !ids.includes(id))).toEqual([]);
+  });
+
+  test("every requirement is cited by a criterion", () => {
     expect(requirements.filter((id) => !citations.includes(id))).toEqual([]);
   });
 });
