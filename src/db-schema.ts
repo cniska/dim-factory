@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS session (
   title           TEXT
 );
 CREATE INDEX IF NOT EXISTS session_project ON session(project, started_at);
+CREATE INDEX IF NOT EXISTS session_parent ON session(parent_id);
 
 CREATE TABLE IF NOT EXISTS message (
   id              TEXT PRIMARY KEY,
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS message (
 );
 CREATE INDEX IF NOT EXISTS message_session_ts ON message(session_id, ts);
 CREATE INDEX IF NOT EXISTS message_attr ON message(attribution_skill);
+CREATE INDEX IF NOT EXISTS message_src_file ON message(src_file);
 
 CREATE TABLE IF NOT EXISTS usage (
   response_id     TEXT PRIMARY KEY,
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
 CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
+CREATE INDEX IF NOT EXISTS usage_message ON usage(message_id);
 
 CREATE TABLE IF NOT EXISTS hook_event (
   id          INTEGER PRIMARY KEY,
@@ -132,6 +135,8 @@ CREATE TABLE IF NOT EXISTS tool_call (
 CREATE INDEX IF NOT EXISTS tool_call_session ON tool_call(session_id, ts_call);
 CREATE INDEX IF NOT EXISTS tool_call_name ON tool_call(tool_name);
 CREATE INDEX IF NOT EXISTS tool_call_file ON tool_call(file_path);
+CREATE INDEX IF NOT EXISTS tool_call_src_file ON tool_call(src_file);
+CREATE INDEX IF NOT EXISTS tool_call_message ON tool_call(message_id);
 
 CREATE TABLE IF NOT EXISTS git_command (
   tool_call_id    TEXT NOT NULL REFERENCES tool_call(id) ON DELETE CASCADE,
@@ -155,6 +160,7 @@ CREATE TABLE IF NOT EXISTS skill_load (
   UNIQUE (session_id, message_id, skill_name, how)
 );
 CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
+CREATE INDEX IF NOT EXISTS skill_load_message ON skill_load(message_id);
 
 CREATE TABLE IF NOT EXISTS repo_commit (
   sha             TEXT PRIMARY KEY,
@@ -209,6 +215,7 @@ CREATE TABLE IF NOT EXISTS worker (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS worker_station ON worker(order_id, role) WHERE order_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS worker_operator ON worker(project) WHERE role = 'operator';
+CREATE INDEX IF NOT EXISTS worker_created_by ON worker(created_by);
 
 CREATE TABLE IF NOT EXISTS worker_session (
   id              TEXT PRIMARY KEY,
@@ -217,6 +224,7 @@ CREATE TABLE IF NOT EXISTS worker_session (
   pid             INTEGER NOT NULL,
   pid_started_at  TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS worker_session_worker ON worker_session(worker);
 
 CREATE TABLE IF NOT EXISTS order_log (
   order_id        TEXT NOT NULL,
@@ -235,6 +243,7 @@ CREATE TABLE IF NOT EXISTS order_log (
   CHECK ((worker IS NOT NULL AND session IS NOT NULL AND factory_version IS NULL AND cause IS NULL)
       OR (worker IS NULL AND session IS NULL AND factory_version IS NOT NULL AND cause IS NOT NULL))
 );
+CREATE INDEX IF NOT EXISTS order_log_cause ON order_log(order_id, cause);
 CREATE TRIGGER IF NOT EXISTS order_log_no_update BEFORE UPDATE ON order_log
 BEGIN SELECT RAISE(ABORT, 'order_log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS order_log_no_delete BEFORE DELETE ON order_log
