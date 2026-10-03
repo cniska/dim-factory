@@ -29,6 +29,16 @@ jobs:
 
       - run: bun run verify
 
+  acceptance:
+    name: Acceptance
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run test:acceptance
+
   commits:
     name: Commits
     runs-on: ubuntu-latest

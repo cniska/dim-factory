@@ -9,7 +9,7 @@ A software factory run by coding agents, with the owner at the gates that still 
 - A check that needs judgement gets an agent with a fixed brief, never a regex or a word list. What is mechanical is a gate.
 - Read what the record already answers instead of inferring it. A repo's check is the task its manifest declares ([`src/declared-tasks.ts`](src/declared-tasks.ts)).
 - An order that changes the schema runs with no other order in flight ([`docs/design.md`](docs/design.md#schema)).
-- The commit gate runs `bun run verify`. Run it by hand only to read a failure.
+- The commit gate runs `bun run verify`. Run it by hand only to read a failure. CI also runs the acceptance suite, `bun run test:acceptance`, which drives `dim` end to end on macOS.
 - A change to how `dim` behaves is seen working through [`dim-verify`](.agents/skills/dim-verify/SKILL.md) before it lands.
 - Cloud work runs on a branch and lands on `main` by fast-forward, `git push origin HEAD:main`, once `bun run verify` passes. Never force it.
 - How the factory is built and run is settled in the work. The wall's design answers to the owner.
