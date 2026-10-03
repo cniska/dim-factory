@@ -16,6 +16,6 @@ export const refuseRecord = refuser<{
   },
   lock_held: {
     message: ({ path, pid }) => `another dim run holds ${path} (pid ${pid}); run this again once it ends`,
-    resolve: () => "dim doctor",
+    resolve: ({ pid }) => `run this again once process ${pid} has ended`,
   },
 });

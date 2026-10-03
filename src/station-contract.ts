@@ -100,7 +100,7 @@ export const refuseStation = refuser<StationRefusalMeta>({
   },
   bad_request: {
     message: ({ issues }) => `the station could not read this request: ${issues}`,
-    resolve: () => "dim doctor",
+    resolve: () => "send the act with its own dim command, which writes the request the station reads",
   },
   wrong_station: {
     message: ({ act, station }) => `${act} is no act of the ${station} station`,

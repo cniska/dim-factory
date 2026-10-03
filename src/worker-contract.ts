@@ -24,7 +24,8 @@ export const refuseWorker = refuser<WorkerRefusalMeta>({
   not_operator: {
     message: ({ project }) =>
       `this process runs under no session of ${project}'s operator, whose live session is another one or who is a station worker, and only the operator takes order actions`,
-    resolve: () => "dim doctor",
+    resolve: () =>
+      "take order actions only from the operator's live session; a station worker ends its work with its own return",
   },
   not_station_worker: {
     message: ({ order, station }) =>
@@ -38,7 +39,7 @@ export const refuseWorker = refuser<WorkerRefusalMeta>({
   no_process_table: {
     message: ({ detail }) =>
       `ps could not list this machine's processes, so who acts cannot be read: ${detail}`,
-    resolve: () => "dim doctor",
+    resolve: () => "stop and hand this error to the owner: `ps -A -o pid=,ppid=,lstart=` must run here",
   },
 });
 

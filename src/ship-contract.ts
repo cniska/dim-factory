@@ -30,6 +30,7 @@ export const refuseShip = refuser<StopMeta<"ship_stopped">>({
   ship_no_check: {
     message: ({ order, head }) =>
       `order ${order} rebased at ${head} declares no check task, so it cannot be judged before it lands`,
-    resolve: () => "dim doctor",
+    resolve: ({ order }) =>
+      `ask the owner to declare a verify, check, ci, validate or test task on the project's default branch, then dim order run ${order}`,
   },
 });

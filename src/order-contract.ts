@@ -79,7 +79,8 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
   no_git_identity: {
     message: ({ checkout }) =>
       `git names no user.name and user.email in ${checkout}, and every commit the factory makes carries the owner's identity; set both with git config --global, then run the order again`,
-    resolve: () => "dim doctor",
+    resolve: () =>
+      "ask the owner to set user.name and user.email with git config --global; never set them yourself",
   },
   no_worker: {
     message: ({ order, station }) =>
@@ -94,7 +95,7 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
   no_default_branch: {
     message: ({ checkout }) =>
       `${checkout} names no default branch; set it with \`git remote set-head origin --auto\``,
-    resolve: () => "dim doctor",
+    resolve: ({ checkout }) => `git -C ${checkout} remote set-head origin --auto`,
   },
 });
 

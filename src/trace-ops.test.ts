@@ -26,7 +26,7 @@ const linesOf = (env: { XDG_STATE_HOME: string }) =>
     .map((line) => JSON.parse(line));
 
 const refuse = refuser<{ held: { readonly path: string } }>({
-  held: { message: ({ path }) => `${path} is held`, resolve: () => "dim doctor" },
+  held: { message: ({ path }) => `${path} is held`, resolve: ({ path }) => `release ${path}` },
 });
 
 describe("a trace step", () => {

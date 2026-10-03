@@ -1,13 +1,13 @@
-import { faulter } from "./coded-error";
+import { BUG, faulter } from "./coded-error";
 
 const fault = faulter<{
   readonly unreachable: { readonly value: string };
   readonly invariant_failed: { readonly condition: string };
 }>({
-  unreachable: { message: ({ value }) => `unreachable: ${value}`, resolve: () => "dim doctor" },
+  unreachable: { message: ({ value }) => `unreachable: ${value}`, resolve: () => BUG },
   invariant_failed: {
     message: ({ condition }) => `invariant failed: ${condition}`,
-    resolve: () => "dim doctor",
+    resolve: () => BUG,
   },
 });
 

@@ -44,9 +44,14 @@ describe("an error on stderr", () => {
     });
   });
 
-  test("names an error that is not a refusal as an unexpected failure, resolved by the doctor", () => {
+  test("names an error that is not a refusal as an unexpected failure, handed to the owner as a bug", () => {
     expect(printed(new Error("disk full"))).toMatchObject({
-      error: { code: "command_failed", message: "disk full", meta: {}, resolve: "dim doctor" },
+      error: {
+        code: "command_failed",
+        message: "disk full",
+        meta: {},
+        resolve: "stop and hand this error to the owner as a bug in dim; no command you run resolves it",
+      },
     });
   });
 });

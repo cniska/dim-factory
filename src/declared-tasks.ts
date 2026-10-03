@@ -38,11 +38,11 @@ export const refuseManifest = refuser<{
 }>({
   manifest_unreadable: {
     message: ({ path }) => `${path} is there but cannot be read, so what the repo declares is unknown`,
-    resolve: () => "dim doctor",
+    resolve: ({ path }) => `stop and hand this error to the owner: ${path} must be a readable regular file`,
   },
   manifest_unparseable: {
     message: ({ file, detail }) => `${file} does not parse, so what the repo declares is unknown: ${detail}`,
-    resolve: () => "dim doctor",
+    resolve: ({ file }) => `stop and hand this error to the owner: ${file} must parse`,
   },
 });
 

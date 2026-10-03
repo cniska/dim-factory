@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export type ErrorKind = "refusal" | "fault";
 
+export const BUG = "stop and hand this error to the owner as a bug in dim; no command you run resolves it";
+
 export class CodedError<Code extends string = string, Meta extends object = object> extends Error {
   override readonly name = "CodedError";
 

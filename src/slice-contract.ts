@@ -32,7 +32,7 @@ export const refuseSlice = refuser<StopMeta<"slice_refused">>({
   no_check: {
     message: ({ order, tip }) =>
       `${tip} declares no check task, so no slice of order ${order} can be judged; the project needs one such as a verify script`,
-    resolve: () => "dim doctor",
+    resolve: () => 'dim order return --reason "the project declares no check task"',
   },
   not_rebased: {
     message: ({ tip, onto, commits }) =>

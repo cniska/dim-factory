@@ -1,5 +1,5 @@
 import { type Command, Ran, UsageError } from "./cli-contract";
-import { CodedError, type RefusalRecord, recordOf } from "./coded-error";
+import { BUG, CodedError, type RefusalRecord, recordOf } from "./coded-error";
 
 function errorRecord(error: unknown, usage: string): RefusalRecord {
   if (error instanceof UsageError) return { ...recordOf(error), resolve: usage.replace(/^usage: /, "") };
@@ -8,7 +8,7 @@ function errorRecord(error: unknown, usage: string): RefusalRecord {
     code: "command_failed",
     message: error instanceof Error ? error.message : String(error),
     meta: {},
-    resolve: "dim doctor",
+    resolve: BUG,
   };
 }
 
