@@ -239,16 +239,22 @@ async function serveTurn(
 
 type Closing = TurnClose & { readonly acting: Acting };
 
-function installDependencies(turn: TurnOf, dir: string): void {
+function installDependencies(db: Database, turn: TurnOf, dir: string): void {
   const command = installCommand(dir);
   if (command === null) return;
-  const installed = install(turn.trace, dir, command.commandLine, turn.env);
+  const { trace, order, station, cause } = turn;
+  const installed = install(trace, dir, command.commandLine, turn.env);
   if (installed.exitCode === 0) return;
-  throw refuseStation("install_failed", {
-    order: turn.order,
-    station: turn.station,
-    command: command.commandLine,
-    output: installed.output,
+  recordStop({
+    record: (later) =>
+      recordAt(trace, db, { order, station, by: { kind: "factory", cause }, later: () => later }),
+    order,
+    stop: {
+      action: "station_failed",
+      code: "install_failed",
+      details: { command: command.commandLine, output: installed.output },
+    },
+    refuse: refuseStation,
   });
 }
 
@@ -277,7 +283,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   const { dir } = workspace;
   const { trace } = turn;
   alignBranch(trace, workspace, head);
-  installDependencies(turn, dir);
+  installDependencies(db, turn, dir);
   const opened = openTurn(trace, workerHomeDir(worker.name));
   try {
     if (session.kind === "fork") {

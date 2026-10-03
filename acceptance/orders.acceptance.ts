@@ -18,7 +18,7 @@ import {
   shipThrough,
   showOrder,
 } from "./support/operator-acts";
-import { actions, entriesOf, entryOf, OrderView, workerOf } from "./support/order-view";
+import { actions, entriesOf, entryOf, finalStop, OrderView, workerOf } from "./support/order-view";
 import { descendantRunning, killPid } from "./support/processes";
 import { buildTurn, happyPath, planTurn, reviewTurn } from "./support/scripts";
 import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
@@ -74,7 +74,9 @@ describe("a project's dependencies", () => {
 
     expect(refused.code).toBe("install_failed");
     expect(refused.meta.command).toBe("bun install --frozen-lockfile --ignore-scripts");
-    expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.sessionStarted);
+    const order = await showOrder(m.operator, id);
+    expect(actions(order)).not.toContain(ACTION.sessionStarted);
+    expect(finalStop(order)).toMatchObject({ action: "station_failed", code: "install_failed" });
   });
 });
 

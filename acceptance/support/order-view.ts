@@ -99,6 +99,7 @@ const LogEntry = z.union([
   stop("station_failed", "return_missed", { ...session, missed: z.string() }),
   stop("station_failed", "session_died", session),
   stop("station_failed", "git_config_changed", session),
+  stop("station_failed", "install_failed", { command: z.string(), output: z.string() }),
   entry("ship_started", {}),
   entry("branch_rebased", {
     head: z.string(),

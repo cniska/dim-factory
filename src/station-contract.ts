@@ -90,12 +90,7 @@ type StationRefusalMeta = {
   readonly not_to_operator: StopMeta<"message_refused">["not_to_operator"];
   readonly message_turn: { readonly act: TurnRequest["act"] };
   readonly no_reply: { readonly order: string; readonly station: Station; readonly session: string };
-  readonly install_failed: {
-    readonly order: string;
-    readonly station: Station;
-    readonly command: string;
-    readonly output: string;
-  };
+  readonly install_failed: StopMeta<"station_failed">["install_failed"];
 };
 
 export const refuseStation = refuser<StationRefusalMeta>({
@@ -169,8 +164,8 @@ export const refuseStation = refuser<StationRefusalMeta>({
     resolve: ({ order }) => `dim order show ${order}`,
   },
   install_failed: {
-    message: ({ order, station, command, output }) =>
-      `\`${command}\` failed in order ${order}'s workspace, so the ${station} station did not start: ${output}`,
+    message: ({ order, command, output }) =>
+      `\`${command}\` failed in order ${order}'s workspace, so no station started: ${output}`,
     resolve: ({ order, command }) =>
       `stop and hand this error to the owner: the project's lockfile must install with \`${command}\`, then dim order run ${order}`,
   },
