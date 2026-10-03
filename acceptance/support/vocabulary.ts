@@ -44,15 +44,15 @@ export const REFUSAL = {
   usage: "usage",
 } as const;
 
+export const STATION_NAMES = ["plan", "build", "review"] as const;
+
+export type Station = (typeof STATION_NAMES)[number];
+
 export const STATIONS = {
   plan: { role: "planner", skill: "dim-plan" },
   build: { role: "builder", skill: "dim-build" },
   review: { role: "reviewer", skill: "dim-review" },
-} as const;
-
-export type Station = keyof typeof STATIONS;
-
-export const STATION_NAMES = Object.keys(STATIONS) as readonly Station[];
+} as const satisfies Record<Station, { readonly role: string; readonly skill: string }>;
 
 export type StationRole = (typeof STATIONS)[Station]["role"];
 

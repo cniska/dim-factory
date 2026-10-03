@@ -25,6 +25,12 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["acceptance/**/*.ts"],
+      "linter": { "rules": { "nursery": { "noUnsafeTypeAssertion": "error" } } }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {
