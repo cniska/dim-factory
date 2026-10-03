@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
@@ -12,6 +12,7 @@ function repoWith(files: string[]): string {
   execFileSync("git", ["init", "-q", "-b", "main", dir]);
   execFileSync("git", ["-C", dir, "config", "user.email", "t@example.com"]);
   execFileSync("git", ["-C", dir, "config", "user.name", "T"]);
+  execFileSync("git", ["-C", dir, "config", "maintenance.auto", "false"]);
   writeFileSync(join(dir, ".gitignore"), "dist/\n");
   for (const f of files) {
     mkdirSync(join(dir, f, ".."), { recursive: true });
@@ -80,6 +81,7 @@ describe("indexing what a repo tracks", () => {
     const repo = repoWith(["a.ts"]);
     const gone = repoWith(["b.ts"]);
     rmSync(gone, { recursive: true, force: true });
+    expect(existsSync(gone)).toBe(false);
     failures.length = 0;
     try {
       const db = freshDb();
