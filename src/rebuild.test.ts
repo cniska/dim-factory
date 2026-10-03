@@ -97,6 +97,26 @@ describe("absorbing a schema change", () => {
     db.close();
   });
 
+  test("drops a large table that another references through an unindexed column without checking each row", () => {
+    const { db, env } = scratch();
+    const rows = 50_000;
+    db.run("CREATE TABLE old_parent (id INTEGER PRIMARY KEY)");
+    db.run("CREATE TABLE old_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES old_parent(id))");
+    db.transaction(() => {
+      for (let id = 1; id <= rows; id++) {
+        db.run("INSERT INTO old_parent (id) VALUES (?)", [id]);
+        db.run("INSERT INTO old_child (id, parent_id) VALUES (?, ?)", [id, id]);
+      }
+    })();
+
+    const started = performance.now();
+    rebuild(db, env);
+
+    expect(performance.now() - started).toBeLessThan(3000);
+    expect(tablesOf(db)).not.toContain("old_parent");
+    db.close();
+  }, 120_000);
+
   test("a rebuild that throws leaves the old version stamped", () => {
     const { db, env } = scratch();
     db.run("PRAGMA user_version = 1");

@@ -103,21 +103,25 @@ function tablesWhere(db: Database, condition: string): readonly string[] {
 }
 
 function dropEveryTable(db: Database): void {
-  db.run("PRAGMA defer_foreign_keys = ON");
   for (const name of tablesWhere(db, "sql LIKE 'CREATE VIRTUAL TABLE%'")) db.run(`DROP TABLE "${name}"`);
   for (const name of tablesWhere(db, "1")) db.run(`DROP TABLE "${name}"`);
 }
 
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
-  writeTransaction(db, () => {
-    db.run(`CREATE TEMP TABLE kept_hook_event AS SELECT ${HOOK_EVENT_COLUMNS} FROM hook_event`);
-    dropEveryTable(db);
-    db.run(SCHEMA_SQL);
-    db.run(
-      `INSERT OR IGNORE INTO hook_event (${HOOK_EVENT_COLUMNS}) SELECT ${HOOK_EVENT_COLUMNS} FROM kept_hook_event`,
-    );
-    db.run("DROP TABLE kept_hook_event");
-  });
+  db.run("PRAGMA foreign_keys = OFF");
+  try {
+    writeTransaction(db, () => {
+      db.run(`CREATE TEMP TABLE kept_hook_event AS SELECT ${HOOK_EVENT_COLUMNS} FROM hook_event`);
+      dropEveryTable(db);
+      db.run(SCHEMA_SQL);
+      db.run(
+        `INSERT OR IGNORE INTO hook_event (${HOOK_EVENT_COLUMNS}) SELECT ${HOOK_EVENT_COLUMNS} FROM kept_hook_event`,
+      );
+      db.run("DROP TABLE kept_hook_event");
+    });
+  } finally {
+    db.run("PRAGMA foreign_keys = ON");
+  }
   const report = sync(db, env);
   db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   return report;
