@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withLock } from "./db-lock";
 import { AGENT_LABEL, agentPlist, agentPlistPath, bunPath, installAgent, planAgent } from "./ingest-launchd";
 import type { Env } from "./paths";
 
@@ -67,40 +66,5 @@ describe("launchd agent", () => {
     await expect(Bun.file(`${agentPlistPath(e)}.dim-backup-2`).text()).resolves.toBe(
       "<plist>changed</plist>",
     );
-  });
-});
-
-describe("lock", () => {
-  test("refuses to run while another run holds it", () => {
-    const e = env(newRoot());
-    withLock(() => {
-      expect(() => withLock(() => 0, e)).toThrow(expect.objectContaining({ code: "lock_held" }));
-    }, e);
-  });
-
-  test("takes over a lock left behind by a killed run", () => {
-    const dir = newRoot();
-    const e = env(dir);
-    const lock = join(dir, "data", "lock");
-    mkdirSync(lock, { recursive: true });
-    writeFileSync(join(lock, "pid"), "2147483646");
-    expect(withLock(() => "ran", e)).toBe("ran");
-  });
-
-  test("takes over a lock directory with no pid file at all", () => {
-    const dir = newRoot();
-    const e = env(dir);
-    mkdirSync(join(dir, "data", "lock"), { recursive: true });
-    expect(withLock(() => "ran", e)).toBe("ran");
-  });
-
-  test("releases the lock when the work throws", () => {
-    const e = env(newRoot());
-    expect(() =>
-      withLock(() => {
-        throw new Error("boom");
-      }, e),
-    ).toThrow("boom");
-    expect(withLock(() => "ran", e)).toBe("ran");
   });
 });

@@ -96,6 +96,12 @@ describe("the write lock", () => {
     }, env);
   });
 
+  test("a lock directory with no pid file is not a holder", () => {
+    const { env, lock } = newRoot();
+    mkdirSync(lock, { recursive: true });
+    expect(withLock(() => "ran", env)).toBe("ran");
+  });
+
   test("an empty pid file is not a holder", () => {
     const { env, lock } = newRoot();
     mkdirSync(lock, { recursive: true });
