@@ -4,11 +4,13 @@ import type { Subprocess } from "bun";
 import { hookCommands, settingsHooks } from "./claude-hooks";
 import { commandLine, type DimResult, parseDim, quote, type Ran } from "./dim-output";
 import type { MachineEnv } from "./machine";
+import { descendants, killPid } from "./processes";
 import { waitFor } from "./wait";
 
 export class OperatorSession {
   readonly sessionId = crypto.randomUUID();
   private calls = 0;
+  private closed = false;
 
   private constructor(
     private readonly shell: Subprocess<"pipe", "ignore", "ignore">,
@@ -36,7 +38,8 @@ export class OperatorSession {
     const ran = `{ ${command}; } < ${input} > ${out} 2> ${err}; echo $? > ${tmp}; mv ${tmp} ${done}`;
     this.shell.stdin.write(alongside ? `{ ${ran}; } &\n` : `${ran}\n`);
     this.shell.stdin.flush();
-    await waitFor(`\`${command}\` to finish`, () => existsSync(`${call}.done`));
+    await waitFor(`\`${command}\` to finish`, () => this.closed || existsSync(`${call}.done`));
+    if (this.closed) throw new Error(`the session closed while \`${command}\` ran`);
     return {
       exitCode: Number(readFileSync(`${call}.done`, "utf8").trim()),
       stdout: readFileSync(`${call}.out`, "utf8"),
@@ -65,6 +68,8 @@ export class OperatorSession {
   }
 
   close(): void {
+    this.closed = true;
+    for (const pid of descendants(this.shell.pid)) killPid(pid);
     this.shell.kill("SIGKILL");
     rmSync(this.scratch, { recursive: true, force: true });
   }
