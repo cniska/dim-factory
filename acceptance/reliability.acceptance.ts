@@ -33,13 +33,15 @@ const RANDOM_KILLS_TEST_MS = 600_000;
 const STEP_LIMIT = 40;
 
 async function carryToShipped(m: Machine, id: string): Promise<OrderView> {
+  let last = "";
   for (let step = 0; step < STEP_LIMIT; step++) {
     const order = await showOrder(m.operator, id);
     const args = order.next === null ? null : STEP_ARGS_BY_NEXT[order.next];
     if (order.status === "shipped" || args === null) return order;
-    await m.operator.sh(commandLine(args(id)));
+    const ran = await m.operator.sh(commandLine(args(id)));
+    last = `${ran.stdout}${ran.stderr}`.trim();
   }
-  return showOrder(m.operator, id);
+  throw new Error(`order ${id} took ${STEP_LIMIT} steps without settling; the last printed ${last}`);
 }
 
 const OPERATOR_ACTIONS: readonly Action[] = [ACTION.added, ACTION.run, ACTION.approved];
@@ -129,20 +131,27 @@ describe("random kills", () => {
   ];
   const undisturbed = (order: OrderView) => actions(order).filter((action) => !DISTURBANCE.includes(action));
   const KILLABLE = /cli\.ts order (run|approve)|scripted-claude/;
+  let baseline: Promise<Action[]> | undefined;
+  const expected = () => {
+    baseline ??= (async () => {
+      const m = await start({ script: idempotent });
+      const order = await carryToShipped(m, await addOrder(m.operator));
+      if (order.status !== "shipped")
+        throw new Error(`the undisturbed order ${order.id} ended ${order.status}`);
+      return undisturbed(order);
+    })();
+    return baseline;
+  };
 
-  test(
-    "AC-54 an order whose stations, ships and sessions are killed at random ends shipped or reported, recording nothing twice",
-    async () => {
-      const baseline = await start({ script: idempotent });
-      const expected = undisturbed(await carryToShipped(baseline, await addOrder(baseline.operator)));
-
-      let seed = 20260930;
-      const random = () => {
-        seed = (seed * 1103515245 + 12345) % 2 ** 31;
-        return seed / 2 ** 31;
-      };
-
-      for (let run = 0; run < RUNS; run++) {
+  for (let run = 0; run < RUNS; run++) {
+    test(
+      `AC-54 an order whose stations, ships and sessions are killed at random ends shipped or reported, recording nothing twice (seed ${20260930 + run})`,
+      async () => {
+        let seed = 20260930 + run;
+        const random = () => {
+          seed = (seed * 1103515245 + 12345) % 2 ** 31;
+          return seed / 2 ** 31;
+        };
         const m = await start({ script: idempotent });
         const id = await addOrder(m.operator);
         let kills = 0;
@@ -158,19 +167,25 @@ describe("random kills", () => {
           }
         })();
 
-        await carryToShipped(m, id);
-        done = true;
-        await killer;
-        const settled = await carryToShipped(m, id);
+        try {
+          await carryToShipped(m, id);
+          done = true;
+          await killer;
+          const settled = await carryToShipped(m, id);
 
-        if (settled.status === "shipped") expect(undisturbed(settled)).toEqual(expected);
-        else expect(finalStop(settled).code).toBeString();
-        const committed = entriesOf(settled, ACTION.sliceCommitted).map((entry) => entry.details.commit);
-        expect(new Set(committed).size).toBe(committed.length);
-      }
-    },
-    RANDOM_KILLS_TEST_MS,
-  );
+          if (settled.status === "shipped") expect(undisturbed(settled)).toEqual(await expected());
+          else expect(finalStop(settled).code).toBeString();
+          const committed = entriesOf(settled, ACTION.sliceCommitted).map((entry) => entry.details.commit);
+          expect(new Set(committed).size).toBe(committed.length);
+        } catch (error) {
+          done = true;
+          const trace = await m.operator.sh(commandLine(["trace", id]));
+          throw new Error(`${error}\n\ndim trace ${id}:\n${trace.stdout}`);
+        }
+      },
+      RANDOM_KILLS_TEST_MS,
+    );
+  }
 });
 
 describe("command output", () => {

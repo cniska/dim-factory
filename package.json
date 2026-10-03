@@ -14,7 +14,7 @@
     "lint": "bunx biome check --error-on-warnings src acceptance",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
-    "test:acceptance": "bun test ./acceptance/*.acceptance.ts",
+    "test:acceptance": "bun test --parallel --concurrent --max-concurrency=3 ./acceptance/*.acceptance.ts",
     "verify": "bun run lint && bun run typecheck && bun test"
   },
   "devDependencies": {
