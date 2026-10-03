@@ -5,10 +5,12 @@ import { z } from "zod";
 import { everyHookCommand, settingsHooks } from "./support/claude-hooks";
 import { commandLine, parseDim, refusal, resultOf } from "./support/dim-output";
 import type { HarnessScript, HarnessTurn } from "./support/harness-script";
+import { checkHeld, holdCheck, holdingCheck, releaseCheck } from "./support/holds";
 import { type Machine, machines } from "./support/machine";
 import {
   addOrder,
   approve,
+  approveArgs,
   built,
   planned,
   STEP_ARGS_BY_NEXT,
@@ -16,7 +18,7 @@ import {
   showOrder,
 } from "./support/operator-acts";
 import { actions, entriesOf, finalStop, OrderView, sessionOf, workerOf } from "./support/order-view";
-import { commandOf, descendants, killPid } from "./support/processes";
+import { commandOf, descendantRunning, descendants, killPid } from "./support/processes";
 import {
   BUILD_ARTIFACT,
   happyPath,
@@ -42,7 +44,10 @@ async function carryToShipped(m: Machine, id: string): Promise<OrderView> {
     const ran = await m.operator.sh(commandLine(args(id)));
     last = `${ran.stdout}${ran.stderr}`.trim();
   }
-  throw new Error(`order ${id} took ${STEP_LIMIT} steps without settling; the last printed ${last}`);
+  const trace = await m.operator.sh(commandLine(["trace", id]));
+  throw new Error(
+    `order ${id} took ${STEP_LIMIT} steps without settling; the last printed ${last}\n\ndim trace ${id}:\n${trace.stdout}`,
+  );
 }
 
 const OPERATOR_ACTIONS: readonly Action[] = [ACTION.added, ACTION.run, ACTION.approved];
@@ -105,6 +110,39 @@ describe("a station worker's session killed in its turn", () => {
       for (const entry of byOperator) expect(OPERATOR_ACTIONS).toContain(entry.action);
     });
   }
+});
+
+describe("a run killed while a slice's check runs", () => {
+  test("AC-54 the next run judges the submitted slice, so each slice is submitted and committed once", async () => {
+    const m = await start({
+      check: holdingCheck,
+      script: {
+        planner: [planTurn()],
+        builder: [
+          [...sliceActs(1), ...sliceActs(2), { act: "build-return", artifact: BUILD_ARTIFACT }],
+          [{ act: "build-remaining", artifact: BUILD_ARTIFACT }],
+        ],
+        reviewer: [reviewTurn()],
+      },
+    });
+    const id = await planned(m.operator);
+    holdCheck(m);
+
+    const building = m.operator.sh(commandLine(approveArgs(id)));
+    await checkHeld(m);
+    killPid(descendantRunning(m.operator.pid, "cli.ts order approve"));
+    await building;
+    releaseCheck(m);
+    const order = await carryToShipped(m, id);
+
+    expect(order.status).toBe("shipped");
+    const submitted = entriesOf(order, ACTION.sliceSubmitted);
+    const committed = entriesOf(order, ACTION.sliceCommitted);
+    expect(submitted).toHaveLength(2);
+    expect(committed.map((entry) => entry.by)).toEqual(
+      submitted.map((entry) => ({ kind: "factory", version: expect.any(String), cause: entry.seq })),
+    );
+  });
 });
 
 describe("random kills", () => {

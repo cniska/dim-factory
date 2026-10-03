@@ -63,6 +63,8 @@ type Returned =
 
 export type Death = { readonly session: string; readonly code: DeathCode; readonly copied: boolean };
 
+export type Submitted = { readonly seq: number; readonly tip: string };
+
 export type OrderState = {
   readonly id: string;
   readonly title: string;
@@ -79,6 +81,7 @@ export type OrderState = {
   readonly buildArtifact: string | null;
   readonly conflict: Conflict | null;
   readonly died: readonly Death[];
+  readonly submitted: Submitted | null;
   readonly lastSeq: number;
 };
 
@@ -358,9 +361,30 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
     buildArtifact: null,
     conflict: null,
     died: [],
+    submitted: null,
     lastSeq: added.seq,
   };
-  return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);
+  return later.reduce(
+    (state, entry) => ({
+      ...apply(state, entry),
+      submitted: submittedAfter(state.submitted, entry),
+      lastSeq: entry.seq,
+    }),
+    start,
+  );
+}
+
+function submittedAfter(submitted: Submitted | null, entry: LaterEntry): Submitted | null {
+  switch (entry.action) {
+    case "slice_submitted":
+      return { seq: entry.seq, tip: entry.details.tip };
+    case "slice_committed":
+    case "slice_refused":
+    case "branch_rebased":
+      return null;
+    default:
+      return submitted;
+  }
 }
 
 export function operatorRefusal(by: Acting, project: string): CodedError | null {

@@ -27,7 +27,7 @@ import {
 } from "./order-ops";
 import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
 import { shipOrder } from "./ship-ops";
-import { submitSlice } from "./slice-ops";
+import { settleSubmission, submitSlice } from "./slice-ops";
 import {
   closedTurn,
   type Ended,
@@ -238,7 +238,15 @@ async function serveTurn(
 
 type Closing = TurnClose & { readonly acting: Acting };
 
+function settleLostSubmission(db: Database, turn: TurnOf): void {
+  const { submitted, project } = orderState(db, turn.order);
+  if (submitted === null) return;
+  const workspace = workspaceOf(project, turn.order);
+  settleSubmission(db, { trace: turn.trace, order: turn.order, workspace, env: turn.env }, submitted);
+}
+
 async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
+  settleLostSubmission(db, turn);
   const state = orderState(db, turn.order);
   const { station } = turn;
   const { head } = state;

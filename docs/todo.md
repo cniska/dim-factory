@@ -7,8 +7,6 @@ What is not built, highest priority first. An entry is here only for a need this
 - **A plugin skill loads under two names** — a `Skill` call names it `dim:dim-plan`, while a typed `/dim:dim-plan`, which `COMMAND_NAME` rejects for its colon, takes `dim-plan` from its body path, so `skill_load` records one skill under two names. `ingest-skill-load.ts` `COMMAND_NAME`, `ingest-parse-claude.ts`. Read the plugin name from the typed command.
 - **Worker sessions never reach the record** — the copy of each worker's transcript in `workers/<name>/sessions/` is read only by `dim session show`; ingestion reads `~/.claude/projects` alone, so no skill load or file read by a worker is queryable and no skill's effect on workers is measurable. `ingest-claude-source.ts` `listClaudeTranscripts`, `paths.ts` `workerSessionsDir`. Ingest the worker copies as sessions.
 
-- **A killed run records a slice twice** — when a run dies between `slice_submitted` and the check's verdict, the next builder submits the slice again and the log holds two `slice_submitted` entries for one commit, which AC-54's undisturbed comparison catches on some seeds. `slice-ops.ts`. A run that finds a submission with no verdict finishes that check instead of recording a new one.
-
 ## Debt
 
 Each entry is one change. [schema] entries change the schema and run with nothing else in flight.
