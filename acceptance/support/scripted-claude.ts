@@ -303,7 +303,7 @@ async function perform(act: HarnessAct): Promise<string | null> {
       return null;
     case "build-remaining": {
       for (const [index, slice] of orderShown(dim(["order", "show"])).slices.entries()) {
-        if (slice.commit !== undefined) continue;
+        if (slice.commit !== null) continue;
         for (const step of sliceActs(index + 1)) await perform(step);
       }
       return perform({ act: "build-return", artifact: act.artifact });

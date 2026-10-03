@@ -436,7 +436,7 @@ describe("shipping", () => {
     const m = await start({ script: happyPath() });
     const id = await reviewed(m.operator);
     const [first] = (await showOrder(m.operator, id)).slices;
-    if (first?.commit === undefined || first.commit === null) throw new Error("the first slice has a commit");
+    if (first === undefined || first.commit === null) throw new Error("the first slice has a commit");
     m.git(["cherry-pick", first.commit]);
 
     resultOf(await approve(m.operator, id));

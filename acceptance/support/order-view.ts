@@ -89,7 +89,11 @@ export type OrderView = {
   readonly workspace: string;
   readonly log: readonly LogEntry[];
   readonly workers: readonly WorkerView[];
-  readonly slices: readonly { readonly title: string; readonly outcome: string; readonly commit?: string }[];
+  readonly slices: readonly {
+    readonly title: string;
+    readonly outcome: string;
+    readonly commit: string | null;
+  }[];
   readonly findings: readonly FindingView[];
 };
 
@@ -130,7 +134,9 @@ export function causeOf(order: OrderView, entry: LogEntry): LogEntry {
 export function finalStop(order: OrderView): Stop {
   const last = order.log.at(-1);
   if (last === undefined || !("code" in last))
-    throw new Error(`order ${order.id}'s log does not end in a stop`);
+    throw new Error(
+      `order ${order.id} (${order.status}, next ${order.next}) ends its log in ${actions(order).slice(-6).join(", ")}, not a stop`,
+    );
   return last;
 }
 
