@@ -58,6 +58,7 @@ dim config unset ship
 | Setting | Values |
 |---|---|
 | `ship` | `default-branch` lands an approved order on the project's default branch by fast-forward |
+| `models` | User config only, edited in `config.json`: a model name for any of `planner`, `builder` and `reviewer`, and a `default` for the rest. A station refuses to start a role with no model |
 
 ## Session start
 

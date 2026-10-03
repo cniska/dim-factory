@@ -24,7 +24,7 @@ Before deciding anything, ask the record: where this shape already exists (`dim 
 A powerful model produces the design directly, with no separate planning step, and a different model argues it in rounds. Each claim the second model makes is checked at its source before it is taken, in both directions. Where a project keeps a spec, it is updated before the change is implemented.
 
 - **Check:** the design survived an independent reading, and no claim in it is unverified.
-- **Factory:** the planner, at the `deep` tier. A second model arguing the plan is a gap.
+- **Factory:** the planner, on the model the `models` setting names for it. A second model arguing the plan is a gap.
 
 ### 3. Review the contracts before building
 

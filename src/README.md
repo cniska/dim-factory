@@ -30,17 +30,19 @@ The factory's modules follow this shape, and another module reaches one only thr
 | `plan`, `build`, `review`, `finding`, `message` | The commands a station's worker runs during its turn, one file each |
 | `session` | The operator's command that prints a worker's transcript |
 | `trace` | The factory's diagnostic steps, for `dim trace` |
-| `ingest`, `agent` | Read session sources, hook events and git history into the record, on the schedule the launchd agent sets |
+| `ingest`, `agent`, `sync`, `rebuild` | Read session sources, hook events and git history into the record, on the schedule the launchd agent sets |
 | `db` | Open, lock and read the SQLite record, and its schema |
 | `query`, `sql` | The named queries over the record, and raw read-only SQL |
 | `session-start` | The repo's declared commands, passed to a new session |
 | `config` | Read settings, and edit tools' JSONC configs |
-| `comments`, `hooks`, `skill`, `rules` | Install the shared controls |
+| `file` | Copy a file aside before an installer replaces it |
+| `comments`, `hooks`, `hook`, `skill`, `skills`, `rules` | Install the shared controls; `hook` holds the hook command lines and the events they spool |
+| `format` | The format run `dim hooks edit` starts in the checkout an edit touched |
 | `git`, `repo`, `worktree`, `project`, `declared` | Repositories, their checkouts, what they declare, and folding worktree paths onto their checkout |
 | `doctor` | Report what is installed and what is out of date |
 | `cli` | Dispatch a command and print its result or refusal as one JSON line |
 | `wall/` | The read-only board; `components/` and `lib/` hold its UI primitives |
-| `coded-error`, `assert`, `paths` | Refusals with a code; `unreachable` and `invariant`; where every file lives |
+| `coded-error`, `assert`, `paths`, `pid` | Refusals with a code; `unreachable` and `invariant`; where every file lives; whether a process is alive |
 
 ## Where to start
 

@@ -24,8 +24,8 @@ Setup installs the shared controls, while each project supplies its declared che
 
 ## Borrowed from the assembly line
 
-- **Stop on a defect, never on success** (*jidoka*). A slice gate halts a failing change; the operator halts on a second failure of one order.
-- **A defect halts its own work** (*andon*). A finding stops its slice until it is answered, and a red check fails the turn it ran on.
+- **Stop on a defect, never on success** (*jidoka*). A slice gate halts a failing change, and a station fails on its worker's second return that misses the definition of done.
+- **A defect halts its own work** (*andon*). A finding holds back the Build artifact until it is answered, and a red check refuses the slice it ran on.
 - **Fix the process, not the part.** A defect found repeatedly is a gate that does not exist yet.
 - **Make the error impossible** (*poka-yoke*). Whatever is mechanical is a gate; judgement goes to an agent with a fixed brief.
 - **One piece at a time.** A slice is verified and committed before the next begins.

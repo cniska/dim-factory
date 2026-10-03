@@ -30,11 +30,11 @@ On Linux, run `dim sync` manually; the launchd installer is macOS-specific.
 
 Run an installer when setup was requested and its scope is understood. An occupied skill link is moved aside to the backup the result names; check that it pointed to a previous dim checkout, and take an unrelated occupied path or owner-specific choice to the owner. Keep configuration outside dim's planned change intact. If a loaded launchd job's plist changed, use the installer's returned remove command before its load command, then inspect the loaded job; writing the plist alone does not restart it.
 
-Run `dim doctor` again after repairs. Codex hook trust is granted in Codex, and routing or retention choices may need the owner; name those checks and the action they need. A warning is a stated limitation, not a passing check.
+Run `dim doctor` again after repairs. Codex hook trust is granted in Codex, and retention choices may need the owner; name those checks and the action they need. A warning is a stated limitation, not a passing check.
 
 ## Exit check
 
-Setup is ready when the executable, hooks, rules, skill links and routing checks are healthy, at least one harness can run a station, and `dim-factory` resolves from the shared skill directory of each installed harness. Check the executable and skill targets from a separate project checkout; both must still lead to this clone. `dim-factory` operates an existing order id, and `dim-add` creates one from a new request. Report observational doctor failures such as insufficient session-end history separately, with the evidence needed to judge them after more sessions. If an external or owner-dependent action remains, report setup as blocked with its concrete next step. On a second run with the same inputs, the installers make no changes.
+Setup is ready when the executable, hooks, rules and skill checks are healthy, the user's `config.json` names a model for every station role or a `default` ([configuration](../../../docs/usage.md#configuration)), and `dim-factory` resolves from the shared skill directory of each installed harness. Check the executable and skill targets from a separate project checkout; both must still lead to this clone. `dim-factory` operates an existing order id, and `dim-add` creates one from a new request. Report observational doctor failures such as insufficient session-end history separately, with the evidence needed to judge them after more sessions. If an external or owner-dependent action remains, report setup as blocked with its concrete next step. On a second run with the same inputs, the installers make no changes.
 
 ## Result
 
@@ -45,4 +45,4 @@ Report which controls were installed or already healthy, the final doctor result
 - calling a different `dim` from PATH
 - writing machine-wide hooks before reading what doctor says they change
 - treating a doctor's warning or failure as a successful installation
-- concealing a trust or routing decision the owner must make
+- concealing a trust or retention decision the owner must make

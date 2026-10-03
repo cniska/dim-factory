@@ -47,4 +47,4 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Answer | The builder's one reply to a finding: `fixed`, or `refused` with a reason |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |
 | Config | `dim`'s settings, from the user's and the project's JSON layers ([`usage.md`](usage.md#configuration)) |
-| Setting | One named entry of the config, taking one of a fixed set of values |
+| Setting | One named entry of the config |

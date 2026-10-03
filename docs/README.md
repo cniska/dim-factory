@@ -13,6 +13,7 @@ Each fact lives on one page and is linked from the others.
 
 ## How it works
 
+- [The factory core](core.md) — how an order runs from added to shipped
 - [The wall](wall.md) — the read-only board the owner watches
 - [Agent command reference](usage.md) — install, collect, query, gates and config
 - [Session database](design.md) — sources, schema, ingestion, hooks and read path

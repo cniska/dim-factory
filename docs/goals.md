@@ -23,8 +23,8 @@ A good example teaches more cheaply than a rule. The label comes from the owner 
 
 How a line leaves a skill or a rules file:
 
-1. **Find candidates** in the record — `q search` for rules restated by hand, `skill_load` for bodies that cost the most across their loads.
-2. **Decide by reading**, or by the skill set's ablation runner where a line is the only carrier of a behavior. The record never decides: a skill's versions are each loaded in a handful of sessions, and the text changes with the task.
+1. **Find candidates** in the record — `dim query search` for rules restated by hand, `skill_load` for bodies that cost the most across their loads.
+2. **Decide by reading.** The record never decides: a skill's versions are each loaded in a handful of sessions, and the text changes with the task.
 3. **Record the cost** — characters removed times loads in the window.
 4. **Check it held** — `skill_load.body_sha256` shows the new body arriving. It says nothing about whether sessions improved.
 

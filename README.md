@@ -10,12 +10,7 @@ dim records sessions on this machine, brings earlier work back to agents, and ru
 - **Factory.** Orders run through plan, build and review stations as separate workers in the order's workspace, with every act recorded and the owner approving each artifact.
 - **Wall.** A read-only board showing where every order is.
 
-Sessions are read from:
-
-- Claude Code
-- Codex
-
-Where those files live, and what adding another source takes, is in [the session database](docs/design.md#sources).
+[The session database](docs/design.md#sources) lists the agents whose sessions are read, where their files live, and what adding another source takes.
 
 ## Agent setup
 
