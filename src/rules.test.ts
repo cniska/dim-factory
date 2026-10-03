@@ -113,7 +113,6 @@ describe("install", () => {
     const run = () => {
       const child = Bun.spawnSync([process.execPath, join(import.meta.dir, "cli.ts"), "rules", "install"], {
         env: {
-          ...process.env,
           HOME: root,
           PATH: `${harnessesOnPath(root, ["codex"])}:${process.env.PATH}`,
         },

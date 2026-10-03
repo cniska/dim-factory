@@ -17,7 +17,7 @@ function config(args: string[]): { dir: string; run: (more: string[]) => ReturnT
     spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "config", ...args, ...more], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...process.env, HOME: join(dir, ".home") },
+      env: { PATH: process.env.PATH, HOME: join(dir, ".home") },
     });
   return { dir, run };
 }
@@ -53,7 +53,7 @@ describe("dim config", () => {
     const listed = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "config"], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...process.env, HOME: join(dir, ".home") },
+      env: { PATH: process.env.PATH, HOME: join(dir, ".home") },
     });
     expect(JSON.parse(listed.stdout).result).toMatchObject({ resolved: { ship: "default-branch" } });
   });

@@ -93,7 +93,7 @@ function purgeCommand(
   const run = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "comments", "purge", ...args], {
     cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, HOME: join(dir, ".home") },
+    env: { PATH: process.env.PATH, HOME: join(dir, ".home") },
   });
   return { status: run.status, report: JSON.parse(run.stdout).result };
 }

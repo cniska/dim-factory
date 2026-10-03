@@ -143,7 +143,7 @@ describe("skill install", () => {
     symlinkSync(join(SKILLS, "dim-retired"), stale);
 
     const run = Bun.spawnSync([process.execPath, resolve(import.meta.dir, "cli.ts"), "skills", "install"], {
-      env: { ...process.env, HOME: env.HOME, PATH: `${env.PATH}:${process.env.PATH}` },
+      env: { HOME: env.HOME, PATH: `${env.PATH}:${process.env.PATH}` },
     });
     expect(run.exitCode).toBe(0);
     expect(lstatSync(stale, { throwIfNoEntry: false })).toBeUndefined();
