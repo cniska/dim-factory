@@ -8,7 +8,7 @@ export type SkillLoadRow =
   | ({ parentUuid: string; skillName: string } & SkillBodyFields);
 
 const BODY_PREFIX = "Base directory for this skill:";
-const COMMAND_NAME = /<command-name>\/?([a-z0-9][a-z0-9-]*)<\/command-name>/i;
+const COMMAND_NAME = /<command-name>\/?([a-z0-9][a-z0-9-]*(?::[a-z0-9][a-z0-9-]*)?)<\/command-name>/i;
 const SKILL_FILE = /(?:^|[\s"'/])skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md/i;
 
 function sha256(text: string): string {
@@ -28,6 +28,11 @@ export function parseSkillBody(text: string): ({ name: string } & SkillBodyField
 
 export function skillFromCommand(text: string): string | undefined {
   return COMMAND_NAME.exec(text)?.[1];
+}
+
+export function typedSkillName(commandText: string | undefined, bodyName: string): string {
+  const named = commandText ? skillFromCommand(commandText) : undefined;
+  return named === bodyName || named?.endsWith(`:${bodyName}`) ? named : bodyName;
 }
 
 export function skillFromFileRead(command: string): string | undefined {

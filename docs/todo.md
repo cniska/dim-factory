@@ -4,7 +4,6 @@ What is not built, highest priority first. An entry is here only for a need this
 
 ## Bugs
 
-- **A plugin skill loads under two names** — a `Skill` call names it `dim:dim-plan`, while a typed `/dim:dim-plan`, which `COMMAND_NAME` rejects for its colon, takes `dim-plan` from its body path, so `skill_load` records one skill under two names. `ingest-skill-load.ts` `COMMAND_NAME`, `ingest-parse-claude.ts`. Read the plugin name from the typed command.
 - **Worker sessions never reach the record** — the copy of each worker's transcript in `workers/<name>/sessions/` is read only by `dim session show`; ingestion reads `~/.claude/projects` alone, so no skill load or file read by a worker is queryable and no skill's effect on workers is measurable. `ingest-claude-source.ts` `listClaudeTranscripts`, `paths.ts` `workerSessionsDir`. Ingest the worker copies as sessions.
 
 ## Debt

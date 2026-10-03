@@ -4,6 +4,7 @@ import { writeTransaction } from "./db";
 import { gitSubcommands } from "./git-operations";
 import { readChunk } from "./ingest-chunk";
 import type { ParsedChunk, SessionFacts } from "./ingest-session-records";
+import { typedSkillName } from "./ingest-skill-load";
 import type { Tool } from "./ingest-tools";
 import { worktreeOf } from "./worktree";
 export type Kind = "transcript" | "subagent" | "rollout";
@@ -200,6 +201,9 @@ export function createIngester(db: Database) {
      VALUES ($sessionId, $messageId, $ts, $model, $skillName, $how)
      ${skillLoadConflict}`,
   );
+  const selectMessageText = db.prepare<{ text: string | null }, [string]>(
+    "SELECT text FROM message WHERE id = ?",
+  );
   const insertTypedSkillBody = db.prepare(
     `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
        body_chars, body_sha256, skill_path)
@@ -361,10 +365,11 @@ export function createIngester(db: Database) {
         continue;
       }
       if ("parentUuid" in l) {
+        const parentText = selectMessageText.get(l.parentUuid)?.text ?? undefined;
         insertTypedSkillBody.run({
           $sessionId: spec.sessionId,
           $parentUuid: l.parentUuid,
-          $skillName: l.skillName,
+          $skillName: typedSkillName(parentText, l.skillName),
           $bodyChars: l.bodyChars,
           $bodySha256: l.bodySha256,
           $skillPath: l.skillPath,

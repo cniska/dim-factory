@@ -691,7 +691,7 @@ describe("skill loads", () => {
           message_id: "u-plugin",
           ts: at(3),
           model: null,
-          skill_name: "dim-plan",
+          skill_name: "dim:dim-plan",
           how: "user",
           body_chars: 6,
           skill_path: "/Users/x/code/dim-factory/plugin/skills/dim-plan",
@@ -730,6 +730,22 @@ describe("skill loads", () => {
     }
   });
 
+  test("keeps the body's name when the typed command names a different skill", () => {
+    const env = scratchEnv(newRoot());
+    writeTranscript(env, SESSION, [
+      typed("u-other", "dim:other"),
+      typedBody("u-other-body", "u-other", "/Users/x/code/dim-factory/plugin/skills/dim-plan"),
+    ]);
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([
+        expect.objectContaining({ message_id: "u-other", skill_name: "dim-plan" }),
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("stores a typed plugin skill the command form misses as one load the user chose", () => {
     const env = scratchEnv(newRoot());
     writeTranscript(env, SESSION, [
@@ -744,7 +760,7 @@ describe("skill loads", () => {
           message_id: "u-plugin",
           ts: at(3),
           model: null,
-          skill_name: "dim-plan",
+          skill_name: "dim:dim-plan",
           how: "user",
           body_chars: 6,
           skill_path: "/Users/x/code/dim-factory/plugin/skills/dim-plan",
