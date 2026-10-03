@@ -193,16 +193,17 @@ describe("random kills", () => {
         };
         const m = await start({ script: idempotent });
         const id = await addOrder(m.operator);
-        let kills = 0;
+        const started = Date.now();
+        const killed: string[] = [];
         let done = false;
         const killer = (async () => {
-          while (!done && kills < 3) {
+          while (!done && killed.length < 3) {
             await Bun.sleep(200 + random() * 3000);
             const targets = descendants(m.operator.pid).filter((pid) => KILLABLE.test(commandOf(pid)));
             const target = targets[Math.floor(random() * targets.length)];
             if (target === undefined || done) continue;
+            killed.push(`${Date.now() - started} ms: ${commandOf(target)}`);
             killPid(target);
-            kills++;
           }
         })();
 
@@ -219,7 +220,7 @@ describe("random kills", () => {
         } catch (error) {
           done = true;
           const trace = await m.operator.sh(commandLine(["trace", id]));
-          throw new Error(`${error}\n\ndim trace ${id}:\n${trace.stdout}`);
+          throw new Error(`${error}\n\nkilled:\n${killed.join("\n")}\n\ndim trace ${id}:\n${trace.stdout}`);
         }
       },
       RANDOM_KILLS_TEST_MS,

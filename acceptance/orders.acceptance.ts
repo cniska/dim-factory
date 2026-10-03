@@ -34,6 +34,10 @@ function signingKey(): string {
   return key;
 }
 
+function workspacePath(m: Machine, id: string): string {
+  return join(m.env.HOME, ".local", "share", "dim-factory", "workspaces", "acme", "widgets", id);
+}
+
 function signWith(m: Machine, key: string): void {
   m.git(["config", "gpg.format", "ssh"]);
   m.git(["config", "user.signingkey", key]);
@@ -551,17 +555,50 @@ describe("shipping", () => {
   test("AC-16 an order whose workspace git could not make gets it on the next run", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
-    m.git(["branch", `dim/${id}`]);
+    const path = workspacePath(m, id);
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, "the owner's file\n");
     expect(refusal(await runOrder(m.operator, id)).code).toBe("workspace_failed");
     expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.workspaceCreated);
 
-    m.git(["branch", "-D", `dim/${id}`]);
+    rmSync(path);
     resultOf(await runOrder(m.operator, id));
 
     const order = await showOrder(m.operator, id);
     expect(existsSync(order.workspace)).toBe(true);
     expect(order.next).toBe(NEXT.approve);
   });
+
+  const interrupted: readonly { readonly name: string; readonly leave: (m: Machine, id: string) => void }[] =
+    [
+      { name: "its branch", leave: (m, id) => m.git(["branch", `dim/${id}`]) },
+      {
+        name: "a registered worktree whose directory is gone",
+        leave: (m, id) => {
+          m.git(["worktree", "add", "-q", "-b", `dim/${id}`, workspacePath(m, id)]);
+          rmSync(workspacePath(m, id), { recursive: true, force: true });
+        },
+      },
+      {
+        name: "a registered worktree",
+        leave: (m, id) => m.git(["worktree", "add", "-q", "-b", `dim/${id}`, workspacePath(m, id)]),
+      },
+    ];
+
+  for (const { name, leave } of interrupted) {
+    test(`AC-54 a run killed while making the workspace, leaving ${name}, is repaired by the next run`, async () => {
+      const m = await start({ script: happyPath() });
+      const id = await addOrder(m.operator);
+      leave(m, id);
+
+      resultOf(await runOrder(m.operator, id));
+
+      const order = await showOrder(m.operator, id);
+      expect(existsSync(order.workspace)).toBe(true);
+      expect(actions(order)).toContain(ACTION.workspaceCreated);
+      expect(order.next).toBe(NEXT.approve);
+    });
+  }
 
   test("AC-12 an order whose workspace cannot be removed is still shipped and names what it kept", async () => {
     const m = await start({ script: happyPath() });

@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { git, ran } from "./git";
 import type { Env } from "./paths";
 import type { Trace } from "./trace-contract";
@@ -16,9 +17,19 @@ const REBASE = [
   "--no-update-refs",
 ];
 
+function registered(root: string, dir: string): boolean {
+  const parent = dirname(dir);
+  const recorded = existsSync(parent) ? join(realpathSync(parent), basename(dir)) : dir;
+  return ran(root, ["worktree", "list", "--porcelain"]).split("\n").includes(`worktree ${recorded}`);
+}
+
 export function addWorktree(trace: Trace, root: string, dir: string, branch: string, base: string): void {
   trace.step("worktree_add", { dir, base }, () => {
-    const added = git(root, [...NO_HOOKS, "worktree", "add", "-q", "-b", branch, dir, base]);
+    if (registered(root, dir)) {
+      const removed = git(root, ["worktree", "remove", "--force", dir]);
+      if (removed.status !== 0) throw refuseWorkspace("workspace_failed", { dir, detail: removed.err });
+    }
+    const added = git(root, [...NO_HOOKS, "worktree", "add", "-q", "-B", branch, dir, base]);
     if (added.status !== 0) throw refuseWorkspace("workspace_failed", { dir, detail: added.err });
   });
 }
