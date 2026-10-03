@@ -29,9 +29,6 @@ export type Models = Readonly<Partial<Record<"default" | StationRole, string>>>;
 
 export type MachineEnv = Readonly<Record<string, string>> & {
   readonly HOME: string;
-  readonly XDG_CONFIG_HOME: string;
-  readonly XDG_DATA_HOME: string;
-  readonly XDG_STATE_HOME: string;
   readonly TMPDIR: string;
   readonly PATH: string;
 };
@@ -140,9 +137,8 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
   const root = machineRoot(tmpdir());
   const bin = join(root, "bin");
   const home = join(root, "home");
-  const xdg = { config: join(root, "config"), data: join(root, "data"), state: join(root, "state") };
-  const config = join(xdg.config, "dim");
-  const record = join(xdg.data, ...RECORD);
+  const config = join(home, ".config", "dim");
+  const record = join(home, ".local", "share", ...RECORD);
   const state = join(root, "harness");
   const repo = join(root, "repo");
   for (const dir of [bin, home, config, state]) mkdirSync(dir, { recursive: true });
@@ -158,9 +154,6 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     HOME: home,
     PATH: `${bin}:${process.env.PATH ?? ""}`,
     TMPDIR: process.env.TMPDIR ?? tmpdir(),
-    XDG_CONFIG_HOME: xdg.config,
-    XDG_DATA_HOME: xdg.data,
-    XDG_STATE_HOME: xdg.state,
   };
   let user: { readonly settings: Readonly<Record<string, unknown>>; readonly models: Models } = {
     settings: {},

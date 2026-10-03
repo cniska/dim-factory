@@ -8,7 +8,7 @@ import type { Identity } from "./git";
 import type { Adapter, Outcome, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
 import { type DeathCode, type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
-import type { Env } from "./paths";
+import { type Env, xdgHomes } from "./paths";
 import type { SkillName } from "./skill";
 import {
   type BuildReturn,
@@ -30,8 +30,6 @@ export function modelOf(models: Models | undefined, role: StationRole): string |
   return models?.[role] ?? models?.default ?? null;
 }
 
-const XDG = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"] as const;
-
 export type Turn = {
   readonly dir: string;
   readonly home: string;
@@ -46,7 +44,8 @@ export function workerEnv(
   { signIn, tempRoot }: Pick<Adapter, "signIn" | "tempRoot">,
 ): Record<string, string> {
   return {
-    ...listedEnv(owner, [...PASSED_THROUGH, ...XDG, ...signIn]),
+    ...listedEnv(owner, [...PASSED_THROUGH, ...signIn]),
+    ...xdgHomes(owner),
     HOME: turn.home,
     TMPDIR: turn.tmp,
     [tempRoot]: turn.tmp,

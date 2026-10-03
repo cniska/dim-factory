@@ -308,7 +308,7 @@ describe("the trace", () => {
     const id = await planned(m.operator);
     const before = await showOrder(m.operator, id);
 
-    const trace = join(m.env.XDG_STATE_HOME, "dim-factory", "trace.jsonl");
+    const trace = join(m.env.HOME, ".local", "state", "dim-factory", "trace.jsonl");
     expect(existsSync(trace)).toBe(true);
     rmSync(trace);
 

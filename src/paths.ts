@@ -17,6 +17,14 @@ function xdgBase(env: Env, variable: string, fallback: readonly string[]): strin
   return value && isAbsolute(value) ? value : join(resolveHomeDir(env), ...fallback);
 }
 
+export function xdgHomes(env: Env): Record<"XDG_CONFIG_HOME" | "XDG_DATA_HOME" | "XDG_STATE_HOME", string> {
+  return {
+    XDG_CONFIG_HOME: xdgBase(env, "XDG_CONFIG_HOME", [".config"]),
+    XDG_DATA_HOME: xdgBase(env, "XDG_DATA_HOME", [".local", "share"]),
+    XDG_STATE_HOME: xdgBase(env, "XDG_STATE_HOME", [".local", "state"]),
+  };
+}
+
 export function configDir(env: Env = process.env): string {
   return join(xdgBase(env, "XDG_CONFIG_HOME", [".config"]), CONFIG_NAME);
 }
