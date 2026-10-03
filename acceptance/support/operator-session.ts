@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
+import type { z } from "zod";
 import { hookCommands, settingsHooks } from "./claude-hooks";
 import { commandLine, type DimResult, parseDim, quote, type Ran } from "./dim-output";
 import type { MachineEnv } from "./machine";
@@ -47,12 +48,12 @@ export class OperatorSession {
     };
   }
 
-  async dim(args: readonly string[]): Promise<DimResult> {
-    return parseDim(await this.sh(commandLine(args)));
+  async dim<T>(args: readonly string[], schema: z.ZodType<T>): Promise<DimResult<T>> {
+    return parseDim(await this.sh(commandLine(args)), schema);
   }
 
-  async dimIn(cwd: string, args: readonly string[]): Promise<DimResult> {
-    return parseDim(await this.sh(`(cd ${quote(cwd)} && exec ${commandLine(args)})`));
+  async dimIn<T>(cwd: string, args: readonly string[], schema: z.ZodType<T>): Promise<DimResult<T>> {
+    return parseDim(await this.sh(`(cd ${quote(cwd)} && exec ${commandLine(args)})`), schema);
   }
 
   async fire(event: "SessionStart" | "SessionEnd"): Promise<void> {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { settingsPath } from "./support/claude-hooks";
 import { transcriptPath } from "./support/claude-transcript";
 import { parseDim, refusal, resultOf } from "./support/dim-output";
@@ -18,7 +19,7 @@ import {
   transcriptOf,
   updateOrder,
 } from "./support/operator-acts";
-import { actions, entriesOf, entryOf, sessionOf, workerOf } from "./support/order-view";
+import { actions, entriesOf, entryOf, OrderView, sessionOf, workerOf } from "./support/order-view";
 import { BUILD_ARTIFACT, buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
 import { ACTION, NEXT, REFUSAL, STATION_ROLES, WORKER_ROLES } from "./support/vocabulary";
 
@@ -57,7 +58,10 @@ describe("the operator", () => {
     const second = m.createOperator();
     await second.fire("SessionStart");
 
-    const refused = await second.dim(["order", "add", "--title", "Mine", "--description", "Do my thing."]);
+    const refused = await second.dim(
+      ["order", "add", "--title", "Mine", "--description", "Do my thing."],
+      OrderView,
+    );
 
     expect(refusal(refused).code).toBe(REFUSAL.notOperator);
   });
@@ -71,11 +75,14 @@ describe("the operator", () => {
       stderr: "pipe",
     });
 
-    const result = parseDim({
-      exitCode: ran.exitCode,
-      stdout: ran.stdout.toString(),
-      stderr: ran.stderr.toString(),
-    });
+    const result = parseDim(
+      {
+        exitCode: ran.exitCode,
+        stdout: ran.stdout.toString(),
+        stderr: ran.stderr.toString(),
+      },
+      OrderView,
+    );
     expect(refusal(result).code).toBe(REFUSAL.noSession);
   });
 
@@ -90,7 +97,7 @@ describe("the operator", () => {
       ["order", "cancel", id, "--reason", "not mine"],
       ["order", "add", "--title", "Mine", "--description", "Do my thing."],
     ]) {
-      expect(refusal(await bystander.dim(args)).code).toBe(REFUSAL.notOperator);
+      expect(refusal(await bystander.dim(args, OrderView)).code).toBe(REFUSAL.notOperator);
     }
     expect((await showOrder(m.operator, id)).status).toBe("queued");
   });
@@ -110,7 +117,7 @@ describe("the operator", () => {
       ["review", "return", "--findings", findings],
       ["build", "return", plan],
     ]) {
-      expect(refusal(await m.operator.dim(args)).code).toBeString();
+      expect(refusal(await m.operator.dim(args, z.never())).code).toBeString();
     }
     expect(await showOrder(m.operator, id)).toEqual(before);
   });
@@ -247,7 +254,7 @@ describe("station workers", () => {
     const intruder = m.createOperator();
     await intruder.fire("SessionStart");
 
-    const refused = await intruder.dimIn(workspace, ["slice", "submit"]);
+    const refused = await intruder.dimIn(workspace, ["slice", "submit"], z.never());
     m.release("build");
     await building;
 

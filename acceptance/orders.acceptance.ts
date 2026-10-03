@@ -18,7 +18,7 @@ import {
   shipThrough,
   showOrder,
 } from "./support/operator-acts";
-import { actions, entriesOf, entryOf, type OrderView, workerOf } from "./support/order-view";
+import { actions, entriesOf, entryOf, OrderView, workerOf } from "./support/order-view";
 import { descendantRunning, killPid } from "./support/processes";
 import { buildTurn, happyPath, planTurn, reviewTurn } from "./support/scripts";
 import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
@@ -90,8 +90,8 @@ describe("an order from added to shipped", () => {
     const elsewhere = mkdtempSync(join(m.root, "elsewhere-"));
     const args = ["order", "add", "--title", "Greet", "--description", "Add a greeting."];
 
-    const unnamed = await m.operator.dimIn(elsewhere, args);
-    const named = await m.operator.dimIn(elsewhere, [...args, "--project", "acme/widgets"]);
+    const unnamed = await m.operator.dimIn(elsewhere, args, OrderView);
+    const named = await m.operator.dimIn(elsewhere, [...args, "--project", "acme/widgets"], OrderView);
 
     expect(refusal(unnamed).code).toBeString();
     resultOf(named);
@@ -239,7 +239,7 @@ describe("returns and approvals", () => {
       ["order", "approve", id, "--to", "build", "--reason", "x", "--decided", "owner"],
       ["order", "return", id, "--to", "plan", "--reason", "x", "--decided", "owner"],
     ]) {
-      expect(refusal(await m.operator.dim(args)).code).toBe(REFUSAL.usage);
+      expect(refusal(await m.operator.dim(args, OrderView)).code).toBe(REFUSAL.usage);
     }
   });
 });
@@ -477,7 +477,7 @@ describe("shipping", () => {
     m.git(["symbolic-ref", "-d", "refs/remotes/origin/HEAD"]);
 
     const refused = refusal(
-      await m.operator.dim(["order", "cancel", id, "--reason", "Not wanted any more."]),
+      await m.operator.dim(["order", "cancel", id, "--reason", "Not wanted any more."], OrderView),
     );
 
     expect(refused.code).toBe("no_default_branch");

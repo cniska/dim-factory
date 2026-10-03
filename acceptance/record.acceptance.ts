@@ -19,7 +19,7 @@ import {
   entriesOf,
   entryOf,
   type LogEntry,
-  type OrderView,
+  OrderView,
   sessionOf,
   workerOf,
 } from "./support/order-view";
@@ -112,11 +112,14 @@ describe("attribution", () => {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const result = parseDim({
-      exitCode: ran.exitCode,
-      stdout: ran.stdout.toString(),
-      stderr: ran.stderr.toString(),
-    });
+    const result = parseDim(
+      {
+        exitCode: ran.exitCode,
+        stdout: ran.stdout.toString(),
+        stderr: ran.stderr.toString(),
+      },
+      OrderView,
+    );
 
     expect(refusal(result).code).toBe(REFUSAL.noSession);
     expect((await showOrder(m.operator, id)).status).toBe("queued");
@@ -126,7 +129,7 @@ describe("attribution", () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
     for (const flag of ["--by", "--worker", "--session", "--as"]) {
-      const refused = await m.operator.dim(["order", "run", id, flag, "someone"]);
+      const refused = await m.operator.dim(["order", "run", id, flag, "someone"], OrderView);
       expect(refusal(refused).code).toBe(REFUSAL.usage);
     }
   });
@@ -196,7 +199,7 @@ describe("decisions", () => {
       ["order", "return", id, "--decided", "owner"],
       ["order", "cancel", id],
     ]) {
-      expect(refusal(await m.operator.dim(args)).code).toBeString();
+      expect(refusal(await m.operator.dim(args, OrderView)).code).toBeString();
     }
     resultOf(await approve(m.operator, id));
 

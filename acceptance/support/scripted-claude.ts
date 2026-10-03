@@ -12,9 +12,9 @@ import {
   writeAllowed,
 } from "./claude-sandbox";
 import { claudeLine, readTranscript, type TranscriptEntry, transcriptPath } from "./claude-transcript";
-import { commandLine, parseDim } from "./dim-output";
+import { commandLine, parseDim, resultOf } from "./dim-output";
 import { type HarnessAct, ORDER_PLACEHOLDER, TMPDIR_PLACEHOLDER } from "./harness-script";
-import { orderShown } from "./order-view";
+import { OrderView } from "./order-view";
 import {
   type Invocation,
   recordInvocation,
@@ -230,14 +230,18 @@ const shell = (command: string) =>
     stdout: "pipe",
     stderr: "pipe",
   });
-const dim: Dim = (args) => {
+const dim: Dim = (args, schema) => {
   const ran = shell(commandLine(args));
   if (ran.signalCode) refuse(`scripted claude: \`dim ${args.join(" ")}\` was killed by ${ran.signalCode}`);
-  return parseDim({ exitCode: ran.exitCode, stdout: ran.stdout.toString(), stderr: ran.stderr.toString() });
+  return parseDim(
+    { exitCode: ran.exitCode, stdout: ran.stdout.toString(), stderr: ran.stderr.toString() },
+    schema,
+  );
 };
 
-const withOrder = (text: string) =>
-  text.replaceAll(ORDER_PLACEHOLDER, () => orderShown(dim(["order", "show"])).id);
+const shownOrder = () => resultOf(dim(["order", "show"], OrderView));
+
+const withOrder = (text: string) => text.replaceAll(ORDER_PLACEHOLDER, () => shownOrder().id);
 
 function tool(name: string, input: Readonly<Record<string, unknown>>, run: () => string): void {
   const id = `toolu_${crypto.randomUUID()}`;
@@ -302,7 +306,7 @@ async function perform(act: HarnessAct): Promise<string | null> {
       await waitFor(`the release of ${act.name}`, () => existsSync(releasePath(state, act.name)));
       return null;
     case "build-remaining": {
-      for (const [index, slice] of orderShown(dim(["order", "show"])).slices.entries()) {
+      for (const [index, slice] of shownOrder().slices.entries()) {
         if (slice.commit !== null) continue;
         for (const step of sliceActs(index + 1)) await perform(step);
       }

@@ -1,7 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { commandLine, type DimResult, quote } from "./dim-output";
-import { orderShown } from "./order-view";
+import type { z } from "zod";
+import { commandLine, type DimResult, quote, resultOf } from "./dim-output";
+import { OrderView } from "./order-view";
 import { unreachable } from "./unreachable";
 
 export type Slice = { readonly title: string; readonly outcome: string };
@@ -55,7 +56,7 @@ export function isWorkerAct(act: { readonly act: string }): act is WorkerAct {
   return Object.hasOwn(WORKER_ACTS, act.act);
 }
 
-export type Dim = (args: readonly string[]) => DimResult;
+export type Dim = <T>(args: readonly string[], schema: z.ZodType<T>) => DimResult<T>;
 
 function written(scratch: string, name: string, body: string): string {
   const path = join(scratch, `${crypto.randomUUID()}-${name}`);
@@ -64,7 +65,7 @@ function written(scratch: string, name: string, body: string): string {
 }
 
 function findingId(dim: Dim, file: string, line: number): string {
-  const found = orderShown(dim(["order", "show"])).findings.find(
+  const found = resultOf(dim(["order", "show"], OrderView)).findings.find(
     (finding) => finding.file === file && finding.line === line,
   );
   if (!found) throw new Error(`no finding at ${file}:${line} on this worker's order`);

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { refusal } from "./support/dim-output";
 import { machines, PROJECT_SETTINGS } from "./support/machine";
 import { approve, reviewed, showOrder } from "./support/operator-acts";
-import { actions, entryOf } from "./support/order-view";
+import { actions, entryOf, OrderView } from "./support/order-view";
 import { BUILD_ARTIFACT, happyPath, sliceActs } from "./support/scripts";
 import { ACTION } from "./support/vocabulary";
 
@@ -30,14 +30,10 @@ describe("settings", () => {
     const m = await start({ script: happyPath() });
     m.projectSettings({ ...PROJECT_SETTINGS, shipping: "default-branch" });
 
-    const refused = await m.operator.dim([
-      "order",
-      "add",
-      "--title",
-      "Greet",
-      "--description",
-      "Add a greeting.",
-    ]);
+    const refused = await m.operator.dim(
+      ["order", "add", "--title", "Greet", "--description", "Add a greeting."],
+      OrderView,
+    );
 
     expect(refusal(refused).code).toBeString();
     expect(JSON.stringify(refusal(refused))).toContain("shipping");

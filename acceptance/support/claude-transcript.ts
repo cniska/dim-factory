@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 
 export type TranscriptEntry =
   | { readonly type: "user"; readonly text: string }
@@ -12,42 +13,58 @@ export type TranscriptEntry =
   | { readonly type: "tool_result"; readonly id: string; readonly output: string }
   | { readonly type: "assistant"; readonly text: string };
 
-type ClaudeBlock = {
-  readonly type: string;
-  readonly text?: string;
-  readonly id?: string;
-  readonly name?: string;
-  readonly input?: Readonly<Record<string, unknown>>;
-  readonly tool_use_id?: string;
-  readonly content?: string | readonly { readonly type: string; readonly text?: string }[];
-};
+const Block = z.looseObject({ type: z.string() });
 
-export type ClaudeLine = {
-  readonly type: string;
-  readonly message?: { readonly role: string; readonly content: string | readonly ClaudeBlock[] };
-};
+type Block = z.infer<typeof Block>;
+
+const Text = z.looseObject({ type: z.literal("text"), text: z.string() });
+
+const Read = z.discriminatedUnion("type", [
+  Text,
+  z.looseObject({
+    type: z.literal("tool_use"),
+    id: z.string(),
+    name: z.string(),
+    input: z.record(z.string(), z.unknown()),
+  }),
+  z.looseObject({
+    type: z.literal("tool_result"),
+    tool_use_id: z.string(),
+    content: z.union([z.string(), z.array(Block).readonly()]),
+  }),
+]);
+
+const READ_TYPES: readonly string[] = ["text", "tool_use", "tool_result"];
+
+export const ClaudeLine = z.looseObject({
+  type: z.string(),
+  message: z
+    .looseObject({ role: z.string(), content: z.union([z.string(), z.array(Block).readonly()]) })
+    .optional(),
+});
+
+type ClaudeLine = z.infer<typeof ClaudeLine>;
 
 export function transcriptPath(home: string, cwd: string, sessionId: string): string {
   return join(home, ".claude", "projects", cwd.replace(/[^A-Za-z0-9]/g, "-"), `${sessionId}.jsonl`);
 }
 
-function resultText(content: ClaudeBlock["content"]): string {
-  if (content === undefined) return "";
-  if (typeof content === "string") return content;
-  return content
-    .flatMap((part) => (part.type === "text" && part.text !== undefined ? [part.text] : []))
-    .join("\n");
-}
-
-function entryOf(block: ClaudeBlock): TranscriptEntry | null {
-  if (block.type === "text") return { type: "assistant", text: block.text ?? "" };
-  if (block.type === "tool_use") {
-    return { type: "tool_use", id: block.id ?? "", name: block.name ?? "", input: block.input ?? {} };
+function entryOf(block: Block): TranscriptEntry | null {
+  if (!READ_TYPES.includes(block.type)) return null;
+  const read = Read.parse(block);
+  switch (read.type) {
+    case "text":
+      return { type: "assistant", text: read.text };
+    case "tool_use":
+      return { type: "tool_use", id: read.id, name: read.name, input: read.input };
+    case "tool_result": {
+      const output =
+        typeof read.content === "string"
+          ? read.content
+          : read.content.flatMap((part) => (part.type === "text" ? [Text.parse(part).text] : [])).join("\n");
+      return { type: "tool_result", id: read.tool_use_id, output };
+    }
   }
-  if (block.type === "tool_result") {
-    return { type: "tool_result", id: block.tool_use_id ?? "", output: resultText(block.content) };
-  }
-  return null;
 }
 
 function entriesOf(line: ClaudeLine): readonly TranscriptEntry[] {
@@ -104,6 +121,6 @@ export function readTranscript(path: string): readonly TranscriptEntry[] {
       .trim()
       .split("\n")
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as ClaudeLine),
+      .map((line) => ClaudeLine.parse(JSON.parse(line))),
   );
 }

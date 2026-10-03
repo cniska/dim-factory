@@ -1,105 +1,171 @@
-import { type DimResult, resultOf } from "./dim-output";
-import type { Action, Decider, Next, Station, WorkerRole } from "./vocabulary";
+import { z } from "zod";
+import type { Action, WorkerRole } from "./vocabulary";
 
-type Actor =
-  | { readonly kind: "worker"; readonly worker: string; readonly session: string }
-  | { readonly kind: "factory"; readonly version: string; readonly cause: number };
+const Station = z.enum(["plan", "build", "review"]);
 
-type Shared = { readonly seq: number; readonly at: string; readonly by: Actor };
+const Actor = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("worker"), worker: z.string(), session: z.string() }),
+  z.strictObject({ kind: z.literal("factory"), version: z.string(), cause: z.number() }),
+]);
 
-type Evidence = {
-  readonly kind: "check";
-  readonly command: string;
-  readonly exitCode: number | null;
-  readonly output: string;
-};
+const Evidence = z.strictObject({
+  kind: z.literal("check"),
+  command: z.string(),
+  exitCode: z.number().nullable(),
+  output: z.string(),
+});
 
-type Details = Readonly<Record<string, unknown>>;
+const evidence = { evidence: z.array(Evidence).readonly() };
 
-type Decision = { readonly station: Station; readonly reason: string; readonly decidedBy: Decider };
+const checked = { evidence: z.tuple([Evidence]).readonly() };
 
-type Detailed =
-  | { readonly action: "artifact_approved"; readonly details: Decision }
-  | { readonly action: "artifact_returned"; readonly details: Decision }
-  | {
-      readonly action: "order_returned";
-      readonly details: { readonly station: Station; readonly reason: string };
-    }
-  | { readonly action: "order_cancelled"; readonly details: { readonly reason: string } }
-  | { readonly action: "message_sent"; readonly details: { readonly to: string } }
-  | { readonly action: "session_died"; readonly code: string; readonly details: { readonly session: string } }
-  | { readonly action: "station_failed"; readonly code: string; readonly details: Details }
-  | { readonly action: "ship_stopped"; readonly code: string; readonly details: Details }
-  | {
-      readonly action: "slice_refused";
-      readonly code: string;
-      readonly details: Details;
-      readonly evidence?: readonly Evidence[];
-    }
-  | {
-      readonly action: "slice_committed";
-      readonly details: { readonly commit: string };
-      readonly evidence: readonly Evidence[];
-    }
-  | { readonly action: "ship_landed"; readonly details: Details; readonly evidence: readonly Evidence[] }
-  | { readonly action: "branch_rebased"; readonly details: Details; readonly evidence: readonly Evidence[] };
+const shared = { seq: z.number(), ts: z.string(), by: Actor };
 
-type PlainAction = Exclude<Action, Detailed["action"]>;
+const entry = <A extends string, D extends z.ZodRawShape>(action: A, details: D) =>
+  z.strictObject({ ...shared, action: z.literal(action), details: z.strictObject(details) });
 
-type Plain = { readonly [A in PlainAction]: { readonly action: A; readonly details: Details } }[PlainAction];
+const stop = <A extends string, C extends string, D extends z.ZodRawShape>(action: A, code: C, details: D) =>
+  z.strictObject({
+    ...shared,
+    action: z.literal(action),
+    code: z.literal(code),
+    details: z.strictObject(details),
+  });
 
-export type LogEntry = Shared & (Detailed | Plain);
+const decision = { station: Station, reason: z.string(), decidedBy: z.enum(["owner", "operator"]) };
+const session = { session: z.string() };
+const dying = { ...session, copied: z.boolean() };
+const tip = { tip: z.string() };
+const exited = { command: z.string(), exitCode: z.number().nullable() };
+const message = { to: z.string(), text: z.string() };
+const slice = z.strictObject({ title: z.string(), outcome: z.string() });
+
+const Finding = z.strictObject({
+  id: z.string(),
+  area: z.string(),
+  file: z.string(),
+  line: z.number(),
+  failure: z.string(),
+  fix: z.string(),
+  severity: z.enum(["critical", "high", "medium"]),
+});
+
+const LogEntry = z.union([
+  entry("order_added", { title: z.string(), description: z.string(), project: z.string() }),
+  entry("order_updated", { title: z.string(), description: z.string() }),
+  entry("order_run", {}),
+  entry("workspace_created", { base: z.string() }),
+  entry("order_cancelled", { reason: z.string() }),
+  entry("artifact_approved", decision),
+  entry("artifact_returned", decision),
+  entry("order_returned", { station: Station, reason: z.string() }),
+  entry("plan_returned", { body: z.string(), slices: z.array(slice).readonly() }),
+  entry("slice_submitted", tip),
+  entry("slice_committed", { commit: z.string() }).extend(evidence),
+  stop("slice_refused", "head_moved", { ...tip, head: z.string() }),
+  stop("slice_refused", "check_changed", tip),
+  stop("slice_refused", "workspace_dirty", tip),
+  stop("slice_refused", "no_check", tip),
+  stop("slice_refused", "check_failed", { ...tip, ...exited }).extend(checked),
+  stop("slice_refused", "check_rewrote", { ...tip, command: z.string() }).extend(checked),
+  stop("slice_refused", "not_rebased", { ...tip, onto: z.string(), commits: z.number() }),
+  entry("finding_answered", {
+    finding: z.string(),
+    answer: z.enum(["fixed", "refused"]),
+    reason: z.string(),
+  }),
+  entry("build_returned", { artifact: z.string() }),
+  entry("review_returned", {
+    returned: z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("findings"), findings: z.array(Finding).readonly() }),
+      z.strictObject({
+        kind: z.literal("artifact"),
+        artifact: z.strictObject({
+          body: z.string(),
+          covered: z.array(z.string()).readonly(),
+          setAside: z.array(z.string()).readonly(),
+          unverified: z.array(z.string()).readonly(),
+        }),
+      }),
+    ]),
+  }),
+  entry("message_sent", message),
+  stop("message_refused", "not_to_operator", message),
+  entry("session_started", { worker: z.string(), session: z.string(), harness: z.enum(["codex", "claude"]) }),
+  stop("session_died", "usage_limit", { ...dying, resetsAt: z.string().nullable() }),
+  stop("session_died", "killed", dying),
+  stop("session_died", "resume_failed", dying),
+  stop("station_failed", "no_return", session),
+  stop("station_failed", "return_missed", { ...session, missed: z.string() }),
+  stop("station_failed", "session_died", session),
+  stop("station_failed", "git_config_changed", session),
+  entry("ship_started", {}),
+  entry("branch_rebased", {
+    head: z.string(),
+    onto: z.string(),
+    commits: z.array(z.strictObject({ from: z.string(), to: z.string() })).readonly(),
+  }).extend(evidence),
+  stop("ship_stopped", "ship_unset", {}),
+  stop("ship_stopped", "checkout_dirty", { checkout: z.string(), reason: z.string() }),
+  stop("ship_stopped", "ship_conflict", { onto: z.string(), paths: z.array(z.string()).readonly() }),
+  stop("ship_stopped", "rebase_failed", { onto: z.string(), reason: z.string() }),
+  stop("ship_stopped", "ship_check_failed", { head: z.string(), ...exited }).extend(checked),
+  stop("ship_stopped", "ship_no_check", { head: z.string() }),
+  entry("ship_landed", {
+    head: z.string(),
+    kept: z
+      .array(
+        z.discriminatedUnion("kind", [
+          z.strictObject({ kind: z.literal("workspace"), dir: z.string(), reason: z.string() }),
+          z.strictObject({ kind: z.literal("branch"), branch: z.string(), reason: z.string() }),
+        ]),
+      )
+      .readonly(),
+  }).extend(checked),
+]);
+
+export type LogEntry = z.infer<typeof LogEntry>;
 
 type EntryOf<A extends Action> = Extract<LogEntry, { readonly action: A }>;
 
 type Stop = Extract<LogEntry, { readonly code: string }>;
 
-type SessionView = {
-  readonly id: string;
-  readonly harness: string;
-  readonly pid: number;
-  readonly died?: { readonly code: string };
-};
+const SessionView = z.strictObject({
+  id: z.string(),
+  harness: z.enum(["codex", "claude"]),
+  pid: z.number(),
+  died: z.strictObject({ code: z.string() }).optional(),
+});
 
-type WorkerView = {
-  readonly name: string;
-  readonly role: WorkerRole;
-  readonly createdBy?: string;
-  readonly sessions: readonly SessionView[];
-};
+type SessionView = z.infer<typeof SessionView>;
 
-type FindingView = {
-  readonly id: string;
-  readonly area: string;
-  readonly file: string;
-  readonly line: number;
-  readonly answer?: "fixed" | "refused";
-};
+const WorkerView = z.strictObject({
+  name: z.string(),
+  role: z.enum(["operator", "planner", "builder", "reviewer"]),
+  createdBy: z.string().optional(),
+  sessions: z.array(SessionView).readonly(),
+});
 
-export type OrderView = {
-  readonly id: string;
-  readonly title: string;
-  readonly project: string;
-  readonly description: string;
-  readonly status: "queued" | "running" | "shipped" | "cancelled";
-  readonly station: Station | null;
-  readonly next: Next | null;
-  readonly admits: readonly string[];
-  readonly branch: string;
-  readonly workspace: string;
-  readonly log: readonly LogEntry[];
-  readonly workers: readonly WorkerView[];
-  readonly slices: readonly {
-    readonly title: string;
-    readonly outcome: string;
-    readonly commit: string | null;
-  }[];
-  readonly findings: readonly FindingView[];
-};
+type WorkerView = z.infer<typeof WorkerView>;
 
-export function orderShown(result: DimResult): OrderView {
-  return resultOf(result) as OrderView;
-}
+export const OrderView = z.strictObject({
+  id: z.string(),
+  title: z.string(),
+  project: z.string(),
+  description: z.string(),
+  status: z.enum(["queued", "running", "shipped", "cancelled"]),
+  station: Station.nullable(),
+  next: z.enum(["run", "approve", "update"]).nullable(),
+  admits: z.array(z.enum(["run", "approve", "return", "update", "cancel", "message"])).readonly(),
+  branch: z.string(),
+  workspace: z.string(),
+  log: z.array(LogEntry).readonly(),
+  workers: z.array(WorkerView).readonly(),
+  slices: z.array(slice.extend({ commit: z.string().nullable() })).readonly(),
+  findings: z.array(Finding.extend({ answer: z.enum(["fixed", "refused"]).optional() })).readonly(),
+});
+
+export type OrderView = z.infer<typeof OrderView>;
 
 export function workerOf(order: OrderView, role: WorkerRole): WorkerView {
   const found = order.workers.find((worker) => worker.role === role);

@@ -339,7 +339,7 @@ describe("slice gates", () => {
     const order = await showOrder(m.operator, id);
     const committed = entryOf(order, ACTION.sliceCommitted).details.commit;
     const refused = entryOf(order, ACTION.sliceRefused);
-    expect(refused.code).toBe(REFUSAL.headMoved);
+    if (refused.code !== REFUSAL.headMoved) throw new Error(`the slice was refused ${refused.code}`);
     expect(refused.details.head).toBe(committed);
     expect(m.git(["rev-parse", order.branch])).toBe(committed);
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
@@ -358,9 +358,9 @@ describe("slice gates", () => {
     const order = await showOrder(m.operator, id);
 
     const refused = entryOf(order, ACTION.sliceRefused);
-    expect(refused.code).toBeString();
+    if (refused.code !== "check_failed") throw new Error(`the slice was refused ${refused.code}`);
     expect(JSON.stringify(refused.evidence)).toContain("RED-CHECK-OUTPUT");
-    expect(refused.details.command).toBe(refused.evidence?.[0]?.command);
+    expect(refused.details.command).toBe(refused.evidence[0].command);
     expect(refused.details.exitCode).toBe(1);
   });
 

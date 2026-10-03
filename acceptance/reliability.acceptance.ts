@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { everyHookCommand, settingsHooks } from "./support/claude-hooks";
 import { commandLine, parseDim, refusal, resultOf } from "./support/dim-output";
 import type { HarnessScript, HarnessTurn } from "./support/harness-script";
@@ -14,7 +15,7 @@ import {
   shipThrough,
   showOrder,
 } from "./support/operator-acts";
-import { actions, entriesOf, finalStop, type OrderView, sessionOf, workerOf } from "./support/order-view";
+import { actions, entriesOf, finalStop, OrderView, sessionOf, workerOf } from "./support/order-view";
 import { commandOf, descendants, killPid } from "./support/processes";
 import {
   BUILD_ARTIFACT,
@@ -202,7 +203,7 @@ describe("command output", () => {
       const ran = await m.operator.sh(commandLine(args));
       const lines = `${ran.stdout}${ran.stderr}`.trim().split("\n").filter(Boolean);
       expect(lines).toHaveLength(1);
-      const result = parseDim(ran);
+      const result = parseDim(ran, OrderView);
       if (!result.ok) {
         expect(result.error.code).toMatch(/^[a-z_]+$/);
         expect(result.error.meta).toBeObject();
@@ -211,10 +212,12 @@ describe("command output", () => {
     }
   });
 
+  const Listed = z.strictObject({
+    commands: z.array(z.strictObject({ name: z.string(), usage: z.string(), summary: z.string() })),
+  });
+
   async function commandNames(m: Machine): Promise<readonly string[]> {
-    const listed = resultOf(await m.operator.dim([])) as {
-      readonly commands: readonly { readonly name: string }[];
-    };
+    const listed = resultOf(await m.operator.dim([], Listed));
     return listed.commands.map((command) => command.name);
   }
 
@@ -345,11 +348,16 @@ describe("reading the record", () => {
   const bumpRecordVersionPastTheWriters = (m: Machine) =>
     sqlite(m, `PRAGMA user_version = ${Number(recordVersion(m)) + 1}`);
 
-  async function rows(m: Machine, sql: string): Promise<readonly Readonly<Record<string, unknown>>[]> {
-    const read = resultOf(await m.operator.dim(["sql", sql])) as {
-      readonly rows: readonly Readonly<Record<string, unknown>>[];
-    };
-    return read.rows;
+  const sqlRead = <T>(row: z.ZodType<T>) =>
+    z.strictObject({
+      denominator: z.string(),
+      rows: z.array(row).readonly(),
+      more: z.string().nullable(),
+      note: z.string().nullable(),
+    });
+
+  async function rows<T>(m: Machine, sql: string, row: z.ZodType<T>): Promise<readonly T[]> {
+    return resultOf(await m.operator.dim(["sql", sql], sqlRead(row))).rows;
   }
 
   test("AC-58 a write sent through a reader fails and leaves the database unchanged", async () => {
@@ -358,16 +366,17 @@ describe("reading the record", () => {
     const [first] = await rows(
       m,
       "select name from sqlite_master where type = 'table' order by name limit 1",
+      z.strictObject({ name: z.string() }),
     );
-    if (typeof first?.name !== "string") throw new Error("the record holds no table");
-    const table = first.name;
-    const count = `select count(*) as n from "${table}"`;
-    const before = await rows(m, count);
+    if (first === undefined) throw new Error("the record holds no table");
+    const count = `select count(*) as n from "${first.name}"`;
+    const counted = z.strictObject({ n: z.number() });
+    const before = await rows(m, count, counted);
 
-    const refused = await m.operator.dim(["sql", `delete from "${table}"`]);
+    const refused = await m.operator.dim(["sql", `delete from "${first.name}"`], z.never());
 
     expect(refusal(refused).code).toBeString();
-    expect(await rows(m, count)).toEqual([...before]);
+    expect(await rows(m, count, counted)).toEqual(before);
   });
 
   test("AC-59 a query, dim sql and dim trace refuse a record from another version with the writer's error and leave it unchanged", async () => {
@@ -377,14 +386,14 @@ describe("reading the record", () => {
     const bumped = recordVersion(m);
 
     const writer = refusal(
-      await m.operator.dim(["order", "add", "--title", "Two", "--description", "Another."]),
+      await m.operator.dim(["order", "add", "--title", "Two", "--description", "Another."], OrderView),
     );
     for (const args of [
       ["query", "search", "greeting"],
       ["sql", "select 1"],
       ["trace", id],
     ]) {
-      expect(refusal(await m.operator.dim(args)).code).toBe(writer.code);
+      expect(refusal(await m.operator.dim(args, z.never())).code).toBe(writer.code);
     }
     expect(recordVersion(m)).toBe(bumped);
   });

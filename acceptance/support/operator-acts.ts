@@ -1,30 +1,34 @@
-import { type ClaudeLine, type TranscriptEntry, transcriptEntries } from "./claude-transcript";
+import { z } from "zod";
+import { ClaudeLine, type TranscriptEntry, transcriptEntries } from "./claude-transcript";
 import { type DimResult, resultOf } from "./dim-output";
 import type { OperatorSession } from "./operator-session";
-import { type OrderView, orderShown } from "./order-view";
+import { OrderView } from "./order-view";
 import type { Decider, Next, Station } from "./vocabulary";
 
 type OrderFields = { readonly title?: string; readonly description?: string; readonly project?: string };
 
 export async function addOrder(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
   const added = resultOf(
-    await operator.dim([
-      "order",
-      "add",
-      "--title",
-      fields.title ?? "Greet the reader",
-      "--description",
-      fields.description ?? "Add a greeting to the README.",
-      ...(fields.project === undefined ? [] : ["--project", fields.project]),
-    ]),
-  ) as { readonly id: string };
+    await operator.dim(
+      [
+        "order",
+        "add",
+        "--title",
+        fields.title ?? "Greet the reader",
+        "--description",
+        fields.description ?? "Add a greeting to the README.",
+        ...(fields.project === undefined ? [] : ["--project", fields.project]),
+      ],
+      OrderView,
+    ),
+  );
   return added.id;
 }
 
 const runArgs = (id: string): readonly string[] => ["order", "run", id];
 
-export const runOrder = (operator: OperatorSession, id: string): Promise<DimResult> =>
-  operator.dim(runArgs(id));
+export const runOrder = (operator: OperatorSession, id: string): Promise<DimResult<OrderView>> =>
+  operator.dim(runArgs(id), OrderView);
 
 export const approveArgs = (
   id: string,
@@ -37,42 +41,50 @@ export const approve = (
   id: string,
   reason?: string,
   decided?: Decider,
-): Promise<DimResult> => operator.dim(approveArgs(id, reason, decided));
+): Promise<DimResult<OrderView>> => operator.dim(approveArgs(id, reason, decided), OrderView);
 
 export const returnArtifact = (
   operator: OperatorSession,
   id: string,
   reason: string,
   decided: Decider = "owner",
-): Promise<DimResult> => operator.dim(["order", "return", id, "--reason", reason, "--decided", decided]);
+): Promise<DimResult<OrderView>> =>
+  operator.dim(["order", "return", id, "--reason", reason, "--decided", decided], OrderView);
 
-export const updateOrder = (operator: OperatorSession, id: string, description: string): Promise<DimResult> =>
-  operator.dim(["order", "update", id, "--description", description]);
+export const updateOrder = (
+  operator: OperatorSession,
+  id: string,
+  description: string,
+): Promise<DimResult<OrderView>> =>
+  operator.dim(["order", "update", id, "--description", description], OrderView);
 
 export const cancelOrder = (
   operator: OperatorSession,
   id: string,
   reason = "no longer wanted",
-): Promise<DimResult> => operator.dim(["order", "cancel", id, "--reason", reason]);
+): Promise<DimResult<OrderView>> => operator.dim(["order", "cancel", id, "--reason", reason], OrderView);
+
+const Replied = z.strictObject({ reply: z.string() });
 
 export const messageWorker = (
   operator: OperatorSession,
   id: string,
   station: Station,
   text: string,
-): Promise<DimResult> => operator.dim(["message", "send", text, "--order", id, "--to", station]);
+): Promise<DimResult<z.infer<typeof Replied>>> =>
+  operator.dim(["message", "send", text, "--order", id, "--to", station], Replied);
 
 export async function showOrder(operator: OperatorSession, id: string): Promise<OrderView> {
-  return orderShown(await operator.dim(["order", "show", id]));
+  return resultOf(await operator.dim(["order", "show", id], OrderView));
 }
+
+const SessionShown = z.strictObject({ lines: z.array(ClaudeLine).readonly() });
 
 export async function transcriptOf(
   operator: OperatorSession,
   session: string,
 ): Promise<readonly TranscriptEntry[]> {
-  const shown = resultOf(await operator.dim(["session", "show", session])) as {
-    readonly lines: readonly ClaudeLine[];
-  };
+  const shown = resultOf(await operator.dim(["session", "show", session], SessionShown));
   return transcriptEntries(shown.lines);
 }
 

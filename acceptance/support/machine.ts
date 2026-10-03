@@ -2,6 +2,7 @@ import { afterAll, setDefaultTimeout } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import { resultOf } from "./dim-output";
 import type { HarnessScript } from "./harness-script";
 import { machineRoot } from "./machine-dirs";
@@ -68,6 +69,15 @@ const RECORD = ["dim-factory", "record"] as const;
 export const RECORD_PROBE = `$XDG_DATA_HOME/${RECORD.join("/")}/planted`;
 
 export const PROJECT_SETTINGS = { ship: "default-branch" } as const;
+
+const HooksInstalled = z.strictObject({
+  written: z.array(z.string()),
+  added: z.number(),
+  alreadyPresent: z.number(),
+  refreshed: z.number(),
+  retired: z.number(),
+  backups: z.array(z.string()),
+});
 
 export type MachineOptions = {
   readonly script?: HarnessScript;
@@ -155,7 +165,7 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     return session;
   };
   const operator = createOperator();
-  resultOf(await operator.dim(["hooks", "install"]));
+  resultOf(await operator.dim(["hooks", "install"], HooksInstalled));
   await operator.fire("SessionStart");
 
   const inRepo = (args: readonly string[], cwd = repo) => git(args, cwd);

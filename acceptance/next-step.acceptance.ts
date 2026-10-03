@@ -15,7 +15,7 @@ import {
   updateOrder,
 } from "./support/operator-acts";
 import type { OperatorSession } from "./support/operator-session";
-import { actions, entriesOf, workerOf } from "./support/order-view";
+import { actions, entriesOf, type OrderView, workerOf } from "./support/order-view";
 import { alive } from "./support/processes";
 import { buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
 import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
@@ -27,7 +27,7 @@ const OPERATOR_ACTIONS = ["run", "approve", "return"] as const;
 type OperatorAction = (typeof OPERATOR_ACTIONS)[number];
 
 const perform: Readonly<
-  Record<OperatorAction, (operator: OperatorSession, id: string) => Promise<DimResult>>
+  Record<OperatorAction, (operator: OperatorSession, id: string) => Promise<DimResult<OrderView>>>
 > = {
   run: runOrder,
   approve,
@@ -36,7 +36,7 @@ const perform: Readonly<
 
 const IN_ENGLISH = "Add a greeting to the README, in English.";
 
-async function expectOnlyAdmitted(m: Machine, id: string, admitted: readonly string[]): Promise<void> {
+async function expectOnlyAdmitted(m: Machine, id: string, admitted: OrderView["admits"]): Promise<void> {
   const before = await showOrder(m.operator, id);
   expect(before.admits).toEqual([...admitted]);
   for (const action of OPERATOR_ACTIONS) {
