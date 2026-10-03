@@ -84,7 +84,7 @@ function refuse(judging: Judging, verdict: SliceVerdict, evidence: readonly Evid
     action: "slice_refused",
     code: verdict.code,
     details: { tip },
-    evidence: [...evidence],
+    evidence,
   });
   moveBranch(trace, workspace, branch, head, tip);
   throw refuseSlice(verdict.code, { order, tip, ...verdict });
@@ -139,7 +139,7 @@ function takeRebase(
   );
   recordJudged(judging, {
     action: "branch_rebased",
-    details: { head: tip, onto, commits: [...movedCommits(commits, rebased)] },
+    details: { head: tip, onto, commits: movedCommits(commits, rebased) },
     evidence: [check],
   });
   return { committed: tip };

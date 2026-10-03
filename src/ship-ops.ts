@@ -56,7 +56,7 @@ function land(db: Database, ship: ShipOf): void {
   const check = checked(shipping, landing);
   landOnDefault(shipping, landing);
   const kept = removeWorkspace(trace, checkout, shipping.workspace);
-  record({ action: "ship_landed", details: { head: landing.head, kept: [...kept] }, evidence: [check] });
+  record({ action: "ship_landed", details: { head: landing.head, kept }, evidence: [check] });
 }
 
 function dirty(
@@ -77,7 +77,7 @@ function rebase(shipping: Shipping, head: string): Landing {
   if (before.length === 0) return { head, onto };
   const rebased = rebaseOnto(trace, workspace, onto, env);
   if (rebased.kind === "conflict") {
-    record({ action: "ship_stopped", code: "ship_conflict", details: { onto, paths: [...rebased.paths] } });
+    record({ action: "ship_stopped", code: "ship_conflict", details: { onto, paths: rebased.paths } });
     throw refuseShip("ship_conflict", { order, onto, paths: rebased.paths });
   }
   if (rebased.kind === "failed") {
@@ -85,7 +85,7 @@ function rebase(shipping: Shipping, head: string): Landing {
     throw refuseShip("rebase_failed", { order, onto, reason: rebased.reason });
   }
   const moved = tipOf(workspace.dir, workspace.branch);
-  const commits = [...movedCommits(before, commitsBetween(checkout, onto, moved))];
+  const commits = movedCommits(before, commitsBetween(checkout, onto, moved));
   record({ action: "branch_rebased", details: { head: moved, onto, commits }, evidence: [] });
   return { head: moved, onto };
 }

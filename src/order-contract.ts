@@ -128,9 +128,9 @@ export type RecordedFinding = z.infer<typeof RecordedFinding>;
 
 export const ReviewArtifact = z.object({
   body: text,
-  covered: z.array(text).min(1),
-  setAside: z.array(text),
-  unverified: z.array(text),
+  covered: z.array(text).min(1).readonly(),
+  setAside: z.array(text).readonly(),
+  unverified: z.array(text).readonly(),
 });
 export type ReviewArtifact = z.infer<typeof ReviewArtifact>;
 
@@ -145,8 +145,8 @@ export const Evidence = z.object({
 });
 export type Evidence = z.infer<typeof Evidence>;
 
-const evidence = z.array(Evidence);
-const checked = z.tuple([Evidence]);
+const evidence = z.array(Evidence).readonly();
+const checked = z.tuple([Evidence]).readonly();
 
 const Moved = z.object({ from: z.string(), to: z.string() });
 
@@ -178,7 +178,7 @@ export type ActKind = OperatorAct["kind"];
 
 const message = { to: z.string(), text };
 
-export const Plan = z.object({ body: text, slices: z.array(Slice).min(1) });
+export const Plan = z.object({ body: text, slices: z.array(Slice).min(1).readonly() });
 export type Plan = z.infer<typeof Plan>;
 
 export const OrderAdded = entry("order_added", { title: text, description: text, project: text });
@@ -205,7 +205,7 @@ export const Later = z.union([
   entry("build_returned", { artifact: text }),
   entry("review_returned", {
     returned: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("findings"), findings: z.array(RecordedFinding).min(1) }),
+      z.object({ kind: z.literal("findings"), findings: z.array(RecordedFinding).min(1).readonly() }),
       z.object({ kind: z.literal("artifact"), artifact: ReviewArtifact }),
     ]),
   }),
@@ -224,25 +224,27 @@ export const Later = z.union([
     stop("station_failed", "git_config_changed", session),
   ]),
   entry("ship_started", {}),
-  entry("branch_rebased", { head: z.string(), onto: z.string(), commits: z.array(Moved) }).extend({
+  entry("branch_rebased", { head: z.string(), onto: z.string(), commits: z.array(Moved).readonly() }).extend({
     evidence,
   }),
   z.discriminatedUnion("code", [
     stop("ship_stopped", "ship_unset", {}),
     stop("ship_stopped", "checkout_dirty", { checkout: z.string(), reason: text }),
-    stop("ship_stopped", "ship_conflict", { onto: z.string(), paths: z.array(z.string()).min(1) }),
+    stop("ship_stopped", "ship_conflict", { onto: z.string(), paths: z.array(z.string()).min(1).readonly() }),
     stop("ship_stopped", "rebase_failed", { onto: z.string(), reason: text }),
     stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence: checked }),
     stop("ship_stopped", "ship_no_check", { head: z.string() }),
   ]),
   entry("ship_landed", {
     head: z.string(),
-    kept: z.array(
-      z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("workspace"), dir: z.string(), reason: z.string() }),
-        z.object({ kind: z.literal("branch"), branch: z.string(), reason: z.string() }),
-      ]),
-    ),
+    kept: z
+      .array(
+        z.discriminatedUnion("kind", [
+          z.object({ kind: z.literal("workspace"), dir: z.string(), reason: z.string() }),
+          z.object({ kind: z.literal("branch"), branch: z.string(), reason: z.string() }),
+        ]),
+      )
+      .readonly(),
   }).extend({ evidence: checked }),
 ]);
 export type Later = z.infer<typeof Later>;
