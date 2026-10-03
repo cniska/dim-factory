@@ -1,35 +1,9 @@
 import { refuser } from "./coded-error";
-
-export const SLICE_CODES = [
-  "head_moved",
-  "check_changed",
-  "workspace_dirty",
-  "no_check",
-  "check_failed",
-  "check_rewrote",
-  "not_rebased",
-] as const;
-
-export type SliceCode = (typeof SLICE_CODES)[number];
-
-export type SliceVerdict =
-  | { readonly code: "head_moved"; readonly head: string }
-  | { readonly code: "check_changed" }
-  | { readonly code: "workspace_dirty" }
-  | { readonly code: "no_check" }
-  | { readonly code: "check_failed"; readonly command: string; readonly exitCode: number | null }
-  | { readonly code: "check_rewrote"; readonly command: string }
-  | { readonly code: "not_rebased"; readonly onto: string; readonly commits: number };
-
-type Tip = { readonly order: string; readonly tip: string };
-
-type Meta<C extends SliceCode> = Tip & Omit<Extract<SliceVerdict, { readonly code: C }>, "code">;
-
-type SliceRefusalMeta = { readonly [C in SliceCode]: Meta<C> };
+import type { StopMeta } from "./order-contract";
 
 const SUBMIT = () => "git add -A && git commit && dim slice submit";
 
-export const refuseSlice = refuser<SliceRefusalMeta>({
+export const refuseSlice = refuser<StopMeta<"slice_refused">>({
   head_moved: {
     message: ({ tip, head }) =>
       `${tip} is not one new commit on the order's recorded head ${head}, so the branch is back at ${head} and the changes stay in the workspace`,

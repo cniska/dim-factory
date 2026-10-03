@@ -1,20 +1,27 @@
-import type { SliceVerdict } from "./slice-contract";
+import type { Evidence, StopOf } from "./order-contract";
 
 export type SubmittedFacts = {
+  readonly tip: string;
   readonly head: string;
   readonly parents: readonly string[];
   readonly checkChanged: boolean;
   readonly clean: boolean;
 };
 
-export function submittedVerdict(facts: SubmittedFacts): SliceVerdict | null {
-  if (facts.parents.length !== 1 || facts.parents[0] !== facts.head)
-    return { code: "head_moved", head: facts.head };
-  if (facts.checkChanged) return { code: "check_changed" };
-  return facts.clean ? null : { code: "workspace_dirty" };
+export function submittedVerdict({
+  tip,
+  head,
+  parents,
+  checkChanged,
+  clean,
+}: SubmittedFacts): StopOf<"slice_refused"> | null {
+  if (parents.length !== 1 || parents[0] !== head)
+    return { action: "slice_refused", code: "head_moved", details: { tip, head } };
+  return changedOrDirty(tip, checkChanged, clean);
 }
 
 export type RebasedFacts = {
+  readonly tip: string;
   readonly onto: string;
   readonly expected: number;
   readonly rebasing: boolean;
@@ -24,16 +31,31 @@ export type RebasedFacts = {
   readonly clean: boolean;
 };
 
-export function rebasedVerdict(facts: RebasedFacts): SliceVerdict | null {
-  if (facts.rebasing || !facts.onOnto || facts.commits !== facts.expected)
-    return { code: "not_rebased", onto: facts.onto, commits: facts.expected };
-  if (facts.checkChanged) return { code: "check_changed" };
-  return facts.clean ? null : { code: "workspace_dirty" };
+export function rebasedVerdict(facts: RebasedFacts): StopOf<"slice_refused"> | null {
+  const { tip, onto, expected } = facts;
+  if (facts.rebasing || !facts.onOnto || facts.commits !== expected)
+    return { action: "slice_refused", code: "not_rebased", details: { tip, onto, commits: expected } };
+  return changedOrDirty(tip, facts.checkChanged, facts.clean);
 }
 
-export type CheckRun = { readonly command: string; readonly exitCode: number | null };
+function changedOrDirty(tip: string, checkChanged: boolean, clean: boolean): StopOf<"slice_refused"> | null {
+  if (checkChanged) return { action: "slice_refused", code: "check_changed", details: { tip } };
+  return clean ? null : { action: "slice_refused", code: "workspace_dirty", details: { tip } };
+}
 
-export function checkVerdict(check: CheckRun, cleanAfter: boolean): SliceVerdict | null {
-  if (check.exitCode !== 0) return { code: "check_failed", command: check.command, exitCode: check.exitCode };
-  return cleanAfter ? null : { code: "check_rewrote", command: check.command };
+export function checkVerdict(
+  tip: string,
+  check: Evidence,
+  cleanAfter: boolean,
+): StopOf<"slice_refused"> | null {
+  const { command, exitCode } = check;
+  if (exitCode !== 0)
+    return {
+      action: "slice_refused",
+      code: "check_failed",
+      details: { tip, command, exitCode },
+      evidence: [check],
+    };
+  if (cleanAfter) return null;
+  return { action: "slice_refused", code: "check_rewrote", details: { tip, command }, evidence: [check] };
 }

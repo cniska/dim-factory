@@ -288,9 +288,13 @@ describe("shipping", () => {
     m.ownerCommits("breaks-the-check", "\n");
     const main = m.git(["rev-parse", "main"]);
 
-    expect(refusal(await approve(m.operator, id)).code).toBeString();
+    const refused = refusal(await approve(m.operator, id));
 
-    expect((await showOrder(m.operator, id)).station).toBe("build");
+    const order = await showOrder(m.operator, id);
+    const stopped = entryOf(order, ACTION.shipStopped);
+    expect(stopped.details).toMatchObject({ command: refused.meta.command, exitCode: 1 });
+    expect(refused.meta).toEqual({ order: id, ...stopped.details });
+    expect(order.station).toBe("build");
     expect(m.git(["rev-parse", "main"])).toBe(main);
   });
 

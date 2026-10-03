@@ -223,7 +223,10 @@ describe("station workers", () => {
     const builder = workerOf(order, "builder").name;
     const refused = entriesOf(order, ACTION.messageRefused);
     expect(refused).toHaveLength(2);
-    for (const entry of refused) expect(entry.by.kind === "worker" && entry.by.worker).toBe(builder);
+    for (const entry of refused) {
+      expect(entry.by.kind === "worker" && entry.by.worker).toBe(builder);
+      expect("code" in entry && entry.code).toBe("not_to_operator");
+    }
     expect(actions(order)).not.toContain(ACTION.messageSent);
   });
 

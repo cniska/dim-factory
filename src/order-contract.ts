@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
 import { HarnessName } from "./harness-contract";
-import { SLICE_CODES } from "./slice-contract";
 import type { Role } from "./worker-contract";
 
 export const STATIONS = ["plan", "build", "review"] as const;
@@ -159,6 +158,7 @@ const stop = <A extends string, C extends string, D extends z.ZodRawShape>(actio
 const session = { session: z.string() };
 const dying = { ...session, copied: z.boolean() };
 const tip = { tip: z.string() };
+const exited = { command: z.string(), exitCode: z.number().int().nullable() };
 const decision = { station: Station, reason: text, decidedBy: Decider };
 
 export const Reason = text;
@@ -195,12 +195,15 @@ export const Later = z.union([
   entry("plan_returned", Plan.shape),
   entry("slice_submitted", tip),
   entry("slice_committed", { commit: z.string() }).extend({ evidence }),
-  z.object({
-    action: z.literal("slice_refused"),
-    code: z.enum(SLICE_CODES),
-    details: z.object(tip),
-    evidence,
-  }),
+  z.discriminatedUnion("code", [
+    stop("slice_refused", "head_moved", { ...tip, head: z.string() }),
+    stop("slice_refused", "check_changed", tip),
+    stop("slice_refused", "workspace_dirty", tip),
+    stop("slice_refused", "no_check", tip),
+    stop("slice_refused", "check_failed", { ...tip, ...exited }).extend({ evidence: checked }),
+    stop("slice_refused", "check_rewrote", { ...tip, command: z.string() }).extend({ evidence: checked }),
+    stop("slice_refused", "not_rebased", { ...tip, onto: z.string(), commits: z.number().int() }),
+  ]),
   entry("finding_answered", { finding: z.string(), answer: Answer, reason: text }),
   entry("build_returned", { artifact: text }),
   entry("review_returned", {
@@ -210,7 +213,7 @@ export const Later = z.union([
     ]),
   }),
   entry("message_sent", message),
-  entry("message_refused", message),
+  stop("message_refused", "not_to_operator", message),
   entry("session_started", { worker: z.string(), session: z.string(), harness: HarnessName }),
   z.discriminatedUnion("code", [
     stop("session_died", "usage_limit", { ...dying, resetsAt: z.string().nullable() }),
@@ -232,7 +235,7 @@ export const Later = z.union([
     stop("ship_stopped", "checkout_dirty", { checkout: z.string(), reason: text }),
     stop("ship_stopped", "ship_conflict", { onto: z.string(), paths: z.array(z.string()).min(1).readonly() }),
     stop("ship_stopped", "rebase_failed", { onto: z.string(), reason: text }),
-    stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence: checked }),
+    stop("ship_stopped", "ship_check_failed", { head: z.string(), ...exited }).extend({ evidence: checked }),
     stop("ship_stopped", "ship_no_check", { head: z.string() }),
   ]),
   entry("ship_landed", {
@@ -251,6 +254,15 @@ export type Later = z.infer<typeof Later>;
 
 export type DeathCode = Extract<Later, { readonly action: "session_died" }>["code"];
 
+type Coded = Extract<Later, { readonly code: string }>;
+
+export type StopAction = Coded["action"];
+
+export type StopOf<A extends StopAction> = Extract<Coded, { readonly action: A }>;
+
+export type StopMeta<A extends StopAction> = {
+  readonly [S in StopOf<A> as S["code"]]: { readonly order: string } & S["details"];
+};
 export const Detailed = z.union([OrderAdded, Later]);
 export type Detailed = z.infer<typeof Detailed>;
 

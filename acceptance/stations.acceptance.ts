@@ -330,8 +330,11 @@ describe("slice gates", () => {
     expect(refusal(await approve(m.operator, id)).code).toBeString();
 
     const order = await showOrder(m.operator, id);
-    expect(entryOf(order, ACTION.sliceRefused).code).toBe(REFUSAL.headMoved);
-    expect(m.git(["rev-parse", order.branch])).toBe(entryOf(order, ACTION.sliceCommitted).details.commit);
+    const committed = entryOf(order, ACTION.sliceCommitted).details.commit;
+    const refused = entryOf(order, ACTION.sliceRefused);
+    expect(refused.code).toBe(REFUSAL.headMoved);
+    expect(refused.details.head).toBe(committed);
+    expect(m.git(["rev-parse", order.branch])).toBe(committed);
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
   });
 
@@ -350,6 +353,8 @@ describe("slice gates", () => {
     const refused = entryOf(order, ACTION.sliceRefused);
     expect(refused.code).toBeString();
     expect(JSON.stringify(refused.evidence)).toContain("RED-CHECK-OUTPUT");
+    expect(refused.details.command).toBe(refused.evidence?.[0]?.command);
+    expect(refused.details.exitCode).toBe(1);
   });
 
   test("a builder returns a Build artifact it wrote in its temp directory", async () => {

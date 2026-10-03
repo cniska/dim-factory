@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { RefusalRecord, refuser } from "./coded-error";
-import { Answer, Finding, Reason, type Station } from "./order-contract";
+import { Answer, Finding, Reason, type Station, type StopMeta } from "./order-contract";
 
 export const PlanReturn = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type PlanReturn = z.infer<typeof PlanReturn>;
@@ -87,7 +87,7 @@ type StationRefusalMeta = {
   };
   readonly git_config_changed: { readonly order: string; readonly station: Station; readonly config: string };
   readonly no_model: { readonly role: string; readonly file: string };
-  readonly not_to_operator: { readonly to: string };
+  readonly not_to_operator: StopMeta<"message_refused">["not_to_operator"];
   readonly message_turn: { readonly act: TurnRequest["act"] };
   readonly no_reply: { readonly order: string; readonly station: Station; readonly session: string };
 };

@@ -20,7 +20,9 @@ describe("settings", () => {
     expect(refusal(stopped).code).toBeString();
     const order = await showOrder(m.operator, id);
     expect(order.status).toBe("running");
-    expect(entryOf(order, ACTION.shipStopped).code).toBeString();
+    const shipStopped = entryOf(order, ACTION.shipStopped);
+    expect(shipStopped.code).toBeString();
+    expect(refusal(stopped).meta).toEqual({ order: id, ...shipStopped.details });
     expect(m.git(["rev-parse", "main"])).toBe(main);
   });
 

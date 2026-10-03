@@ -4,42 +4,28 @@ import { judge } from "./check-ops";
 import { checkTask } from "./declared-tasks";
 import { commitsBetween, isAncestor, isClean, tipOf } from "./git";
 import { type Conflict, movedCommits } from "./order";
-import type { Evidence, Later } from "./order-contract";
-import { recordAt } from "./order-ops";
+import type { Evidence, Later, StopOf } from "./order-contract";
+import { recordAt, recordStop } from "./order-ops";
 import type { Env } from "./paths";
 import { checkVerdict, rebasedVerdict, submittedVerdict } from "./slice";
-import { refuseSlice, type SliceVerdict } from "./slice-contract";
+import { refuseSlice } from "./slice-contract";
 import { checkChanged, parentsOf } from "./slice-effects";
 import type { Trace } from "./trace-contract";
 import type { Acting } from "./worker-contract";
-import { branchOf } from "./workspace";
+import type { Workspace } from "./workspace";
 import { moveBranch, rebasing } from "./workspace-ops";
-
-export function branchFacts(
-  workspace: string,
-  order: string,
-): { readonly tip: string; readonly clean: boolean } {
-  return { tip: tipOf(workspace, branchOf(order)), clean: isClean(workspace, "all") };
-}
-
-export function alignBranch(trace: Trace, workspace: string, order: string, head: string): void {
-  const branch = branchOf(order);
-  const tip = tipOf(workspace, branch);
-  if (tip !== head) moveBranch(trace, workspace, branch, head, tip);
-}
 
 export type SliceTurn = {
   readonly trace: Trace;
   readonly order: string;
-  readonly workspace: string;
+  readonly workspace: Workspace;
   readonly acting: Acting;
   readonly env: Env;
 };
 
 export function submitSlice(db: Database, turn: SliceTurn): { readonly committed: string } {
   const { trace, order, workspace, acting } = turn;
-  const branch = branchOf(order);
-  const tip = tipOf(workspace, branch);
+  const tip = tipOf(workspace.dir, workspace.branch);
   const submitted = recordAt(trace, db, {
     order,
     station: "build",
@@ -48,18 +34,10 @@ export function submitSlice(db: Database, turn: SliceTurn): { readonly committed
   });
   const { head, conflict, commits } = submitted.state;
   invariant(head !== null, `order ${order} has a recorded head once its workspace is made`);
-  const judging: Judging = {
-    trace,
-    db,
-    order,
-    seq: submitted.seq,
-    workspace,
-    branch,
-    tip,
-    head,
-    env: turn.env,
-  };
-  return conflict === null ? takeCommit(judging) : takeRebase(judging, conflict, commits);
+  const judging: Judging = { trace, db, order, seq: submitted.seq, workspace, tip, head, env: turn.env };
+  if (conflict === null) takeCommit(judging);
+  else takeRebase(judging, conflict, commits);
+  return { committed: tip };
 }
 
 type Judging = {
@@ -67,8 +45,7 @@ type Judging = {
   readonly db: Database;
   readonly order: string;
   readonly seq: number;
-  readonly workspace: string;
-  readonly branch: string;
+  readonly workspace: Workspace;
   readonly tip: string;
   readonly head: string;
   readonly env: Env;
@@ -78,69 +55,62 @@ function recordJudged({ trace, db, order, seq }: Judging, later: Later): void {
   recordAt(trace, db, { order, station: "build", by: { kind: "factory", cause: seq }, later: () => later });
 }
 
-function refuse(judging: Judging, verdict: SliceVerdict, evidence: readonly Evidence[]): never {
-  const { trace, order, workspace, branch, tip, head } = judging;
-  recordJudged(judging, {
-    action: "slice_refused",
-    code: verdict.code,
-    details: { tip },
-    evidence,
+function refuse(judging: Judging, verdict: StopOf<"slice_refused">): never {
+  const { trace, order, workspace, tip, head } = judging;
+  moveBranch(trace, workspace.dir, workspace.branch, head, tip);
+  return recordStop({
+    record: (later) => recordJudged(judging, later),
+    order,
+    stop: verdict,
+    refuse: refuseSlice,
   });
-  moveBranch(trace, workspace, branch, head, tip);
-  throw refuseSlice(verdict.code, { order, tip, ...verdict });
 }
 
-function checked(judging: Judging, early: SliceVerdict | null): Evidence {
-  if (early !== null) return refuse(judging, early, []);
-  const task = checkTask(judging.workspace);
-  if (task === null) return refuse(judging, { code: "no_check" }, []);
-  const check = judge(judging.trace, judging.workspace, task.commandLine, judging.env);
-  const verdict = checkVerdict(check, isClean(judging.workspace, "all"));
-  return verdict === null ? check : refuse(judging, verdict, [check]);
+function checked(judging: Judging): Evidence {
+  const { trace, workspace, tip, env } = judging;
+  const task = checkTask(workspace.dir);
+  if (task === null) return refuse(judging, { action: "slice_refused", code: "no_check", details: { tip } });
+  const check = judge(trace, workspace.dir, task.commandLine, env);
+  const verdict = checkVerdict(tip, check, isClean(workspace.dir, "all"));
+  return verdict === null ? check : refuse(judging, verdict);
 }
 
-function takeCommit(judging: Judging): { readonly committed: string } {
+function takeCommit(judging: Judging): void {
   const { workspace, tip, head } = judging;
-  const check = checked(
-    judging,
-    submittedVerdict({
-      head,
-      parents: parentsOf(workspace, tip),
-      checkChanged: checkChanged(workspace, tip, head),
-      clean: isClean(workspace, "all"),
-    }),
-  );
+  const { dir } = workspace;
+  const verdict = submittedVerdict({
+    tip,
+    head,
+    parents: parentsOf(dir, tip),
+    checkChanged: checkChanged(dir, tip, head),
+    clean: isClean(dir, "all"),
+  });
+  if (verdict !== null) refuse(judging, verdict);
   recordJudged(judging, {
     action: "slice_committed",
     details: { commit: tip },
-    evidence: [check],
+    evidence: [checked(judging)],
   });
-  return { committed: tip };
 }
 
-function takeRebase(
-  judging: Judging,
-  { onto }: Conflict,
-  commits: readonly string[],
-): { readonly committed: string } {
-  const { workspace, branch, tip } = judging;
-  const rebased = commitsBetween(workspace, onto, tip);
-  const check = checked(
-    judging,
-    rebasedVerdict({
-      onto,
-      expected: commits.length,
-      rebasing: rebasing({ dir: workspace, branch }),
-      onOnto: isAncestor(workspace, onto, tip),
-      commits: rebased.length,
-      checkChanged: checkChanged(workspace, tip, onto),
-      clean: isClean(workspace, "all"),
-    }),
-  );
+function takeRebase(judging: Judging, { onto }: Conflict, commits: readonly string[]): void {
+  const { workspace, tip } = judging;
+  const { dir } = workspace;
+  const rebased = commitsBetween(dir, onto, tip);
+  const verdict = rebasedVerdict({
+    tip,
+    onto,
+    expected: commits.length,
+    rebasing: rebasing(workspace),
+    onOnto: isAncestor(dir, onto, tip),
+    commits: rebased.length,
+    checkChanged: checkChanged(dir, tip, onto),
+    clean: isClean(dir, "all"),
+  });
+  if (verdict !== null) refuse(judging, verdict);
   recordJudged(judging, {
     action: "branch_rebased",
     details: { head: tip, onto, commits: movedCommits(commits, rebased) },
-    evidence: [check],
+    evidence: [checked(judging)],
   });
-  return { committed: tip };
 }

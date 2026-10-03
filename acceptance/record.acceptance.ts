@@ -141,7 +141,7 @@ describe("the order log", () => {
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
     expect(new Set(seqs).size).toBe(seqs.length);
     const evidence = factoryEntries(order).flatMap((entry) =>
-      "evidence" in entry ? entry.evidence.map((item) => item.kind) : [],
+      "evidence" in entry ? (entry.evidence ?? []).map((item) => item.kind) : [],
     );
     expect(evidence).toContain("check");
     expect(entryOf(order, ACTION.branchRebased).details.commits).toHaveLength(2);

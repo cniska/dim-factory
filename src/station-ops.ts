@@ -21,12 +21,13 @@ import {
   recordAs,
   recordAt,
   recordCancel,
+  recordStop,
   showOrder,
   startRun,
 } from "./order-ops";
 import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
 import { shipOrder } from "./ship-ops";
-import { alignBranch, branchFacts, submitSlice } from "./slice-ops";
+import { submitSlice } from "./slice-ops";
 import {
   closedTurn,
   type Ended,
@@ -61,7 +62,8 @@ import type { Trace } from "./trace-contract";
 import { traceOf } from "./trace-ops";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
-import { createWorkspace, removeWorktree, workspaceOf } from "./workspace-ops";
+import type { Workspace } from "./workspace";
+import { alignBranch, branchFacts, createWorkspace, removeWorktree, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
   readonly trace: Trace;
@@ -132,7 +134,7 @@ function openSession(
 type Served = {
   readonly db: Database;
   readonly turn: TurnOf;
-  readonly workspace: string;
+  readonly workspace: Workspace;
   readonly acting: Acting;
   readonly config: FileGuard;
 };
@@ -150,13 +152,12 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
       const { text, to } = request;
       const by = { kind: "worker", acting } as const;
       if (to !== null) {
-        recordAt(trace, db, {
+        recordStop({
+          record: (later) => recordAt(trace, db, { order, station, by, later: () => later }),
           order,
-          station,
-          by,
-          later: () => ({ action: "message_refused", details: { to, text } }),
+          stop: { action: "message_refused", code: "not_to_operator", details: { to, text } },
+          refuse: refuseStation,
         });
-        throw refuseStation("not_to_operator", { to });
       }
       const operator = turn.by.worker.name;
       recordAt(trace, db, {
@@ -168,7 +169,7 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
       return { sent: operator };
     }
     default: {
-      const branch = branchFacts(workspace, order);
+      const branch = branchFacts(workspace);
       recordAt(trace, db, {
         order,
         station,
@@ -250,32 +251,28 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   });
   const copies = workerSessionsDir(worker.name);
   const session = sessionOf(sessions, state.died);
-  const workspace = workspaceOf(state.project, turn.order).dir;
+  const workspace = workspaceOf(state.project, turn.order);
+  const { dir } = workspace;
   const { trace } = turn;
-  alignBranch(trace, workspace, turn.order, head);
+  alignBranch(trace, workspace, head);
   const opened = openTurn(trace, workerHomeDir(worker.name));
   try {
     if (session.kind === "fork") {
-      restoreSession(
-        trace,
-        copies,
-        session.from,
-        WORKER_HARNESS.transcript(opened.home, workspace, session.from),
-      );
+      restoreSession(trace, copies, session.from, WORKER_HARNESS.transcript(opened.home, dir, session.from));
     }
-    const spawned = spawnFor(turn, session, workspace, opened);
+    const spawned = spawnFor(turn, session, dir, opened);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
     const served = await serveTurn(
       { db, turn, workspace, acting, config: guardFile(trace, turn.gitConfig) },
       spawned,
       opened.socket,
-      turn.purpose.prompt({ state, workspace, diff: diffOf(turn, head), check: checkOf(turn, workspace) }),
+      turn.purpose.prompt({ state, workspace: dir, diff: diffOf(turn, head), check: checkOf(turn, dir) }),
     );
     const { stop } = served;
     if (stop?.kind === "fault") throw stop.error;
     const id = idOf(session);
     const outcome = WORKER_HARNESS.outcome(served.ended, startOf(session));
-    const transcript = WORKER_HARNESS.transcript(opened.home, workspace, id);
+    const transcript = WORKER_HARNESS.transcript(opened.home, dir, id);
     if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(trace, transcript, copies, id);
     return {
       acting,

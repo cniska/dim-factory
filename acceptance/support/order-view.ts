@@ -7,7 +7,12 @@ type Actor =
 
 type Shared = { readonly seq: number; readonly at: string; readonly by: Actor };
 
-type Evidence = { readonly kind: "check"; readonly output: string } | { readonly kind: "rebase" };
+type Evidence = {
+  readonly kind: "check";
+  readonly command: string;
+  readonly exitCode: number | null;
+  readonly output: string;
+};
 
 type Details = Readonly<Record<string, unknown>>;
 
@@ -29,7 +34,7 @@ type Detailed =
       readonly action: "slice_refused";
       readonly code: string;
       readonly details: Details;
-      readonly evidence: readonly Evidence[];
+      readonly evidence?: readonly Evidence[];
     }
   | {
       readonly action: "slice_committed";

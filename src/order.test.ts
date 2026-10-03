@@ -257,9 +257,8 @@ describe("an order's state, folded from its log", () => {
   test("a refused slice leaves the recorded head where it was", () => {
     const order = state(...planned, approve("plan"), committed("c1"), {
       action: "slice_refused",
-      code: "check_failed",
+      code: "workspace_dirty",
       details: { tip: "t2" },
-      evidence: [],
     });
     expect([order.head, order.commits]).toEqual(["c1", ["c1"]]);
   });
@@ -304,7 +303,7 @@ describe("an order's state, folded from its log", () => {
     const red = state(...reviewed, approve("review"), SHIP_STARTED, {
       action: "ship_stopped",
       code: "ship_check_failed",
-      details: { head: "c2" },
+      details: { head: "c2", command: "bun test", exitCode: 1 },
       evidence: [check],
     });
     expect(red.phase).toEqual({ kind: "run", station: "build" });

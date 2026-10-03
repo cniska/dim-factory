@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { isClean, tipOf } from "./git";
 import { type Env, workspaceDir } from "./paths";
 import type { Trace } from "./trace-contract";
 import { branchOf, type Kept, type Rebased, type Workspace } from "./workspace";
@@ -33,6 +34,15 @@ export function rebaseOnto(trace: Trace, { dir }: Workspace, onto: string, env: 
 
 export function moveBranch(trace: Trace, repo: string, branch: string, to: string, from: string): void {
   effects.moveBranch(trace, repo, branch, to, from);
+}
+
+export function branchFacts({ dir, branch }: Workspace): { readonly tip: string; readonly clean: boolean } {
+  return { tip: tipOf(dir, branch), clean: isClean(dir, "all") };
+}
+
+export function alignBranch(trace: Trace, { dir, branch }: Workspace, head: string): void {
+  const tip = tipOf(dir, branch);
+  if (tip !== head) moveBranch(trace, dir, branch, head, tip);
 }
 
 export function removeWorktree(trace: Trace, root: string, { dir }: Workspace): string | null {

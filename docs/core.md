@@ -39,6 +39,7 @@ A project's settings are its committed `.dim/config.json`, layered over the user
 - **A worker writes only through its turn.** Each turn opens a Unix socket and passes its path to the worker; any connection to it acts as that worker. The worker's sandbox cannot write the record, so every work act is a request the station checks and records. Once the turn ends, nothing more is recorded for it.
 - **Who acts is read from the process tree.** A command acts as the worker whose registered session is its nearest ancestor. Nothing a worker sets changes that.
 - **The record wins over the branch.** The record holds the branch's head. Whenever they disagree, the factory moves the branch back and leaves the files, which refuses a bad slice, repairs after a kill and undoes a rewrite.
+- **A refused act is recorded before it is raised.** A refused slice, ship or message is logged as a [stop](glossary.md) holding its code and the facts behind it, and the refusal carries the order plus those same facts ([`src/order-ops.ts`](../src/order-ops.ts) `recordStop`).
 - **What needs no judgement repairs itself.** A run whose process is gone is cleared at the next run: its harness is killed, its session resumed or replaced, a commit the record lacks taken off the branch, an interrupted ship run again.
 
 ## Turns

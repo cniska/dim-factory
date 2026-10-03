@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { version } from "../package.json";
 import { invariant } from "./assert";
+import type { CodedError } from "./coded-error";
 import { readConfig, type UserConfig } from "./config";
 import { writeTransaction } from "./db";
 import { type Identity, identityOf } from "./git";
@@ -27,6 +28,8 @@ import {
   type RunKind,
   refuseOrder,
   type Station,
+  type StopAction,
+  type StopOf,
 } from "./order-contract";
 import { appendEntry, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
 import { orderView, workerNamesOf } from "./order-view";
@@ -261,6 +264,22 @@ export function recordAt(trace: Trace, db: Database, { order, station, by, later
 
 export function recordAs(trace: Trace, db: Database, order: string, by: WorkBy, later: Later): Appended {
   return writeTransaction(db, () => appendTraced(trace, db, order, by, later));
+}
+
+export function recordStop<S extends StopOf<StopAction>>({
+  record,
+  order,
+  stop,
+  refuse,
+}: {
+  readonly record: (later: Later) => void;
+  readonly order: string;
+  readonly stop: S;
+  readonly refuse: (code: S["code"], meta: { readonly order: string } & S["details"]) => CodedError;
+}): never {
+  record(stop);
+  const details: S["details"] = stop.details;
+  throw refuse(stop.code, { order, ...details });
 }
 
 export function showOrder(db: Database, order: string): OrderView {
