@@ -37,6 +37,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Term | Definition |
 |---|---|
 | Log | An order's one list of actions, each naming who took it, appended and never changed |
+| Spool | The directory where session hooks drop one file per event, which `dim sync` reads into the record, so a hook never waits on the database |
 | Evidence | What an action produced, such as a check's output, attached to that action in the log |
 | Artifact | What a station's worker returns for the owner — the plan, the Build artifact or the Review artifact. The operator approves or returns it on the owner's decision |
 | Worker's return | A station worker handing the order back: a planner that cannot plan it as written, or a builder or reviewer that found a problem in the previous station's work |
