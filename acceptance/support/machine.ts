@@ -1,4 +1,4 @@
-import { afterEach, setDefaultTimeout } from "bun:test";
+import { afterAll, setDefaultTimeout } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -214,7 +214,7 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
 export function machines(): (options?: MachineOptions) => Promise<Machine> {
   setDefaultTimeout(MACHINE_TEST_LIMIT_MS);
   const started: Machine[] = [];
-  afterEach(() => {
+  afterAll(() => {
     for (const machine of started.splice(0)) machine.close();
   });
   return async (options = {}) => {
