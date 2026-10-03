@@ -67,6 +67,8 @@ A skill under [`skills/`](../skills) is one the owner or a worker invokes by nam
 
 The builder commits with plain `git commit` and hands the commit in with `dim slice submit`. The station keeps it only if it is one new commit on the recorded head, leaves the check's definition unchanged, and passes the check in a clean workspace ([`src/slice.ts`](../src/slice.ts)). A refused slice's files stay in the workspace.
 
+A check runs in its own process group with a 10-minute limit ([`src/check.ts`](../src/check.ts)). A check that reaches the limit is stopped and fails, its output saying so, and nothing a check started outlives it.
+
 ## Ship
 
 Approving the Review artifact ships the order, one ship per project at a time:

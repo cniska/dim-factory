@@ -25,10 +25,12 @@ function scratch(): { tree: string; outside: string; trace: Trace } {
 
 const OWNER = { PATH: process.env.PATH };
 
+const LIMIT_MS = 5000;
+
 describe("a check run", () => {
   test("records its command, exit code and output", () => {
     const { tree, trace } = scratch();
-    expect(runCheck(trace, tree, "echo RED; exit 3", OWNER)).toEqual({
+    expect(runCheck(trace, tree, "echo RED; exit 3", OWNER, LIMIT_MS)).toEqual({
       kind: "check",
       command: "echo RED; exit 3",
       exitCode: 3,
@@ -43,6 +45,7 @@ describe("a check run", () => {
       tree,
       `touch "${tree}/inside" && touch "$TMPDIR/tmp" && touch "${outside}/escaped"; echo done`,
       OWNER,
+      LIMIT_MS,
     );
     expect(ran.output).toContain("done");
     expect(existsSync(join(tree, "inside"))).toBe(true);
@@ -62,11 +65,32 @@ describe("a check run", () => {
       tree,
       'echo "[$ANTHROPIC_API_KEY$CLAUDE_CODE_OAUTH_TOKEN]"; echo "$HOME" "$XDG_CACHE_HOME"',
       owner,
+      LIMIT_MS,
     );
     const [keys, dirs] = ran.output.trim().split("\n");
     expect(keys).toBe("[]");
     expect(dirs).not.toContain("/owner");
     expect(dirs?.split(" ")[1]).toStartWith(dirs?.split(" ")[0] ?? "");
+  });
+});
+
+describe("a check that runs past its limit", () => {
+  test("is stopped with everything it started, and its output says it hit the limit", async () => {
+    const { tree, trace } = scratch();
+    const ran = runCheck(trace, tree, `(sleep 1; touch "${tree}/late") & sleep 30`, OWNER, 300);
+    await Bun.sleep(1500);
+    expect(ran.exitCode).toBeNull();
+    expect(ran.output).toEndWith("stopped: the check ran past its 300 ms limit\n");
+    expect(existsSync(join(tree, "late"))).toBe(false);
+  });
+});
+
+describe("a check that ends", () => {
+  test("leaves nothing it started running", async () => {
+    const { tree, trace } = scratch();
+    runCheck(trace, tree, `(sleep 1; touch "${tree}/late") >/dev/null 2>&1 & echo done`, OWNER, LIMIT_MS);
+    await Bun.sleep(1500);
+    expect(existsSync(join(tree, "late"))).toBe(false);
   });
 });
 

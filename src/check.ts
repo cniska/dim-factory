@@ -2,6 +2,12 @@ import type { Env } from "./paths";
 
 const CHECK_OUTPUT_TAIL_BYTES = 64 * 1024;
 
+export const CHECK_LIMIT_MS = 10 * 60 * 1000;
+
+export function limitReached(limitMs: number): string {
+  return `\nstopped: the check ran past its ${limitMs} ms limit\n`;
+}
+
 export const PASSED_THROUGH = ["PATH", "USER", "LANG"] as const;
 
 export function listedEnv(owner: Env, names: readonly string[]): Record<string, string> {
