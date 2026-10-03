@@ -1,9 +1,10 @@
 import { afterAll, setDefaultTimeout } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { resultOf } from "./dim-output";
 import type { HarnessScript } from "./harness-script";
+import { machineRoot } from "./machine-dirs";
 import { OperatorSession } from "./operator-session";
 import {
   type Invocation,
@@ -105,7 +106,7 @@ function initRepo(repo: string, project: string, check: string): void {
 }
 
 async function createMachine(options: MachineOptions): Promise<Machine> {
-  const root = mkdtempSync(join(tmpdir(), "dim-acceptance-"));
+  const root = machineRoot(tmpdir());
   const bin = join(root, "bin");
   const home = join(root, "home");
   const xdg = { config: join(root, "config"), data: join(root, "data"), state: join(root, "state") };
