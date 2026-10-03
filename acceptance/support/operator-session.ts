@@ -5,7 +5,7 @@ import type { z } from "zod";
 import { hookCommands, settingsHooks } from "./claude-hooks";
 import { commandLine, type DimResult, parseDim, quote, type Ran } from "./dim-output";
 import type { MachineEnv } from "./machine";
-import { descendants, killPid } from "./processes";
+import { descendants, killGroup, killPid } from "./processes";
 import { waitFor } from "./wait";
 
 export class OperatorSession {
@@ -22,7 +22,14 @@ export class OperatorSession {
 
   static open(env: MachineEnv, cwd: string): OperatorSession {
     const scratch = mkdtempSync(join(env.TMPDIR, "dim-operator-"));
-    const shell = Bun.spawn(["sh"], { cwd, env, stdin: "pipe", stdout: "ignore", stderr: "ignore" });
+    const shell = Bun.spawn(["sh"], {
+      cwd,
+      env,
+      stdin: "pipe",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
     return new OperatorSession(shell, scratch, env, cwd);
   }
 
@@ -70,8 +77,9 @@ export class OperatorSession {
 
   close(): void {
     this.closed = true;
-    for (const pid of descendants(this.shell.pid)) killPid(pid);
-    this.shell.kill("SIGKILL");
+    const below = descendants(this.shell.pid);
+    killGroup(this.shell.pid);
+    for (const pid of below) killPid(pid);
     rmSync(this.scratch, { recursive: true, force: true });
   }
 }

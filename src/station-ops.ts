@@ -550,6 +550,10 @@ export async function sendAct(request: TurnRequest, env: Env): Promise<unknown> 
   } catch (error) {
     throw refuseStation("no_turn", { detail: String(error) });
   }
+  return turnReplyOf(line);
+}
+
+export function turnReplyOf(line: string): unknown {
   if (line === "") throw refuseStation("no_turn", { detail: "the turn closed without replying" });
   const reply = TurnReply.parse(JSON.parse(line));
   if (reply.ok) return reply.result;

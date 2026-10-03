@@ -27,3 +27,7 @@ export function alive(pid: number): boolean {
 export function killPid(pid: number): void {
   Bun.spawnSync(["kill", "-9", String(pid)]);
 }
+
+export function killGroup(leader: number): void {
+  Bun.spawnSync(["kill", "-9", "--", `-${leader}`]);
+}
