@@ -100,7 +100,7 @@ function entryOf(view: OrderView, entry: LogEntry): WallItemEntry {
   return {
     at: entry.ts,
     action: entry.action,
-    code: "code" in entry ? entry.code : null,
+    code: "code" in entry && entry.action !== "station_failed" ? entry.code : null,
     station: entryStation(entry),
     worker: entry.by.kind === "worker" ? workerNamed(view, entry.by.worker) : null,
   };

@@ -157,7 +157,7 @@ describe("an opened order", () => {
     expect(item.review).toBeNull();
   });
 
-  test("lists every log entry in order, with its station, its stop code and the worker that recorded it", () => {
+  test("lists every log entry in order, with its station, the worker that recorded it, and no code on a failed station", () => {
     const entries = itemViewOf(viewOf({ log })).entries;
 
     expect(entries.map((entry) => entry.action)).toEqual(log.map((entry) => entry.action));
@@ -171,7 +171,7 @@ describe("an opened order", () => {
     expect(entries[5]).toEqual({
       at: at(5),
       action: "station_failed",
-      code: "no_return",
+      code: null,
       station: null,
       worker: null,
     });
