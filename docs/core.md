@@ -22,7 +22,7 @@ A factory module is made of up to five files: a rules file of pure functions, a 
 
 ## Paths
 
-One XDG layout, resolved in [`src/paths.ts`](../src/paths.ts). A test isolates `dim` by setting the three XDG variables.
+One XDG layout, resolved in [`src/paths.ts`](../src/paths.ts). A test isolates `dim` by setting `HOME` or the three XDG variables, and a station's worker gets the owner's three resolved.
 
 | Category | Default | Holds |
 |---|---|---|
