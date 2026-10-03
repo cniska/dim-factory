@@ -11,12 +11,17 @@ const firstGroups = (text: string, pattern: RegExp): readonly string[] =>
 const spec = readFileSync(join(ROOT, "SPEC.md"), "utf8");
 const criteria = firstGroups(spec, /^- \*\*(AC-\d+)\*\*/gm);
 const ids = firstGroups(spec, /^- \*\*([^*]+)\*\* —/gm);
-const requirements = ids.filter((id) => /^(FR|NF)-/.test(id));
+const familyOf = (id: string): string => id.split("-")[0] ?? id;
+const families = [...new Set(ids.map(familyOf))];
+const UNCITED_FAMILIES = ["AC", "C", "D"];
+const requirementFamilies = families.filter((family) => !UNCITED_FAMILIES.includes(family));
+const requirements = ids.filter((id) => requirementFamilies.includes(familyOf(id)));
 const criterionLines = spec.split("\n").filter((line) => /^- \*\*AC-\d+\*\*/.test(line));
-const CITATION_LIST = /\(((?:FR|NF)-\d+(?:, (?:FR|NF)-\d+)*)\)$/;
+const cited = `(?:${requirementFamilies.join("|")})-\\d+`;
+const CITATION_LIST = new RegExp(`\\((${cited}(?:, ${cited})*)\\)$`);
 const citationsOf = (line: string): readonly string[] => CITATION_LIST.exec(line)?.[1]?.split(", ") ?? [];
 const citations = criterionLines.flatMap(citationsOf);
-const mentioned = firstGroups(spec, /\b((?:FR|NF|AC|C)-\d+)\b/g);
+const mentioned = firstGroups(spec, new RegExp(`\\b((?:${families.join("|")})-\\d+)\\b`, "g"));
 
 const names = readdirSync(import.meta.dir)
   .filter((file) => file.endsWith(".acceptance.ts"))
@@ -28,7 +33,7 @@ const citedBy = (name: string): readonly string[] => CITED.exec(name)?.[1]?.trim
 
 describe("the spec's ids", () => {
   test("every id is a family and a whole number, numbered from 1 in sequence within its family", () => {
-    for (const family of new Set(ids.map((id) => id.split("-")[0]))) {
+    for (const family of families) {
       const members = ids.filter((id) => id.startsWith(`${family}-`));
       expect(members).toEqual(members.map((_, index) => `${family}-${index + 1}`));
     }
