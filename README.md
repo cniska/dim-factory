@@ -22,7 +22,7 @@ Then open a project in Claude Code. For routine factory work, ask the agent to u
 
 ## Docs
 
-- [Agent command reference](docs/usage.md) — install, collect, query, gates and config
+- [Agent command reference](docs/usage.md) — install, collect, query, hooks and config
 - [The factory](docs/factory.md) — the argument the factory executes
 - [My workflow](docs/my-workflow.md) — the manual workflow the factory replaces
 - [Todo](docs/todo.md) — what is not built
