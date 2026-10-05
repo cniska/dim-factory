@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isFactoryWorkspace, isScratchRepo } from "./ingest-scratch";
@@ -42,7 +42,7 @@ describe("a scratch tree is not the work", () => {
   });
 
   test("a temp directory that is gone does not stop the module loading", () => {
-    const script = `import { isFactoryWorkspace, isScratchRepo } from ${JSON.stringify(join(import.meta.dir, "ingest-scratch.ts"))};
+    const script = `import { isScratchRepo } from ${JSON.stringify(join(import.meta.dir, "ingest-scratch.ts"))};
       if (isScratchRepo("/Users/someone/code/dim-factory")) process.exit(2);`;
     const proc = Bun.spawnSync(["bun", "-e", script], {
       env: { ...process.env, TMPDIR: "/dim-temp-directory-that-is-gone" },
@@ -84,5 +84,21 @@ describe("a factory workspace is not the work", () => {
   test("a path is judged resolved", () => {
     expect(isFactoryWorkspace(`${root}/acme/../../workers/w-1`, env)).toBe(false);
     expect(isFactoryWorkspace(`${root}/../workspaces/acme/widgets/abc123`, env)).toBe(true);
+  });
+
+  test("a workspace named through a symlinked data directory is judged by its real path", () => {
+    const real = mkdtempSync(join(realpathSync(tmpdir()), "dim-ws-real-"));
+    const link = `${real}-link`;
+    try {
+      symlinkSync(real, link);
+      mkdirSync(join(real, "dim-factory", "workspaces", "acme", "widgets", "abc123"), { recursive: true });
+      const linked = { XDG_DATA_HOME: link };
+      expect(isFactoryWorkspace(join(real, "dim-factory/workspaces/acme/widgets/abc123"), linked)).toBe(true);
+      expect(isFactoryWorkspace(join(link, "dim-factory/workspaces/acme/widgets/abc123"), linked)).toBe(true);
+      expect(isFactoryWorkspace(join(real, "dim-factory/workers/w-1"), linked)).toBe(false);
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
   });
 });

@@ -74,8 +74,7 @@ describe("reading the repos the sessions ran in", () => {
   test("a factory workspace is no repo root, and another checkout still is", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    const data = mkdtempSync(join(process.cwd(), ".dim-ws-"));
-    roots.push(data);
+    const data = dir("data");
     const workspace = join(data, "dim-factory", "workspaces", "acme", "widgets", "abc123");
     const checkout = join(data, "code", "widgets");
     for (const path of [workspace, checkout]) {

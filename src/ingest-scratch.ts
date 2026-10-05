@@ -25,6 +25,15 @@ export function isScratchRepo(path: string): boolean {
   return [...TEMP_ROOTS, ...OWN_TEMP].some((root) => target === root || target.startsWith(`${root}/`));
 }
 
+function namedAndResolved(path: string): string[] {
+  try {
+    return [path, realpathSync(path)];
+  } catch {
+    return [path];
+  }
+}
+
 export function isFactoryWorkspace(path: string, env: Env = process.env): boolean {
-  return resolve(path).startsWith(`${workspacesDir(env)}/`);
+  const target = resolve(path);
+  return namedAndResolved(workspacesDir(env)).some((root) => target.startsWith(`${root}/`));
 }

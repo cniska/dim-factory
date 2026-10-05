@@ -1008,4 +1008,22 @@ describe("worker transcript copies", () => {
       closeDb(db);
     }
   });
+
+  test("takes the session id from the copy's file name, which is the id the worker is recorded under", () => {
+    const env = scratchEnv(newRoot());
+    writeCopy(
+      env,
+      lines.map((line) => ({ ...(line as object), sessionId: "99999999-8888-7777-6666-555555555555" })),
+    );
+    const db = run(env);
+    try {
+      attribute(db);
+      expect(db.prepare("SELECT id FROM session WHERE tool = 'claude'").all()).toEqual([{ id: SESSION }]);
+      expect(db.prepare("SELECT w.worker FROM session s JOIN worker_session w USING (id)").all()).toEqual([
+        { worker: WORKER },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
 });
