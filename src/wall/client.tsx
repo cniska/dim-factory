@@ -12,7 +12,6 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { z } from "zod";
 import { invariant, unreachable } from "../assert";
-import type { RefusalRecord } from "../coded-error";
 import type { Status } from "../order-contract";
 import type { Role } from "../worker-contract";
 import { age } from "./age";
@@ -469,9 +468,7 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
             </h3>
             <div className="space-y-[var(--space-lg)]">
               {read.state === "unavailable" ? (
-                <p className="text-warn-foreground">
-                  {ITEM_READ_MESSAGE.unavailable} {read.failure.message}
-                </p>
+                <p className="text-warn-foreground">{ITEM_READ_MESSAGE.unavailable}</p>
               ) : null}
               {read.view && read.view.entries.length > 0 ? (
                 <ItemHistory entries={read.view.entries} now={new Date()} />
@@ -620,10 +617,10 @@ function useSocket<S extends z.ZodType>(
   return state;
 }
 
-type Board = { snapshot: WallSnapshot; failure: RefusalRecord | null; readAt: number | null };
+type Board = { snapshot: WallSnapshot; failed: boolean; readAt: number | null };
 
 function useSnapshot() {
-  const [board, setBoard] = useState<Board>({ snapshot: unavailableSnapshot, failure: null, readAt: null });
+  const [board, setBoard] = useState<Board>({ snapshot: unavailableSnapshot, failed: false, readAt: null });
   const [bumped, setBumped] = useState<ReadonlySet<string>>(new Set());
   const seen = useRef(new Map<string, string>());
   const clearBump = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -633,7 +630,7 @@ function useSnapshot() {
   const socket = useSocket("/ws", BoardPush, (push) => {
     switch (push.kind) {
       case "failure":
-        setBoard({ snapshot: unavailableSnapshot, failure: push.failure, readAt: Date.now() });
+        setBoard({ snapshot: unavailableSnapshot, failed: true, readAt: Date.now() });
         return;
       case "snapshot": {
         const data = push.snapshot;
@@ -647,7 +644,7 @@ function useSnapshot() {
         clearTimeout(clearBump.current);
         setBumped(first ? new Set() : changed);
         if (changed.size > 0 && !first) clearBump.current = setTimeout(() => setBumped(new Set()), BUMP_MS);
-        setBoard({ snapshot: data, failure: null, readAt: Date.now() });
+        setBoard({ snapshot: data, failed: false, readAt: Date.now() });
         return;
       }
       default:
@@ -658,17 +655,14 @@ function useSnapshot() {
   return {
     snapshot: board.snapshot,
     stale: socket !== "open",
-    unavailable: board.failure !== null || board.readAt === null,
-    failure: board.failure,
+    unavailable: board.failed || board.readAt === null,
     answered: board.readAt !== null || socket === "closed",
     lastMessage: board.readAt,
     bumped,
   };
 }
 
-type ItemRead =
-  | { state: "reading" | "read"; view: WallItemView | null }
-  | { state: "unavailable"; view: WallItemView | null; failure: RefusalRecord };
+type ItemRead = { state: "reading" | "read" | "unavailable"; view: WallItemView | null };
 
 const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
   reading: "Reading the record.",
@@ -685,7 +679,7 @@ function useItemView(orderId: string): ItemRead {
         setRead({ state: "read", view: push.view });
         return;
       case "failure":
-        setRead((last) => ({ state: "unavailable", view: last.view, failure: push.failure }));
+        setRead((last) => ({ state: "unavailable", view: last.view }));
         return;
       default:
         unreachable(push);
@@ -746,7 +740,7 @@ function Clock({ at, beat }: { at: string; beat: boolean }) {
 }
 
 function App() {
-  const { snapshot, stale, unavailable, failure, answered, lastMessage, bumped } = useSnapshot();
+  const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow(lastMessage);
   const blink = useBlink(!stale && !unavailable);
   const [opened, setOpened] = useState<WallOrder | null>(null);
@@ -781,12 +775,6 @@ function App() {
           <Clock at={timeLabel(now.toISOString())} beat={blink} />
         </div>
       </header>
-
-      {failure === null ? null : (
-        <p role="status" className="pb-[var(--space-lg)] text-warn-foreground">
-          {failure.message}
-        </p>
-      )}
 
       <section
         className="grid grid-cols-3 items-start gap-[var(--space-md)] pb-[var(--space-xxl)]"

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
+import { refuseRecord } from "./db-contract";
 import { SCHEMA_VERSION } from "./db-schema";
 
 const WRITER = join(import.meta.dir, "db-writer.test-support.ts");
@@ -209,6 +210,16 @@ describe("the lock wait a connection is opened with", () => {
 });
 
 describe("a record of another version", () => {
+  test("is rebuilt when older, and read by the dim that wrote it when newer", () => {
+    const older = refuseRecord("record_version", { found: 4, expected: 5 });
+    const newer = refuseRecord("record_version", { found: 6, expected: 5 });
+    expect(older.resolve).toBe("dim rebuild");
+    expect(newer.message).toBe("the record is schema version 6, newer than the version 5 this dim reads");
+    expect(newer.resolve).toBe(
+      "run a dim that reads schema version 6, restarting any long-running one such as the wall",
+    );
+  });
+
   for (const found of [0, 1, SCHEMA_VERSION + 1]) {
     test(`is refused at version ${found} and left unchanged`, () => {
       const path = scratchPath();

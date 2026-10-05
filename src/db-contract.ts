@@ -7,8 +7,13 @@ export const refuseRecord = refuser<{
 }>({
   record_version: {
     message: ({ found, expected }) =>
-      `the record is schema version ${found} and this dim reads version ${expected}; run \`dim rebuild\``,
-    resolve: () => "dim rebuild",
+      found > expected
+        ? `the record is schema version ${found}, newer than the version ${expected} this dim reads`
+        : `the record is schema version ${found} and this dim reads version ${expected}; run \`dim rebuild\``,
+    resolve: ({ found, expected }) =>
+      found > expected
+        ? `run a dim that reads schema version ${found}, restarting any long-running one such as the wall`
+        : "dim rebuild",
   },
   no_database: {
     message: ({ path }) => `no database at ${path}; run \`dim sync\` first`,

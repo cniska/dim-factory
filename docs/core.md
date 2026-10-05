@@ -95,7 +95,7 @@ A run that hangs ends in a `started` line with no `ended`, naming what it waits 
 
 ## Record versions
 
-The record carries one schema version as `PRAGMA user_version`, covering the factory's tables with the record's. Every reader and writer refuses another version, naming `dim rebuild` as the repair; `dim doctor` reports a mismatch. While orders are disposable, `dim rebuild` resets the factory: its workers, sessions, logs and runs are dropped and recreated empty.
+The record carries one schema version as `PRAGMA user_version`, covering the factory's tables with the record's. Every reader and writer refuses another version, naming `dim rebuild` as the repair for an older record and a `dim` that reads the newer version for a newer one; `dim doctor` reports a mismatch. The wall shows only that it is unavailable, since its reader does not run `dim`. While orders are disposable, `dim rebuild` resets the factory: its workers, sessions, logs and runs are dropped and recreated empty.
 
 ## Design rule
 
