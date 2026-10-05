@@ -15,6 +15,7 @@ Each fact lives on one page and is linked from the others.
 
 - [The factory core](core.md) — how an order runs from added to shipped
 - [The wall](wall.md) — the read-only board the owner watches
+- [Adopting a project](adopting.md) — what a project needs before the factory runs its orders
 - [Agent command reference](usage.md) — install, collect, query, hooks and config
 - [Session database](design.md) — sources, schema, ingestion, hooks and read path
 - [Glossary](glossary.md) — one word per thing
