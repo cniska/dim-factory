@@ -313,6 +313,19 @@ async function perform(act: HarnessAct): Promise<string | null> {
       }
       return perform({ act: "build-return", artifact: act.artifact });
     }
+    case "subagent": {
+      const path = join(dirname(transcript), sessionId, "subagents", `agent-${act.agent}.jsonl`);
+      mkdirSync(dirname(path), { recursive: true });
+      const id = `toolu_${crypto.randomUUID()}`;
+      const entries: TranscriptEntry[] = [
+        { type: "tool_use", id, name: "Bash", input: { command: act.command } },
+        { type: "tool_result", id, output: "exit 0" },
+      ];
+      for (const entry of entries)
+        appendFileSync(path, `${JSON.stringify(claudeLine(sessionId, cwd, entry))}\n`);
+      writeFileSync(path.replace(/\.jsonl$/, ".meta.json"), JSON.stringify({ agentType: "Explore" }));
+      return null;
+    }
     case "die":
       process.kill(process.pid, "SIGKILL");
       return null;

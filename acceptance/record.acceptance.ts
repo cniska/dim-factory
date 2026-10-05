@@ -317,7 +317,13 @@ describe("the trace", () => {
   });
 
   test("AC-78 a planner's session and its tool calls are in the record after a sync, joined to the planner", async () => {
-    const m = await start({ script: { planner: [[{ act: "sh", command: "true" }, ...planTurn()]] } });
+    const m = await start({
+      script: {
+        planner: [
+          [{ act: "sh", command: "true" }, { act: "subagent", agent: "a1", command: "true" }, ...planTurn()],
+        ],
+      },
+    });
     const order = await showOrder(m.operator, await planned(m.operator));
     resultOf(await m.operator.dim(["sync"], z.unknown()));
 
@@ -335,9 +341,24 @@ describe("the trace", () => {
         }),
       ),
     ).rows;
+    const subagents = resultOf(
+      await m.operator.dim(
+        [
+          "sql",
+          "select w.worker as worker, count(t.id) as calls from worker_session w join session s on s.parent_id = w.id join tool_call t on t.session_id = s.id group by w.worker",
+        ],
+        z.strictObject({
+          denominator: z.string(),
+          rows: z.array(z.strictObject({ worker: z.string(), calls: z.number() })),
+          more: z.string().nullable(),
+          note: z.string().nullable(),
+        }),
+      ),
+    ).rows;
 
     const planner = found.find((row) => row.worker === workerOf(order, "planner").name);
     expect(planner?.calls).toBeGreaterThan(0);
+    expect(subagents.find((row) => row.worker === planner?.worker)?.calls).toBe(1);
   });
 
   test("AC-65 the trace follows one order's factory steps while it runs, and ends once the run does", async () => {

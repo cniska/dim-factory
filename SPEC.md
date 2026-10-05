@@ -112,7 +112,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-86** — Each order has one log, and it holds every action that touched the order, whoever took it — a worker's session or the factory — and nothing that did not. Evidence, such as a check's output, is attached to the action that produced it.
 - **FR-87** — The factory keeps a trace of its own steps for diagnosing the factory, apart from the order logs. Nothing in an order's log depends on it, it can be followed live for one order, and it can be thrown away.
 - **FR-88** — How the factory performs is measured by queries over the order logs and the session record, with no separate telemetry stream.
-- **FR-89** — A station worker's session is in the session record, attributed to its worker, as any Claude session is.
+- **FR-89** — A station worker's session is in the session record, attributed to its worker, as any Claude session is, and so are its subagents' sessions, attributed through it.
 - **FR-90** — A worker's work reaches the record only while its turn is open, and each piece of it, a slice's commit or a station's return, is recorded whole or not at all.
 
 ## 7. The wall
@@ -215,7 +215,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-75** — A slice whose check writes inside the workspace, in its temporary directory and outside both is kept, and only the write outside is refused. (FR-65)
 - **AC-76** — In a project that pins a tool version the operator's environment does not find first, the check and a station's worker each run the pinned version, and the order ships. (FR-10)
 - **AC-77** — A toolchain that cannot be resolved stops the run with a refusal naming its cause, and no station works on the order. (FR-11)
-- **AC-78** — After an order's planner has worked and the record is synced, the planner's session and its tool calls are in the record, joined to the planner by name. (FR-89)
+- **AC-78** — After an order's planner has worked and the record is synced, the planner's session and its tool calls are in the record, joined to the planner by name; a planner whose turn ran a subagent has that subagent's tool calls in the record too, reached through the subagent's parent to the planner. (FR-89)
 
 ## 10. Constraints
 

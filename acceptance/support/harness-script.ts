@@ -10,6 +10,7 @@ const HarnessAct = z.union([
     z.strictObject({ act: z.literal("signal"), name: z.string() }),
     z.strictObject({ act: z.literal("wait"), name: z.string() }),
     z.strictObject({ act: z.literal("build-remaining"), artifact: z.string() }),
+    z.strictObject({ act: z.literal("subagent"), agent: z.string(), command: z.string() }),
     z.strictObject({ act: z.literal("die") }),
     z.strictObject({ act: z.literal("limit"), resetsAt: z.string() }),
   ]),

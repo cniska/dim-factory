@@ -1050,4 +1050,88 @@ describe("worker transcript copies", () => {
       closeDb(db);
     }
   });
+
+  const AGENT = "a07d010a033dbe536";
+  const subLines = [
+    ...turn(5, "look around", [
+      { type: "tool_use", id: "toolu-sub", name: "Read", input: { file_path: "/Users/x/data/sub.md" } },
+    ]),
+  ].map((line) => ({ ...line, isSidechain: true }));
+
+  function writeSubagent(root: string, content: unknown[]): string {
+    const path = join(root, "subagents", `agent-${AGENT}.jsonl`);
+    writePrefix(path, content, fullBytes(content));
+    writeFileSync(
+      join(root, "subagents", `agent-${AGENT}.meta.json`),
+      JSON.stringify({ agentType: "Explore" }),
+    );
+    return path;
+  }
+
+  const copiedSubagent = (env: Env, content: unknown[]) =>
+    writeSubagent(join(workerSessionsDir(WORKER, env), SESSION), content);
+
+  const projectsSubagent = (env: Env, content: unknown[]) =>
+    writeSubagent(join(claudeProjectsDir(env), "-Users-x-data-workspaces-acme", SESSION), content);
+
+  test("records a copied subagent under its parent, its tool call joined to the parent's worker", () => {
+    const env = scratchEnv(newRoot());
+    writeCopy(env, lines);
+    copiedSubagent(env, subLines);
+    const db = run(env);
+    try {
+      attribute(db);
+      expect(
+        db.prepare("SELECT id, parent_id, agent_type FROM session WHERE parent_id IS NOT NULL").all(),
+      ).toEqual([{ id: `${AGENT}@${SESSION}`, parent_id: SESSION, agent_type: "Explore" }]);
+      expect(
+        db
+          .prepare(
+            `SELECT w.worker FROM tool_call t JOIN session s ON s.id = t.session_id
+             JOIN worker_session w ON w.id = s.parent_id WHERE t.id = 'toolu-sub'`,
+          )
+          .all(),
+      ).toEqual([{ worker: WORKER }]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("reads a subagent found in both places from the projects file alone", () => {
+    const env = scratchEnv(newRoot());
+    writeProjects(env, lines);
+    const projects = projectsSubagent(env, subLines);
+    writeCopy(env, lines);
+    copiedSubagent(env, subLines.slice(0, 1));
+    const db = run(env);
+    try {
+      expect(db.prepare("SELECT path FROM source_file WHERE kind = 'subagent'").all()).toEqual([
+        { path: projects },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("reads the copied subagent once the projects file is gone, holding each message once", () => {
+    const env = scratchEnv(newRoot());
+    writeCopy(env, lines);
+    const projects = projectsSubagent(env, subLines);
+    const copy = copiedSubagent(env, subLines);
+    const db = run(env);
+    try {
+      const before = db.prepare("SELECT text FROM message WHERE session_id = ?").all(`${AGENT}@${SESSION}`);
+      expect(before).toHaveLength(2);
+      rmSync(projects);
+      expect(sync(db, env).failures).toEqual([]);
+      expect(db.prepare("SELECT path FROM source_file WHERE kind = 'subagent'").all()).toEqual([
+        { path: copy },
+      ]);
+      expect(db.prepare("SELECT text FROM message WHERE session_id = ?").all(`${AGENT}@${SESSION}`)).toEqual(
+        before,
+      );
+    } finally {
+      closeDb(db);
+    }
+  });
 });

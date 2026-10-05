@@ -39,7 +39,10 @@ export function listClaudeSessions(env: Env = process.env): SourceFile[] {
   const transcripts = listClaudeTranscripts(env);
   const held = new Set(transcripts.map((file) => file.sessionId));
   const copies = listWorkerTranscripts(env).filter((copy) => !held.has(copy.sessionId));
-  return [...transcripts, ...copies, ...listClaudeSubagents(env)];
+  const subagents = listClaudeSubagents(env);
+  const heldSubagents = new Set(subagents.map((file) => file.sessionId));
+  const subagentCopies = listWorkerSubagents(env).filter((copy) => !heldSubagents.has(copy.sessionId));
+  return [...transcripts, ...copies, ...subagents, ...subagentCopies];
 }
 
 const SubagentMeta = z.looseObject({ agentType: z.string().optional() });
@@ -59,12 +62,11 @@ export function subagentId(agentId: string, parentId: string): string {
   return `${agentId}@${parentId}`;
 }
 
-function listClaudeSubagents(env: Env = process.env): SourceFile[] {
-  const root = claudeProjectsDir(env);
+function subagentsUnder(root: string, pattern: string, env: Env): SourceFile[] {
   if (!existsSync(root)) return [];
   const specs: SourceFile[] = [];
   const parse = parserFor(env);
-  for (const path of new Glob("*/*/subagents/*.jsonl").scanSync({ cwd: root, absolute: true })) {
+  for (const path of new Glob(pattern).scanSync({ cwd: root, absolute: true })) {
     const parentId = basename(dirname(dirname(path)));
     specs.push({
       path,
@@ -76,4 +78,12 @@ function listClaudeSubagents(env: Env = process.env): SourceFile[] {
     });
   }
   return specs.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function listClaudeSubagents(env: Env = process.env): SourceFile[] {
+  return subagentsUnder(claudeProjectsDir(env), "*/*/subagents/*.jsonl", env);
+}
+
+function listWorkerSubagents(env: Env = process.env): SourceFile[] {
+  return subagentsUnder(workersDir(env), "*/sessions/*/subagents/*.jsonl", env);
 }

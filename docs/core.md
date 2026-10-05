@@ -27,7 +27,7 @@ One XDG layout, resolved in [`src/paths.ts`](../src/paths.ts). A test isolates `
 | Category | Default | Holds |
 |---|---|---|
 | Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings) and `hooks/` |
-| Data | `$XDG_DATA_HOME/dim-factory` | `record/` (the SQLite file and hook spool), `workspaces/<owner>/<repo>/<order>/`, `workers/<name>/home/` and `workers/<name>/sessions/` |
+| Data | `$XDG_DATA_HOME/dim-factory` | `record/` (the SQLite file and hook spool), `workspaces/<owner>/<repo>/<order>/`, `workers/<name>/home/` and `workers/<name>/sessions/` (each turn's transcript, and its subagents' transcripts under `<session-id>/subagents/`) |
 | State | `$XDG_STATE_HOME/dim-factory` | `trace.jsonl`, `locks/` and `sync.log` |
 
 A project's settings are its committed `.dim/config.json`, layered over the user's ([`src/config.ts`](../src/config.ts)).
@@ -44,7 +44,7 @@ A project's settings are its committed `.dim/config.json`, layered over the user
 
 ## Turns
 
-A turn resumes or replaces the worker's session, spawns the harness with a brief or a message, serves the acts the worker sends, and copies the transcript when the process ends.
+A turn resumes or replaces the worker's session, spawns the harness with a brief or a message, serves the acts the worker sends, and copies the transcript, and the transcripts of the subagents it ran, when the process ends.
 
 - **A station turn** starts from the station's brief: JSON with fixed keys holding facts and naming the station's skill ([`src/station.ts`](../src/station.ts) `briefAt`). It ends when the worker's return meets the station's definition of done; a return that misses it twice fails the station.
 - **A message turn** starts from the operator's message, may only read, and its final text is the reply.
