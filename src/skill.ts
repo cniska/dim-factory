@@ -33,8 +33,7 @@ function realDir(dir: string): string {
 }
 
 export function skillLinkDirs(env: Env = process.env): string[] {
-  const dirs = installedHarnesses(env).map((harness) => harness.skillDir(env));
-  return dirs.filter((dir, index) => dirs.findIndex((other) => realDir(other) === realDir(dir)) === index);
+  return installedHarnesses(env).map((harness) => harness.skillDir(env));
 }
 
 export type SkillPlan = { name: SkillName; link: string; target: string } & (
@@ -76,7 +75,7 @@ export function installSkill(env: Env = process.env): SkillPlan[] {
     const plans = planSkill(env);
     for (const plan of plans) {
       if (plan.state === "linked") continue;
-      mkdirSync(dirname(plan.link), { recursive: true });
+      mkdirSync(realDir(dirname(plan.link)), { recursive: true });
       if (plan.state === "occupied") renameSync(plan.link, plan.backup);
       symlinkSync(plan.target, plan.link);
     }

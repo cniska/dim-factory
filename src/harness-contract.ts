@@ -1,13 +1,11 @@
 import { join } from "node:path";
 import { z } from "zod";
-import { claudeDir, codexDir, type Env, resolveHomeDir } from "./paths";
+import { claudeDir, type Env } from "./paths";
 
-export const HarnessName = z.enum(["codex", "claude"]);
+export const HarnessName = z.enum(["claude"]);
 export type HarnessName = z.infer<typeof HarnessName>;
 
-export const EditInput = z
-  .object({ file_path: z.string(), notebook_path: z.string(), command: z.string() })
-  .partial();
+export const EditInput = z.object({ file_path: z.string(), notebook_path: z.string() }).partial();
 export type EditInput = z.infer<typeof EditInput>;
 
 export type Harness = {
@@ -18,21 +16,7 @@ export type Harness = {
   editedPaths(input: EditInput): readonly string[];
 };
 
-const PATCH_TARGET = /^\*\*\* (?:Add File|Update File|Move to): (.+)$/gm;
-
 export const HARNESSES: Readonly<Record<HarnessName, Harness>> = {
-  codex: {
-    name: "codex",
-    hookConfig: (env) => join(codexDir(env), "hooks.json"),
-    skillDir: (env) => join(resolveHomeDir(env), ".agents", "skills"),
-    editTools: ["apply_patch"],
-    editedPaths: ({ command }) =>
-      command === undefined
-        ? []
-        : [...command.matchAll(PATCH_TARGET)].flatMap((match) =>
-            match[1] === undefined ? [] : [match[1].trim()],
-          ),
-  },
   claude: {
     name: "claude",
     hookConfig: (env) => join(claudeDir(env), "settings.json"),

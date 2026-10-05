@@ -39,27 +39,10 @@ describe("the paths an edit touched", () => {
     ).toEqual(["/repo/n.ipynb"]);
   });
 
-  test("a Codex patch names every file it adds, updates or moves to, and not one it deletes", () => {
-    const command = [
-      "*** Begin Patch",
-      "*** Add File: /repo/new.ts",
-      "+export {};",
-      "*** Update File: /repo/old.ts",
-      "*** Move to: /repo/moved.ts",
-      "*** Delete File: /repo/gone.ts",
-      "*** End Patch",
-    ].join("\n");
-    expect(editedPaths({ tool_name: "apply_patch", cwd: "/repo", tool_input: { command } })).toEqual([
-      "/repo/new.ts",
-      "/repo/old.ts",
-      "/repo/moved.ts",
-    ]);
-  });
-
   test("any other tool edited nothing", () => {
-    expect(
-      editedPaths({ tool_name: "Bash", cwd: "/repo", tool_input: { command: "*** Add File: /repo/x.ts" } }),
-    ).toEqual([]);
+    expect(editedPaths({ tool_name: "Bash", cwd: "/repo", tool_input: { file_path: "/repo/x.ts" } })).toEqual(
+      [],
+    );
   });
 });
 

@@ -60,12 +60,9 @@ describe("skill install", () => {
     expect(shipped()).toEqual(dirs);
   });
 
-  test("links every skill into the skill directory of each installed harness", () => {
-    const env = machine(["claude", "codex"]);
-    expect(skillLinkDirs(env)).toEqual([
-      join(env.HOME, ".agents", "skills"),
-      join(env.HOME, ".claude", "skills"),
-    ]);
+  test("links every skill into Claude Code's skill directory", () => {
+    const env = machine(["claude"]);
+    expect(skillLinkDirs(env)).toEqual([join(env.HOME, ".claude", "skills")]);
     expect(planSkill(env).every((p) => p.state === "missing")).toBe(true);
     installSkill(env);
     for (const dir of skillLinkDirs(env)) {
@@ -76,46 +73,21 @@ describe("skill install", () => {
     expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
   });
 
-  test("links nothing for a harness that is not installed", () => {
+  test("links nothing while Claude Code is not installed", () => {
+    const env = machine([]);
+    expect(skillLinkDirs(env)).toEqual([]);
+    installSkill(env);
+    expect(existsSync(join(env.HOME, ".claude", "skills"))).toBe(false);
+  });
+
+  test("links through a skill directory that is a link to one not made yet", () => {
     const env = machine(["claude"]);
-    expect(skillLinkDirs(env)).toEqual([join(env.HOME, ".claude", "skills")]);
-    installSkill(env);
-    expect(existsSync(join(env.HOME, ".agents", "skills"))).toBe(false);
-    expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
-  });
-
-  test("links once where two harnesses' skill directories are the same directory", () => {
-    const env = machine(["claude", "codex"]);
-    mkdirSync(join(env.HOME, ".agents", "skills"), { recursive: true });
-    mkdirSync(join(env.HOME, ".claude"));
-    symlinkSync(join(env.HOME, ".agents", "skills"), join(env.HOME, ".claude", "skills"));
-    expect(skillLinkDirs(env)).toHaveLength(1);
-    installSkill(env);
-    expect(readlinkSync(join(env.HOME, ".claude", "skills", SKILL_NAMES[0]))).toBe(
-      skillSourceDir(SKILL_NAMES[0]),
-    );
-  });
-
-  test("links once where one harness's skill directory is a link to the other's that does not exist yet", () => {
-    const env = machine(["claude", "codex"]);
     mkdirSync(join(env.HOME, ".claude"));
     symlinkSync("../.agents/skills", join(env.HOME, ".claude", "skills"));
-    expect(skillLinkDirs(env)).toHaveLength(1);
     installSkill(env);
     expect(readlinkSync(join(env.HOME, ".agents", "skills", SKILL_NAMES[0]))).toBe(
       skillSourceDir(SKILL_NAMES[0]),
     );
-  });
-
-  test("a skill linked for one harness still leaves the other pending", () => {
-    const env = machine(["claude", "codex"]);
-    const [first] = skillLinkDirs(env);
-    invariant(first !== undefined, "a machine with harnesses has skill dirs");
-    mkdirSync(first, { recursive: true });
-    const name = SKILL_NAMES[0];
-    symlinkSync(skillSourceDir(name), join(first, name));
-    const pending = planSkill(env).filter((p) => p.state !== "linked");
-    expect(pending.some((p) => p.name === name)).toBe(true);
   });
 
   test("unlinks a skill that no longer ships, and leaves the owner's own links and directories alone", async () => {
@@ -133,9 +105,9 @@ describe("skill install", () => {
   });
 
   test("skills install retires a stale link when every current skill is already linked", () => {
-    const env = machine(["codex"]);
+    const env = machine(["claude"]);
     installSkill(env);
-    const stale = join(env.HOME, ".agents", "skills", "dim-retired");
+    const stale = join(env.HOME, ".claude", "skills", "dim-retired");
     symlinkSync(join(SKILLS, "dim-retired"), stale);
 
     const run = Bun.spawnSync([process.execPath, resolve(import.meta.dir, "cli.ts"), "skills", "install"], {

@@ -18,7 +18,7 @@ test("skills install reports the links it made, and none on a second run", () =>
   try {
     const written = installSkills(root);
     expect(written.linked).toContain(join(root, ".claude", "skills", SKILL_NAMES[0]));
-    expect(written.linked).toHaveLength(SKILL_NAMES.length * 2);
+    expect(written.linked).toHaveLength(SKILL_NAMES.length);
     expect(written.backups).toEqual([]);
     expect(installSkills(root)).toEqual({ linked: [], backups: [] });
   } finally {
@@ -29,7 +29,7 @@ test("skills install reports the links it made, and none on a second run", () =>
 test("skills install reports where it moved an occupied link", () => {
   const root = mkdtempSync(join(tmpdir(), "dim-skill-occupied-"));
   try {
-    const occupied = join(root, ".agents", "skills", SKILL_NAMES[0]);
+    const occupied = join(root, ".claude", "skills", SKILL_NAMES[0]);
     mkdirSync(occupied, { recursive: true });
     const written = installSkills(root);
     expect(written.backups).toEqual([`${occupied}.dim-backup`]);

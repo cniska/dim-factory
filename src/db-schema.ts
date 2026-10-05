@@ -7,7 +7,7 @@ const TOOLS_SQL = sqlList(TOOLS);
 const HARNESSES_SQL = sqlList(HarnessName.options);
 const HOOK_EVENTS_SQL = sqlList(Object.values(HOOK_EVENTS));
 
-export const SCHEMA_VERSION = 98;
+export const SCHEMA_VERSION = 99;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS source_file (

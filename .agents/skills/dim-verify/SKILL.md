@@ -17,7 +17,7 @@ scripts/verify-dim.sh new
 
 It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `HOME` and the three XDG variables into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo`.
 
-Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema and `hooks` installed. Its skill and rules checks read the run's home, where nothing else is installed, and do not bear on the run.
+Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema and `hooks` installed. Its skill check reads the run's home, where nothing else is installed, and do not bear on the run.
 
 ## Drive
 
@@ -48,7 +48,7 @@ rm -rf "$run"
 ## Red flags
 
 - Running `dim` directly rather than through the script, which reads and writes the machine's own record and harness configs
-- `skills install`, `agent install` or `rules install` during a run: they write outside the run's directory
+- `skills install` or `agent install` during a run: they write outside the run's directory
 - Reporting a run as verified from exit codes, without reading the JSON or the record
 - Explaining what an order did from its log, the code or a guess, without reading its trace
 - Leaving the run's directory behind

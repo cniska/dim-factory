@@ -7,14 +7,12 @@ import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { HARNESSES } from "./harness-contract";
-import { harnessInstalled, installedHarnesses } from "./harness-ops";
+import { installedHarnesses } from "./harness-ops";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
-import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
 import { scalar } from "./query";
-import { planRules } from "./rules";
 import { planSkill, retiredLinks } from "./skill";
 
 export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
@@ -65,7 +63,7 @@ function sessionHooks(hooks: HookRead): Health {
       name: "hooks",
       state: "warn",
       detail: "no harness is installed, so no session hook is written and nothing is recorded",
-      fix: "install codex or claude, then dim hooks install",
+      fix: "install claude, then dim hooks install",
     };
   }
   if (hooks.missing.length === 0 && hooks.stale.length === 0 && hooks.retired.length === 0) {
@@ -84,34 +82,6 @@ function sessionHooks(hooks: HookRead): Health {
     state: "fail",
     detail: `session hooks: ${counts.join("; ")}`,
     fix: "dim hooks install",
-  };
-}
-
-function codexTrust(env: Env): Health {
-  if (!harnessInstalled(HARNESSES.codex, env)) {
-    return { name: "codex trust", state: "ok", detail: "codex is not installed" };
-  }
-  let untrusted: TrustState[];
-  try {
-    untrusted = planCodexTrust(env).filter((t) => !t.recorded);
-  } catch (error) {
-    if (!isConfigRefusal(error)) throw error;
-    return unreadable("codex trust", error);
-  }
-  if (untrusted.length === 0) {
-    return {
-      name: "codex trust",
-      state: "ok",
-      detail: "every codex hook has a trust recorded for its position",
-    };
-  }
-  return {
-    name: "codex trust",
-    state: "fail",
-    detail:
-      `${untrusted.length} codex hooks have no trusted_hash under [hooks.state] ` +
-      `(${untrusted.map((t) => t.key ?? `${t.event}, not in hooks.json`).join("; ")})`,
-    fix: `start a codex session and approve the hook, or remove the stale keys from ${codexConfigPath(env)}`,
   };
 }
 
@@ -306,22 +276,6 @@ function agent(env: Env): Health {
   };
 }
 
-function rules(env: Env): Health {
-  const plan = planRules(env);
-  if (plan.state === "not-installed") {
-    return { name: "rules", state: "ok", detail: "codex is not installed, so it needs no rules file" };
-  }
-  if (plan.state === "missing-source")
-    return { name: "rules", state: "warn", detail: `no ${plan.source} to flatten` };
-  if (plan.state === "unchanged")
-    return { name: "rules", state: "ok", detail: "codex rules match the canonical file" };
-  const detail =
-    plan.state === "absent"
-      ? "codex has no rules file, so none of the conventions reach it"
-      : "codex rules differ from the canonical file";
-  return { name: "rules", state: "fail", detail, fix: "dim rules install" };
-}
-
 function outcomes(db: Database): Health {
   const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
   return commits === 0
@@ -343,11 +297,9 @@ export function diagnose(db: Database, env: Env): Health[] {
     schema(version),
     readable ? freshness(db) : notJudged("freshness", version),
     sessionHooks(hooks),
-    codexTrust(env),
     readable ? endReasons(db, hooks) : notJudged("end reasons", version),
     skill(env),
     agent(env),
-    rules(env),
     retention(env),
     spool(env),
     readable ? outcomes(db) : notJudged("outcomes", version),

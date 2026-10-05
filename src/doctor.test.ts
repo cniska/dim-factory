@@ -13,9 +13,8 @@ import { SCHEMA_VERSION } from "./db-schema";
 import { diagnose } from "./doctor";
 import { doctorCommand } from "./doctor-command";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import { HookConfig, wantedHooks } from "./hook-commands";
+import { wantedHooks } from "./hook-commands";
 import { installHooks } from "./hooks";
-import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
 import { agentPlistPath } from "./ingest-launchd";
 import { sync } from "./ingest-sync";
 import { dbPath, type Env, resolveHomeDir } from "./paths";
@@ -115,7 +114,7 @@ describe("doctor", () => {
     installSkill(env);
     expect(check(env, "skill")?.state).toBe("ok");
 
-    const stale = join(resolveHomeDir(env), ".agents", "skills", "dim-retired");
+    const stale = join(resolveHomeDir(env), ".claude", "skills", "dim-retired");
     symlinkSync(join(dirname(import.meta.dir), "skills", "dim-retired"), stale);
     const retired = check(env, "skill");
     expect(retired?.state).toBe("warn");
@@ -176,36 +175,6 @@ describe("doctor", () => {
     });
   });
 
-  test("fails while a codex hook has no trust recorded for its position", () => {
-    const env = seeded();
-    const config = codexConfigPath(env);
-    mkdirSync(dirname(config), { recursive: true });
-    installHooks(env);
-
-    const untrusted = check(env, "codex trust");
-    expect(untrusted?.state).toBe("fail");
-    expect(untrusted?.detail).toContain("session_start:0:0");
-
-    const keys = planCodexTrust(env).flatMap((t) => (t.key === null ? [] : [t.key]));
-    writeFileSync(config, keys.map((k) => `[hooks.state."${k}"]\ntrusted_hash = "sha256:abc"\n`).join("\n"));
-    expect(check(env, "codex trust")?.state).toBe("ok");
-
-    const hooksPath = join(dirname(config), "hooks.json");
-    const hooks = HookConfig.parse(JSON.parse(readFileSync(hooksPath, "utf8")));
-    hooks.hooks?.SessionStart?.unshift({ hooks: [{ type: "command", command: "other-tool" }] });
-    writeFileSync(hooksPath, JSON.stringify(hooks));
-    expect(check(env, "codex trust")?.state).toBe("fail");
-  });
-
-  test("holds a harness that is not installed to nothing: no codex trust, no codex rules, no hooks for it", () => {
-    const env = { ...seeded(), PATH: `${harnessesOnPath(newRoot(), ["claude"])}:/usr/bin:/bin` };
-    installHooks(env);
-
-    expect(check(env, "codex trust")).toMatchObject({ state: "ok", detail: "codex is not installed" });
-    expect(check(env, "rules")?.state).toBe("ok");
-    expect(check(env, "hooks")?.state).toBe("ok");
-  });
-
   test("fails while a hook dim no longer wants is installed, until install removes it", () => {
     const base = seeded();
     const env = { ...base, PATH: `${harnessesOnPath(newRoot(), ["claude"])}:/usr/bin:/bin` };
@@ -232,37 +201,21 @@ describe("doctor", () => {
     expect(check(env, "end reasons")?.state).toBe("warn");
   });
 
-  test("reports an unreadable codex config as one failure, keeping the other checks", () => {
+  test("reports an unreadable hook config as one failure, keeping the other checks", () => {
     const env = seeded();
-    const config = codexConfigPath(env);
-    mkdirSync(dirname(config), { recursive: true });
     installHooks(env);
-    writeFileSync(join(dirname(config), "hooks.json"), '{ "hooks": ');
+    writeFileSync(join(resolveHomeDir(env), ".claude", "settings.json"), '{ "hooks": ');
 
     const db = openReadOnly(dbPath(env));
     try {
       const checks = diagnose(db, env);
       const by = (name: string) => checks.find((c) => c.name === name);
-      expect(by("codex trust")?.state).toBe("fail");
       expect(by("hooks")?.state).toBe("fail");
       expect(by("end reasons")?.detail).toContain("not judged");
       expect(checks.map((c) => c.name)).toContain("schema");
     } finally {
       db.close();
     }
-  });
-
-  test("reports an unparseable codex config.toml rather than reading it as no trust", () => {
-    const env = seeded();
-    const config = codexConfigPath(env);
-    mkdirSync(dirname(config), { recursive: true });
-    installHooks(env);
-    writeFileSync(config, "= 1\n");
-
-    const trust = check(env, "codex trust");
-    expect(trust?.state).toBe("fail");
-    expect(trust?.detail).toContain(config);
-    expect(trust?.detail).not.toContain("trusted_hash");
   });
 
   test("reports every check with something a reader can act on", () => {

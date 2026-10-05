@@ -19,7 +19,7 @@ export function scratchEnv(root: string): Env {
     XDG_CONFIG_HOME: join(root, "config"),
     XDG_DATA_HOME: join(root, "data"),
     XDG_STATE_HOME: join(root, "state"),
-    PATH: `${harnessesOnPath(root, ["claude", "codex"])}:${process.env.PATH}`,
+    PATH: `${harnessesOnPath(root, ["claude"])}:${process.env.PATH}`,
   };
 }
 

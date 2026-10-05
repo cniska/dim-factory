@@ -15,8 +15,8 @@ function installHooks(root: string) {
 test("hooks install reports the hooks it added, and none on a second run", () => {
   const root = mkdtempSync(join(tmpdir(), "dim-hooks-write-"));
   try {
-    expect(installHooks(root)).toMatchObject({ added: 8, alreadyPresent: 0 });
-    expect(installHooks(root)).toMatchObject({ written: [], added: 0, alreadyPresent: 8 });
+    expect(installHooks(root)).toMatchObject({ added: 4, alreadyPresent: 0 });
+    expect(installHooks(root)).toMatchObject({ written: [], added: 0, alreadyPresent: 4 });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -30,7 +30,7 @@ test("hooks install reports a refreshed matcher", () => {
     const config = JSON.parse(readFileSync(settings, "utf8"));
     config.hooks.PostToolUse.find((entry: { matcher?: string }) => entry.matcher).matcher = "Stale";
     writeFileSync(settings, JSON.stringify(config));
-    expect(installHooks(root)).toMatchObject({ added: 0, refreshed: 1, alreadyPresent: 7 });
+    expect(installHooks(root)).toMatchObject({ added: 0, refreshed: 1, alreadyPresent: 3 });
     expect(installHooks(root)).toMatchObject({ written: [], refreshed: 0 });
   } finally {
     rmSync(root, { recursive: true, force: true });

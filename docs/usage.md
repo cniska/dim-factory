@@ -27,14 +27,13 @@ dim sql "<read-only select>"
 
 ```sh
 dim hooks install
-dim rules install
 dim skills install
 ```
 
 - Each install writes at once and copies aside any file it replaces.
 - Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
-- Hooks, Codex rules, Codex hook trust and skill links are installed and checked only for a harness whose executable is on `PATH`. The `dim-factory` skill links into `~/.claude/skills` for Claude Code and `~/.agents/skills` for Codex, once where both are the same directory.
-- `dim doctor` reports missing, stale or retired hooks, missing Codex trust, database drift and unloaded agents, each with its repair.
+- Hooks and the skill link are for Claude Code, and are installed and checked only while `claude` is on `PATH`. The `dim-factory` skill links into `~/.claude/skills`. Other harnesses' sessions are read into the record without any hook.
+- `dim doctor` reports missing, stale or retired hooks, database drift and unloaded agents, each with its repair.
 
 A project's gates are its own: its hooks, its tests and its CI, which the factory runs as any contributor does.
 

@@ -71,7 +71,7 @@ No network, credential or per-token cost, and no model reads a transcript. Nothi
 
 ## Hooks
 
-`dim hooks install` installs its hooks for each harness in `HARNESSES` ([`src/harness-contract.ts`](../src/harness-contract.ts)) whose executable is on `PATH`, into the config its entry names ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts)). An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place. A hook dim installed and no longer wants is retired: install removes it, leaving any other hook in its entry, and `dim doctor` fails until it has. A hook config, or a Codex `config.toml`, whose hooks hold the wrong shape is refused `config_invalid`, naming the file and the path to the bad value, rather than half-read.
+`dim hooks install` installs its hooks for each harness in `HARNESSES` ([`src/harness-contract.ts`](../src/harness-contract.ts)) whose executable is on `PATH`, into the config its entry names ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts)). An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place. A hook dim installed and no longer wants is retired: install removes it, leaving any other hook in its entry, and `dim doctor` fails until it has. A hook config whose hooks hold the wrong shape is refused `config_invalid`, naming the file and the path to the bad value, rather than half-read.
 
 | Event | What it does |
 |---|---|
@@ -86,7 +86,7 @@ No network, credential or per-token cost, and no model reads a transcript. Nothi
 | `hook_event` is never re-derived | A hook fires once. The table has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy. A drain is one transaction, and a file is deleted only once it has committed |
 | One source per column | `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript |
 | Concurrency | `sync`, `rebuild` and a ship hold the lock. Other commands open their own connections in WAL mode. A write, including a transaction that reads before it writes, waits a bounded time for SQLite's write lock before failing with `SQLITE_BUSY` ([`src/db.ts`](../src/db.ts)). A reader opens read-write under `query_only` ([`src/db-read.ts`](../src/db-read.ts)), since a `readonly` connection fails with `SQLITE_CANTOPEN` on a WAL database whose `-wal` and `-shm` files are gone |
-| Codex is coarser | Its `SessionEnd` reason is always `other` and it has no per-turn skill attribution, so tokens cannot be attributed to a skill within a Codex session |
+| Hooks are Claude Code's | Other harnesses' sessions carry no hook events, so they have no end reason, and a Codex session has no per-turn skill attribution |
 
 ## Tokens and cost
 

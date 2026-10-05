@@ -91,7 +91,7 @@ const LogEntry = z.union([
   }),
   entry("message_sent", message),
   stop("message_refused", "not_to_operator", message),
-  entry("session_started", { worker: z.string(), session: z.string(), harness: z.enum(["codex", "claude"]) }),
+  entry("session_started", { worker: z.string(), session: z.string(), harness: z.literal("claude") }),
   stop("session_died", "usage_limit", { ...dying, resetsAt: z.string().nullable() }),
   stop("session_died", "killed", dying),
   stop("session_died", "resume_failed", dying),
@@ -133,7 +133,7 @@ type Stop = Extract<LogEntry, { readonly code: string }>;
 
 const SessionView = z.strictObject({
   id: z.string(),
-  harness: z.enum(["codex", "claude"]),
+  harness: z.literal("claude"),
   pid: z.number(),
   died: z.strictObject({ code: z.string() }).optional(),
 });
