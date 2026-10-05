@@ -99,10 +99,10 @@ export function createIngester(db: Database) {
 
   const upsertMessage = db.prepare(
     `INSERT INTO message (id, session_id, ts, role, model, turn_id, prompt_source, origin_kind,
-       is_meta, is_skill_body, attribution_skill, command_name, interrupted_message_id, denial_kind,
+       is_meta, is_skill_body, attribution_skill, slash_command, interrupted_message_id, denial_kind,
        user_feedback, text, text_chars, src_file, src_line, extra)
      VALUES ($id, $sessionId, $ts, $role, $model, $turnId, $promptSource, $originKind,
-       $isMeta, $isSkillBody, $attributionSkill, $commandName, $interruptedMessageId, $denialKind,
+       $isMeta, $isSkillBody, $attributionSkill, $slashCommand, $interruptedMessageId, $denialKind,
        $userFeedback, $text, $textChars, $srcFile, $srcLine, $extra)
      ON CONFLICT(id) DO UPDATE SET
        ts                     = min(message.ts, excluded.ts),
@@ -116,7 +116,7 @@ export function createIngester(db: Database) {
        interrupted_message_id = coalesce(excluded.interrupted_message_id, message.interrupted_message_id),
        denial_kind            = coalesce(excluded.denial_kind, message.denial_kind),
        user_feedback          = coalesce(excluded.user_feedback, message.user_feedback),
-       command_name           = coalesce(excluded.command_name, message.command_name),
+       slash_command           = coalesce(excluded.slash_command, message.slash_command),
        text                   = ${MERGED_TEXT},
        text_chars             = length(${MERGED_TEXT}),
        src_file               = excluded.src_file,
@@ -205,8 +205,8 @@ export function createIngester(db: Database) {
     `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
        body_chars, body_sha256, skill_path)
      SELECT $sessionId, id, ts, model,
-       CASE WHEN command_name = $skillName OR command_name LIKE '%:' || $skillName
-         THEN command_name ELSE $skillName END, 'user',
+       CASE WHEN slash_command = $skillName OR slash_command LIKE '%:' || $skillName
+         THEN slash_command ELSE $skillName END, 'user',
        $bodyChars, $bodySha256, $skillPath
      FROM message
      WHERE id = $parentUuid
@@ -278,7 +278,7 @@ export function createIngester(db: Database) {
         $isMeta: m.isMeta ? 1 : 0,
         $isSkillBody: m.isSkillBody ? 1 : 0,
         $attributionSkill: m.attributionSkill ?? null,
-        $commandName: m.commandName ?? null,
+        $slashCommand: m.slashCommand ?? null,
         $interruptedMessageId: m.interruptedMessageId ?? null,
         $denialKind: m.denialKind ?? null,
         $userFeedback: m.userFeedback ?? null,

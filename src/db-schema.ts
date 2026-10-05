@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS message (
   is_meta         INTEGER NOT NULL DEFAULT 0,
   is_skill_body   INTEGER NOT NULL DEFAULT 0,
   attribution_skill TEXT,
-  command_name    TEXT,
+  slash_command    TEXT,
   interrupted_message_id TEXT,
   denial_kind     TEXT,
   user_feedback   TEXT,

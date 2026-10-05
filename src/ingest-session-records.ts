@@ -21,7 +21,7 @@ export type MessageRow = {
   isMeta: boolean;
   isSkillBody: boolean;
   attributionSkill?: string;
-  commandName?: string;
+  slashCommand?: string;
   interruptedMessageId?: string;
   denialKind?: string;
   userFeedback?: string;

@@ -30,6 +30,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
+| Slash command | The `/name` a user types into a harness, such as `/clear` or `/dim:dim-plan` |
 | Declared task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/declared-tasks.ts`](../src/declared-tasks.ts)). The check is the task that says a change is sound |
 
 ## The record
