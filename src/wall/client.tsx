@@ -1,4 +1,13 @@
-import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
+import {
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  CircleX,
+  Factory,
+  type LucideIcon,
+  Radio,
+  X,
+} from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { z } from "zod";
@@ -159,10 +168,21 @@ function NoWorkerLabel() {
   );
 }
 
-function EntryWorker({ entry }: { entry: WallItemEntry }) {
-  if (entry.worker === null) return null;
+function FactoryLabel() {
+  return (
+    <span className="flex min-w-0 items-center justify-end gap-[var(--space-sm)] text-quiet">
+      <Factory role="img" aria-label="factory" size={14} strokeWidth={2} className="shrink-0 opacity-60" />
+      <span>factory</span>
+    </span>
+  );
+}
 
-  return <WorkerLabel worker={entry.worker} className="justify-end" />;
+function EntryActor({ entry }: { entry: WallItemEntry }) {
+  return entry.worker === null ? (
+    <FactoryLabel />
+  ) : (
+    <WorkerLabel worker={entry.worker} className="justify-end" />
+  );
 }
 
 const dayKey = new Intl.DateTimeFormat("en-CA");
@@ -215,7 +235,7 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
                       </time>
                       <strong className="font-normal text-foreground">{itemLabel(entry)}</strong>
                     </div>
-                    <EntryWorker entry={entry} />
+                    <EntryActor entry={entry} />
                   </div>
                 </li>
               );

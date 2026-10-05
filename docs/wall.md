@@ -24,7 +24,7 @@ Opening a card shows that order alone, as a dialog over the board:
 
 - the order's identity and facts, on screen before the record loads
 - the **Plan**, **Build** and **Review** artifacts, each a document the owner can read in place of the transcript and diff
-- the order's log in order, each entry its action, station, worker and time, with no details
+- the order's log in order, each entry its action, station, time and the worker that recorded it, or a faint "factory" for the factory's own entries, with no details
 
 It reads the same record as `dim order show`, which also carries the order's evidence, and follows it as new entries arrive.
 Artifact Markdown renders tables with equal-width columns and alternating row shading in a horizontally scrollable container. Inline code stays on one line; fenced code keeps its indentation and scrolls horizontally.
