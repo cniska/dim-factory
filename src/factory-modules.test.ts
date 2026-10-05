@@ -78,8 +78,8 @@ function runsSql(node: Node): boolean {
   const isDb =
     (owner.type === "Identifier" && owner.name === "db") ||
     ((owner.type === "MemberExpression" || owner.type === "OptionalMemberExpression") &&
-      owner.property.type === "Identifier" &&
-      owner.property.name === "db");
+      ((owner.property.type === "Identifier" && owner.property.name === "db") ||
+        (owner.property.type === "PrivateName" && owner.property.id.name === "db")));
   return method === "run" && isDb;
 }
 
@@ -175,7 +175,13 @@ describe("the module checks", () => {
   test("catch SQL outside a store", () => {
     expect(sqlBreaches("order-ops.ts", 'db.query("SELECT 1")')).toEqual(["order-ops.ts runs SQL"]);
     expect(sqlBreaches("order-store.ts", 'db.query("SELECT 1")')).toEqual([]);
-    for (const text of ['db?.query("x")', 'this.db.run("x")', 'db.run("x")', 'x.prepare("y")']) {
+    for (const text of [
+      'db?.query("x")',
+      'this.db.run("x")',
+      'class A { #db: any; f() { this.#db.run("x"); } }',
+      'db.run("x")',
+      'x.prepare("y")',
+    ]) {
       expect(sqlBreaches("order-ops.ts", text)).toEqual(["order-ops.ts runs SQL"]);
     }
     expect(sqlBreaches("order-ops.ts", 'const help = "db.query(x)"')).toEqual([]);
