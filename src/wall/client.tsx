@@ -127,7 +127,11 @@ function OrderCard({
           Open {order.title}
         </button>
         <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
-          {order.worker ? <WorkerLabel worker={order.worker} className="truncate" /> : <NoWorkerLabel />}
+          {order.worker ? (
+            <WorkerLabel worker={order.worker} className="truncate" />
+          ) : order.status === "running" ? (
+            <NoWorkerLabel />
+          ) : null}
         </span>
         {order.station === null ? null : <Badge>{STATION_LABELS[order.station]}</Badge>}
       </CardFooter>
