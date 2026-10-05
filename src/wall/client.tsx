@@ -262,9 +262,9 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
               <dt>order</dt>
               <dd className="text-muted-foreground">{order.id}</dd>
             </div>
-            <div className="flex items-center gap-[var(--space-sm)]">
+            <div className="flex min-w-0 max-w-full items-center gap-[var(--space-sm)]">
               <dt>project</dt>
-              <dd className="text-muted-foreground">{order.project}</dd>
+              <dd className="truncate text-muted-foreground">{order.project}</dd>
             </div>
             {order.station ? (
               <div className="flex items-center gap-[var(--space-sm)]">
@@ -272,9 +272,9 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                 <dd className="text-muted-foreground lowercase">{STATION_LABELS[order.station]}</dd>
               </div>
             ) : null}
-            <div className="flex items-center gap-[var(--space-sm)]">
+            <div className="flex min-w-0 max-w-full items-center gap-[var(--space-sm)]">
               <dt>assignee</dt>
-              <dd className="flex items-center gap-[var(--space-xs)] text-muted-foreground">
+              <dd className="flex min-w-0 items-center gap-[var(--space-xs)] text-muted-foreground">
                 {order.worker ? <WorkerLabel worker={order.worker} /> : <NoWorkerLabel />}
               </dd>
             </div>
