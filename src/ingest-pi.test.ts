@@ -195,6 +195,18 @@ describe("a Pi or omp session", () => {
   test("sets aside a line that does not parse", () => {
     expect(parsePiChunk(["{not json", LINES[1] as string], 10).dropped).toEqual([10]);
   });
+
+  test("sets aside a message line whose read field has the wrong type", () => {
+    const wrong = JSON.stringify({
+      type: "message",
+      id: "m-bad",
+      timestamp: "2026-09-16T10:00:00.000Z",
+      message: { role: "assistant", responseId: "resp_9", usage: { input: "3" } },
+    });
+    const parsed = parsePiChunk([wrong, LINES[1] as string], 10);
+    expect(parsed.dropped).toEqual([10]);
+    expect(parsed.usage.map((u) => u.responseId)).not.toContain("resp_9");
+  });
 });
 
 describe("listing sessions", () => {

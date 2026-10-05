@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   type MessageRow,
   type ParsedChunk,
@@ -7,43 +8,48 @@ import {
   type UsageRow,
 } from "./ingest-session-records";
 
-type PiContent =
-  | { type: "text"; text?: string }
-  | { type: "thinking" }
-  | { type: "toolCall"; id?: string; name?: string; arguments?: Record<string, unknown> };
+const PiContent = z.looseObject({
+  type: z.string().optional(),
+  text: z.string().optional(),
+  id: z.string().optional(),
+  name: z.string().optional(),
+  arguments: z.record(z.string(), z.unknown()).optional(),
+});
 
-type PiUsage = {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-};
+const PiMessage = z.looseObject({
+  role: z.string().optional(),
+  content: z.array(PiContent).optional(),
+  model: z.string().optional(),
+  usage: z
+    .looseObject({
+      input: z.number().optional(),
+      output: z.number().optional(),
+      cacheRead: z.number().optional(),
+      cacheWrite: z.number().optional(),
+    })
+    .optional(),
+  responseId: z.string().optional(),
+  toolCallId: z.string().optional(),
+  toolName: z.string().optional(),
+  isError: z.boolean().optional(),
+});
+type PiMessage = z.infer<typeof PiMessage>;
 
-type PiMessage = {
-  role?: string;
-  content?: PiContent[];
-  model?: string;
-  usage?: PiUsage;
-  responseId?: string;
-  toolCallId?: string;
-  toolName?: string;
-  isError?: boolean;
-};
-
-type PiLine = {
-  type?: string;
-  id?: string;
-  timestamp?: string;
-  cwd?: string;
-  title?: string;
-  message?: PiMessage;
-};
+const PiLine = z.looseObject({
+  type: z.string().optional(),
+  id: z.string().optional(),
+  timestamp: z.string().optional(),
+  cwd: z.string().optional(),
+  title: z.string().optional(),
+  message: PiMessage.optional(),
+});
+type PiLine = z.infer<typeof PiLine>;
 
 function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-function textOf(content: readonly PiContent[] | undefined): string | undefined {
+function textOf(content: PiMessage["content"]): string | undefined {
   const text = (content ?? [])
     .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
     .join("\n");
@@ -84,6 +90,15 @@ function callsOf(message: PiMessage, ts: string, srcLine: number): ToolCallRow[]
   });
 }
 
+function parseLine(raw: string): PiLine | undefined {
+  try {
+    const parsed = PiLine.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function parsePiChunk(lines: string[], firstLineNumber: number): ParsedChunk {
   const session: SessionFacts[] = [];
   const messages: MessageRow[] = [];
@@ -94,10 +109,8 @@ export function parsePiChunk(lines: string[], firstLineNumber: number): ParsedCh
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
     const srcLine = firstLineNumber + index;
-    let line: PiLine;
-    try {
-      line = JSON.parse(raw) as PiLine;
-    } catch {
+    const line = parseLine(raw);
+    if (!line) {
       dropped.push(srcLine);
       continue;
     }
