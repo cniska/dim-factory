@@ -147,6 +147,7 @@ describe("the module checks", () => {
       '  import type { OrderView } from "./order-view";',
       'import type {\n  OrderView,\n} from\n  "./order-view";',
       'const view = await import("./order-view");',
+      "const view = await import(`./order-view`);",
       'const view = require("./order-view");',
       'let x: import("./order-view").OrderView;',
       'import view = require("./order-view");',

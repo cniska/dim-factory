@@ -41,6 +41,10 @@ export function importsOf(file: string, text: string): readonly string[] {
     ) {
       const [first] = node.arguments;
       if (first?.type === "StringLiteral") paths.push(first.value);
+      if (first?.type === "TemplateLiteral" && first.expressions.length === 0) {
+        const [quasi] = first.quasis;
+        if (quasi?.value.cooked != null) paths.push(quasi.value.cooked);
+      }
     }
   }
   return [...new Set(paths)];
