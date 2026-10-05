@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { refuser } from "./coded-error";
 import { type CommittedTree, committedTree } from "./git-committed";
 
@@ -94,15 +95,27 @@ export type DeclaredTask = {
 
 const readText = (manifests: Manifests, file: string) => manifests.read(file, LONGEST_MANIFEST);
 
+const PackageJson = z.looseObject({ scripts: z.record(z.string(), z.unknown()).nullish() });
+
+const MiseToml = z.looseObject({ tasks: z.record(z.string(), z.unknown()).nullish() });
+
 function fromPackageJson(manifests: Manifests): DeclaredTask[] {
   const text = readText(manifests, "package.json");
   if (text === null) return [];
-  let scripts: Record<string, unknown>;
+  let raw: unknown;
   try {
-    scripts = (JSON.parse(text) as { scripts?: Record<string, unknown> }).scripts ?? {};
+    raw = JSON.parse(text);
   } catch (error) {
     throw refuseManifest("manifest_unparseable", { file: "package.json", detail: String(error) });
   }
+  const parsed = PackageJson.safeParse(raw);
+  if (!parsed.success) {
+    throw refuseManifest("manifest_unparseable", {
+      file: "package.json",
+      detail: z.prettifyError(parsed.error),
+    });
+  }
+  const scripts = parsed.data.scripts ?? {};
   const lock = lockIn(manifests);
   if (lock === null) return [];
   const body = JSON.stringify(scripts);
@@ -117,13 +130,20 @@ function fromPackageJson(manifests: Manifests): DeclaredTask[] {
 function fromMise(manifests: Manifests): DeclaredTask[] {
   const text = readText(manifests, "mise.toml");
   if (text === null) return [];
-  let parsed: { tasks?: Record<string, unknown> };
+  let raw: unknown;
   try {
-    parsed = Bun.TOML.parse(text) as typeof parsed;
+    raw = Bun.TOML.parse(text);
   } catch (error) {
     throw refuseManifest("manifest_unparseable", { file: "mise.toml", detail: String(error) });
   }
-  const tasks = parsed.tasks ?? {};
+  const parsed = MiseToml.safeParse(raw);
+  if (!parsed.success) {
+    throw refuseManifest("manifest_unparseable", {
+      file: "mise.toml",
+      detail: z.prettifyError(parsed.error),
+    });
+  }
+  const tasks = parsed.data.tasks ?? {};
   const body = JSON.stringify(tasks);
   return Object.keys(tasks).map((name) => ({
     name,

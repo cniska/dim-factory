@@ -118,6 +118,25 @@ describe("the check task", () => {
     );
   });
 
+  test("names a manifest whose declared tasks are not a table, rather than reading it as declaring nothing", () => {
+    const scripts = repo({ "package.json": JSON.stringify({ scripts: "verify" }), "bun.lock": "" });
+    expect(() => checkTask(scripts)).toThrow(
+      expect.objectContaining({
+        code: "manifest_unparseable",
+        meta: expect.objectContaining({ file: "package.json" }),
+      }),
+    );
+    expect(() => checkTask(repo({ "package.json": "[]", "bun.lock": "" }))).toThrow(
+      expect.objectContaining({ code: "manifest_unparseable" }),
+    );
+    expect(() => checkTask(repo({ "mise.toml": 'tasks = "verify"' }))).toThrow(
+      expect.objectContaining({
+        code: "manifest_unparseable",
+        meta: expect.objectContaining({ file: "mise.toml" }),
+      }),
+    );
+  });
+
   test("names a manifest it cannot read, rather than reading it as a repo that declares nothing", () => {
     const root = repo({ "package.json": JSON.stringify({ scripts: { verify: "true" } }), "bun.lock": "" });
     chmodSync(join(root, "package.json"), 0o000);
