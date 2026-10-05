@@ -447,7 +447,7 @@ describe("ingest", () => {
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
     const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
     mkdirSync(agentDir, { recursive: true });
-    const agentId = "a07d010a033dbe536";
+    const agentId = "a1111111111111111";
     writeFileSync(
       join(agentDir, `agent-${agentId}.jsonl`),
       `${claudeTranscriptLines(SESSION)
@@ -474,7 +474,7 @@ describe("ingest", () => {
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
     const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
     mkdirSync(agentDir, { recursive: true });
-    const agentId = "a07d010a033dbe536";
+    const agentId = "a1111111111111111";
     writeFileSync(
       join(agentDir, `agent-${agentId}.jsonl`),
       `${claudeTranscriptLines(SESSION)
@@ -499,7 +499,7 @@ describe("ingest", () => {
     const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
     mkdirSync(agentDir, { recursive: true });
     writeFileSync(
-      join(agentDir, "agent-a07d010a033dbe536.jsonl"),
+      join(agentDir, "agent-a1111111111111111.jsonl"),
       `${claudeTranscriptLines(SESSION)
         .map((l) => JSON.stringify(l).replace(/"(msg|toolu|u|a)-/g, '"agent-$1-'))
         .join("\n")}\n`,
@@ -530,7 +530,7 @@ describe("ingest", () => {
       closeDb(fresh);
       expect(reread).toBe(expected);
       expect(
-        db.prepare("SELECT parent_id FROM session WHERE id = ?").get(`a07d010a033dbe536@${SESSION}`),
+        db.prepare("SELECT parent_id FROM session WHERE id = ?").get(`a1111111111111111@${SESSION}`),
       ).toEqual({ parent_id: SESSION });
     } finally {
       closeDb(db);
@@ -1051,7 +1051,7 @@ describe("worker transcript copies", () => {
     }
   });
 
-  const AGENT = "a07d010a033dbe536";
+  const AGENT = "a1111111111111111";
   const subLines = [
     ...turn(5, "look around", [
       { type: "tool_use", id: "toolu-sub", name: "Read", input: { file_path: "/Users/x/data/sub.md" } },
