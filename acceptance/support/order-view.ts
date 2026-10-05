@@ -61,7 +61,7 @@ const LogEntry = z.union([
   entry("order_returned", { station: Station, reason: z.string() }),
   entry("plan_returned", { body: z.string(), slices: z.array(slice).readonly() }),
   entry("slice_submitted", tip),
-  entry("slice_committed", { commit: z.string() }).extend(evidence),
+  entry("slice_accepted", { commit: z.string() }).extend(evidence),
   stop("slice_refused", "head_moved", { ...tip, head: z.string() }),
   stop("slice_refused", "check_changed", tip),
   stop("slice_refused", "workspace_dirty", tip),

@@ -137,7 +137,7 @@ describe("a run killed while a slice's check runs", () => {
 
     expect(order.status).toBe("shipped");
     const submitted = entriesOf(order, ACTION.sliceSubmitted);
-    const committed = entriesOf(order, ACTION.sliceCommitted);
+    const committed = entriesOf(order, ACTION.sliceAccepted);
     expect(submitted).toHaveLength(2);
     expect(committed.map((entry) => entry.by)).toEqual(
       submitted.map((entry) => ({ kind: "factory", version: expect.any(String), cause: entry.seq })),
@@ -215,7 +215,7 @@ describe("random kills", () => {
 
           if (settled.status === "shipped") expect(undisturbed(settled)).toEqual(await expected());
           else expect(finalStop(settled).code).toBeString();
-          const committed = entriesOf(settled, ACTION.sliceCommitted).map((entry) => entry.details.commit);
+          const committed = entriesOf(settled, ACTION.sliceAccepted).map((entry) => entry.details.commit);
           expect(new Set(committed).size).toBe(committed.length);
         } catch (error) {
           done = true;
@@ -374,7 +374,7 @@ describe("hooks", () => {
 
     expect(readFileSync(join(m.repo, ".git", "config"), "utf8")).toBe(config);
     const order = await showOrder(m.operator, id);
-    expect(actions(order).filter((action) => action === ACTION.sliceCommitted)).toHaveLength(1);
+    expect(actions(order).filter((action) => action === ACTION.sliceAccepted)).toHaveLength(1);
   });
 });
 

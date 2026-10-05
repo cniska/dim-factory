@@ -32,7 +32,7 @@ A `message_sent` entry from a worker in the log is a note for the operator; read
 
 ## Judging an artifact
 
-The artifact is the worker's explanation; the record is the evidence. Read the artifact, then check each claim against `dim order show`: the plan's slices against the description and the commits already on the branch; the Build artifact against the `slice_committed` entries and their check evidence, the branch's commits and the answers to findings; the Review artifact's `covered` against the areas `dim-review` runs and its `unverified` against what the order needs. The result names what the record confirmed and what it did not, never the worker's summary repeated.
+The artifact is the worker's explanation; the record is the evidence. Read the artifact, then check each claim against `dim order show`: the plan's slices against the description and the commits already on the branch; the Build artifact against the `slice_accepted` entries and their check evidence, the branch's commits and the answers to findings; the Review artifact's `covered` against the areas `dim-review` runs and its `unverified` against what the order needs. The result names what the record confirmed and what it did not, never the worker's summary repeated.
 
 Each artifact is held to what its station's skill asks of it, `dim-plan`, `dim-build` or `dim-review`, and a refused finding to a reason the code bears out.
 

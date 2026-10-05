@@ -67,7 +67,7 @@ const approve = (station: "plan" | "build" | "review"): Later => ({
   details: { station, reason: "it does what the order asked", decidedBy: "owner" },
 });
 const committed = (commit: string): Later => ({
-  action: "slice_committed",
+  action: "slice_accepted",
   details: { commit },
   evidence: [],
 });

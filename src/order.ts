@@ -207,7 +207,7 @@ function apply(state: OrderState, entry: Later): OrderState {
         phase: { kind: "approve", station: "plan" },
         plan: { body: entry.details.body, slices: entry.details.slices, base: state.commits.length },
       };
-    case "slice_committed":
+    case "slice_accepted":
       return {
         ...state,
         commits: [...state.commits, entry.details.commit],
@@ -378,7 +378,7 @@ function submittedAfter(submitted: Submitted | null, entry: LaterEntry): Submitt
   switch (entry.action) {
     case "slice_submitted":
       return { seq: entry.seq, tip: entry.details.tip };
-    case "slice_committed":
+    case "slice_accepted":
     case "slice_refused":
     case "branch_rebased":
       return null;

@@ -97,7 +97,7 @@ function takeCommit(judging: Judging): Refused | null {
   if (verdict !== null) return refuse(judging, verdict);
   const evidence = checked(judging);
   if ("action" in evidence) return evidence;
-  recordJudged(judging, { action: "slice_committed", details: { commit: tip }, evidence: [evidence] });
+  recordJudged(judging, { action: "slice_accepted", details: { commit: tip }, evidence: [evidence] });
   return null;
 }
 

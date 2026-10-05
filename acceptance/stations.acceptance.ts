@@ -314,7 +314,7 @@ describe("slice gates", () => {
 
       const order = await showOrder(m.operator, id);
       expect(actions(order)).toContain(ACTION.sliceRefused);
-      expect(actions(order)).not.toContain(ACTION.sliceCommitted);
+      expect(actions(order)).not.toContain(ACTION.sliceAccepted);
       expect(m.commitsOn(order.branch)).not.toContain("feat: add one");
     });
   }
@@ -353,7 +353,7 @@ describe("slice gates", () => {
     expect(refusal(await approve(m.operator, id)).code).toBeString();
 
     const order = await showOrder(m.operator, id);
-    const committed = entryOf(order, ACTION.sliceCommitted).details.commit;
+    const committed = entryOf(order, ACTION.sliceAccepted).details.commit;
     const refused = entryOf(order, ACTION.sliceRefused);
     if (refused.code !== REFUSAL.headMoved) throw new Error(`the slice was refused ${refused.code}`);
     expect(refused.details.head).toBe(committed);
@@ -436,9 +436,9 @@ describe("slice gates", () => {
 
     expect(briefsOf(m, "builder")).toHaveLength(1);
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1", "feat: add slice 2"]);
-    const buildActions: readonly Action[] = [ACTION.sliceCommitted, ACTION.buildReturned];
+    const buildActions: readonly Action[] = [ACTION.sliceAccepted, ACTION.buildReturned];
     const build = actions(order).filter((action) => buildActions.includes(action));
-    expect(build).toEqual([ACTION.sliceCommitted, ACTION.sliceCommitted, ACTION.buildReturned]);
+    expect(build).toEqual([ACTION.sliceAccepted, ACTION.sliceAccepted, ACTION.buildReturned]);
   });
 });
 

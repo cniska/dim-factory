@@ -220,7 +220,7 @@ export const Later = z.union([
   entry("order_returned", { station: Station, reason: text }),
   entry("plan_returned", Plan.shape),
   entry("slice_submitted", tip),
-  entry("slice_committed", { commit: z.string() }).extend({ evidence }),
+  entry("slice_accepted", { commit: z.string() }).extend({ evidence }),
   z.discriminatedUnion("code", [
     stop("slice_refused", "head_moved", { ...tip, head: z.string() }),
     stop("slice_refused", "check_changed", tip),

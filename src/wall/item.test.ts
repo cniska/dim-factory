@@ -4,7 +4,7 @@ import { ACTION_LABELS, DECIDED_LABELS, itemLabel } from "./item";
 describe("factory wall item view", () => {
   test("calls each logged action what a person calls it, not what the log stores", () => {
     expect(ACTION_LABELS.order_added).toBe("Added");
-    expect(ACTION_LABELS.slice_committed).toBe("Slice committed");
+    expect(ACTION_LABELS.slice_accepted).toBe("Slice accepted");
     expect(ACTION_LABELS.finding_answered).toBe("Finding answered");
     expect(ACTION_LABELS.ship_landed).toBe("Shipped");
     const labels = [...Object.values(ACTION_LABELS), ...Object.values(DECIDED_LABELS)];
@@ -15,6 +15,6 @@ describe("factory wall item view", () => {
     expect(itemLabel({ action: "artifact_approved", station: "build" })).toBe("Build approved");
     expect(itemLabel({ action: "artifact_returned", station: "review" })).toBe("Review returned");
     expect(itemLabel({ action: "order_returned", station: "plan" })).toBe("Plan returned the order");
-    expect(itemLabel({ action: "slice_committed", station: "build" })).toBe("Slice committed");
+    expect(itemLabel({ action: "slice_accepted", station: "build" })).toBe("Slice accepted");
   });
 });

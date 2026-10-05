@@ -295,7 +295,7 @@ describe("turns", () => {
 
     const order = await showOrder(m.operator, id);
     expect(m.commitsOn(order.branch)).toEqual(["feat: one"]);
-    expect(entriesOf(order, ACTION.sliceCommitted)).toHaveLength(1);
+    expect(entriesOf(order, ACTION.sliceAccepted)).toHaveLength(1);
   });
 });
 

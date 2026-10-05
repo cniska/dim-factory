@@ -9,7 +9,7 @@ export const ACTION = {
   stationFailed: "station_failed",
   planReturned: "plan_returned",
   sliceSubmitted: "slice_submitted",
-  sliceCommitted: "slice_committed",
+  sliceAccepted: "slice_accepted",
   sliceRefused: "slice_refused",
   findingAnswered: "finding_answered",
   buildReturned: "build_returned",

@@ -69,7 +69,7 @@ function entryStation(entry: LogEntry): Station | null {
     case "plan_returned":
       return "plan";
     case "slice_submitted":
-    case "slice_committed":
+    case "slice_accepted":
     case "slice_refused":
     case "finding_answered":
     case "build_returned":
