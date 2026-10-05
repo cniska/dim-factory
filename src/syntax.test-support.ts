@@ -1,12 +1,8 @@
-import { type ParserPlugin, parse } from "@babel/parser";
 import { isNode, type Node } from "@babel/types";
+import { parseJavaScript } from "./javascript-parse";
 
 export function* nodesOf(file: string, text: string): Iterable<Node> {
-  const plugins: ParserPlugin[] = file.endsWith(".tsx")
-    ? ["typescript", "jsx", ["decorators", {}]]
-    : ["typescript", ["decorators", {}]];
-  const { program } = parse(text, { sourceType: "module", plugins });
-  yield* walk(program);
+  yield* walk(parseJavaScript(file, text, false).program);
 }
 
 function* walk(value: unknown): Iterable<Node> {

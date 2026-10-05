@@ -1,5 +1,5 @@
-import { type ParserPlugin, parse } from "@babel/parser";
 import type { CommentLanguage, CommentSpan } from "./comments-language";
+import { parseJavaScript } from "./javascript-parse";
 
 type BabelComment = { type: "CommentLine" | "CommentBlock"; value: string; start: number; end: number };
 
@@ -9,23 +9,8 @@ const MAY_HOLD_JSX = /\.(?:tsx|jsx|js|mjs|cjs)$/;
 const CONTRACT = /^(?:@ts-|eslint-|biome-ignore|prettier-ignore|[#@]__PURE__)/;
 
 function parsed(path: string, text: string, recover: boolean): BabelComment[] | null {
-  const language: ParserPlugin[] = /\.(?:ts|mts|cts)$/.test(path)
-    ? ["typescript"]
-    : path.endsWith(".tsx")
-      ? ["typescript", "jsx"]
-      : ["jsx"];
-  const plugins: ParserPlugin[] = [...language, ["decorators", {}], "decoratorAutoAccessors"];
   try {
-    const { comments } = parse(text, {
-      sourceType: "unambiguous",
-      plugins,
-      errorRecovery: recover,
-      allowImportExportEverywhere: true,
-      allowReturnOutsideFunction: true,
-      allowAwaitOutsideFunction: true,
-      allowSuperOutsideMethod: true,
-      allowUndeclaredExports: true,
-    });
+    const { comments } = parseJavaScript(path, text, recover);
     return (comments ?? []).flatMap(({ type, value, start, end }): BabelComment[] =>
       start == null || end == null ? [] : [{ type, value, start, end }],
     );
