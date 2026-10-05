@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Glob } from "bun";
+import { importsOf } from "./syntax.test-support";
 
 const SRC = import.meta.dir;
 
@@ -18,18 +19,6 @@ const FACTORY_MODULES = [
 ];
 
 const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|db-read|paths)$/;
-
-const transpiler = new Bun.Transpiler({ loader: "tsx" });
-
-const TYPE_IMPORT = /^import\s+type\s[^;]*?from\s+"([^"]+)"/gm;
-
-function importsOf(text: string): readonly string[] {
-  const code = text.replace(/^#!.*\n/, "");
-  const typeOnly = [...code.matchAll(TYPE_IMPORT)].flatMap((match) =>
-    match[1] === undefined ? [] : [match[1]],
-  );
-  return [...new Set([...transpiler.scanImports(code).map((imported) => imported.path), ...typeOnly])];
-}
 
 function sources(pattern: string): readonly { readonly file: string; readonly text: string }[] {
   return withTests(pattern).filter(({ file }) => !file.endsWith(".test.ts"));
@@ -51,7 +40,7 @@ const factoryCommands = () =>
   );
 
 export function commandBreaches(file: string, text: string): readonly string[] {
-  return importsOf(text)
+  return importsOf(file, text)
     .filter((path) => path.startsWith("./") && !COMMAND_IMPORTS.test(path))
     .map((path) => `${file} imports ${path}`);
 }
@@ -67,7 +56,7 @@ function isInternal(owner: string, part: string): boolean {
 
 export function boundaryBreaches(file: string, text: string): readonly string[] {
   const importer = basename(file).split(/[-.]/)[0];
-  return importsOf(text)
+  return importsOf(file, text)
     .filter((path) => {
       const named = MODULE_FILE.exec(path);
       if (named === null) return false;
@@ -131,6 +120,23 @@ describe("the module checks", () => {
     expect(commandBreaches("order-command.ts", 'import type { OrderView } from "./order-view";\n')).toEqual([
       "order-command.ts imports ./order-view",
     ]);
+  });
+
+  test("catch an import however it is written", () => {
+    const view = "order-command.ts imports ./order-view";
+    for (const text of [
+      'import { type OrderView } from "./order-view";',
+      'export type { OrderView } from "./order-view";',
+      'export * from "./order-view";',
+      '  import type { OrderView } from "./order-view";',
+      'import type {\n  OrderView,\n} from\n  "./order-view";',
+      'const view = await import("./order-view");',
+      'const view = require("./order-view");',
+      'let x: import("./order-view").OrderView;',
+      'import view = require("./order-view");',
+    ]) {
+      expect(commandBreaches("order-command.ts", text)).toEqual([view]);
+    }
   });
 
   test("catch an import of another module's store or effects, but not of its own", () => {
