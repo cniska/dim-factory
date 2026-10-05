@@ -85,7 +85,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     if (!isRefusal(error)) throw error;
     fail(path, error);
   };
-  const roots = repoRoots(db, failRefused);
+  const roots = repoRoots(db, failRefused, env);
   report.git = ingestCommits(db, roots, failRefused);
   report.repoFiles = indexRepoFiles(db, roots, failRefused);
   return report;

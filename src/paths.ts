@@ -57,8 +57,12 @@ export function locksDir(env: Env = process.env): string {
   return join(stateDir(env), "locks");
 }
 
+export function workspacesDir(env: Env = process.env): string {
+  return join(dataDir(env), "workspaces");
+}
+
 export function workspaceDir(project: string, order: string, env: Env = process.env): string {
-  return join(dataDir(env), "workspaces", ...project.split("/"), order);
+  return join(workspacesDir(env), ...project.split("/"), order);
 }
 
 export function workerHomeDir(worker: string, env: Env = process.env): string {

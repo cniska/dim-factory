@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { isScratchRepo } from "./ingest-scratch";
+import { isFactoryWorkspace, isScratchRepo } from "./ingest-scratch";
 
 describe("a scratch tree is not the work", () => {
   test("an agent's own scratchpad is one", () => {
@@ -42,7 +42,7 @@ describe("a scratch tree is not the work", () => {
   });
 
   test("a temp directory that is gone does not stop the module loading", () => {
-    const script = `import { isScratchRepo } from ${JSON.stringify(join(import.meta.dir, "ingest-scratch.ts"))};
+    const script = `import { isFactoryWorkspace, isScratchRepo } from ${JSON.stringify(join(import.meta.dir, "ingest-scratch.ts"))};
       if (isScratchRepo("/Users/someone/code/dim-factory")) process.exit(2);`;
     const proc = Bun.spawnSync(["bun", "-e", script], {
       env: { ...process.env, TMPDIR: "/dim-temp-directory-that-is-gone" },
@@ -62,5 +62,27 @@ describe("a scratch tree is not the work", () => {
     } finally {
       process.chdir(cwd);
     }
+  });
+});
+
+describe("a factory workspace is not the work", () => {
+  const env = { XDG_DATA_HOME: "/Users/someone/stash" };
+  const root = "/Users/someone/stash/dim-factory/workspaces";
+
+  test("a workspace and anything below it is one", () => {
+    expect(isFactoryWorkspace(`${root}/acme/widgets/abc123`, env)).toBe(true);
+    expect(isFactoryWorkspace(`${root}/acme/widgets/abc123/src`, env)).toBe(true);
+  });
+
+  test("a worker's home, a sibling checkout and a worktree checkout are not", () => {
+    expect(isFactoryWorkspace("/Users/someone/stash/dim-factory/workers/w-1/home", env)).toBe(false);
+    expect(isFactoryWorkspace("/Users/someone/code/widgets", env)).toBe(false);
+    expect(isFactoryWorkspace("/Users/someone/code/widgets/.claude/worktrees/task-a", env)).toBe(false);
+    expect(isFactoryWorkspace("/Users/someone/stash/dim-factory/workspaces-old/acme", env)).toBe(false);
+  });
+
+  test("a path is judged resolved", () => {
+    expect(isFactoryWorkspace(`${root}/acme/../../workers/w-1`, env)).toBe(false);
+    expect(isFactoryWorkspace(`${root}/../workspaces/acme/widgets/abc123`, env)).toBe(true);
   });
 });

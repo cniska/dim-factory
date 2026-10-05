@@ -2,7 +2,8 @@ import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { originLabel } from "./git-remote";
 import { readCommits, repoRoot } from "./ingest-git-source";
-import { isScratchRepo } from "./ingest-scratch";
+import { isFactoryWorkspace, isScratchRepo } from "./ingest-scratch";
+import type { Env } from "./paths";
 
 export type GitReport = { repos: number; commits: number; files: number };
 
@@ -10,12 +11,13 @@ export type RepoFailure = (path: string, error: unknown) => void;
 
 const OVERLAP_DAYS = 7;
 
-export function repoRoots(db: Database, fail: RepoFailure): readonly string[] {
+export function repoRoots(db: Database, fail: RepoFailure, env: Env = process.env): readonly string[] {
   const cwds = db
     .query<{ cwd: string }, []>("SELECT DISTINCT cwd FROM session WHERE cwd IS NOT NULL ORDER BY cwd")
     .all();
   const roots = new Set<string>();
   for (const { cwd } of cwds) {
+    if (isFactoryWorkspace(cwd, env)) continue;
     try {
       const root = repoRoot(cwd);
       if (root !== null && !isScratchRepo(root)) roots.add(root);

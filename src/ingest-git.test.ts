@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
@@ -68,6 +68,27 @@ describe("reading the repos the sessions ran in", () => {
     failed.length = 0;
     expect(repoRoots(db, fail)).toEqual([]);
     expect(failed).toEqual([{ path: broken, code: "git_failed" }]);
+    db.close();
+  });
+
+  test("a factory workspace is no repo root, and another checkout still is", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const data = mkdtempSync(join(process.cwd(), ".dim-ws-"));
+    roots.push(data);
+    const workspace = join(data, "dim-factory", "workspaces", "acme", "widgets", "abc123");
+    const checkout = join(data, "code", "widgets");
+    for (const path of [workspace, checkout]) {
+      mkdirSync(path, { recursive: true });
+      writeFileSync(join(path, ".git"), "gitdir: /nonexistent/dim-test\n");
+    }
+    db.run("INSERT INTO session (id, tool, cwd) VALUES ('s1', 'claude', ?), ('s2', 'claude', ?)", [
+      workspace,
+      checkout,
+    ]);
+    const read: string[] = [];
+    repoRoots(db, (path) => read.push(path), { XDG_DATA_HOME: data });
+    expect(read).toEqual([checkout]);
     db.close();
   });
 });

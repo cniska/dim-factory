@@ -103,7 +103,7 @@ Tokens come from `usage` only. Counts from different tools are never summed into
 | Arguments are refused, not guessed | A missing or malformed argument, an ambiguous prefix, a second positional or an unknown flag is a usage error; a prefix that matches nothing is an empty result that says so |
 | Read-only | A query opens the database through `openReadOnly`, because `hook_event` has no source to restore it from |
 | A repository is its `origin` | `owner/repo`, lowercased, host dropped, so worktrees and checkouts of one project share a label. A path under `<repo>/.claude/worktrees/<name>/` folds onto the checkout it copies ([`src/worktree.ts`](../src/worktree.ts)) |
-| A scratch tree is not work | [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos |
+| A scratch tree is not work | [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos; a factory workspace (`isFactoryWorkspace`, a resolved path under the data directory's `workspaces/`) is no repo root either, because its commits reach the checkout on ship |
 | Keyword search | `message_fts` is an FTS5 index over `message.text` with external content, kept level by triggers. `dim query search` quotes each term, unions one match per term and ranks by terms matched, then relevance, then recency; each hit prints a full session ID and timestamp for `dim query thread` |
 
 ## What the record cannot say
