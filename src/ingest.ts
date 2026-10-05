@@ -4,7 +4,6 @@ import { writeTransaction } from "./db";
 import { gitSubcommands } from "./git-operations";
 import { readChunk } from "./ingest-chunk";
 import type { ParsedChunk, SessionFacts } from "./ingest-session-records";
-import { typedSkillName } from "./ingest-skill-load";
 import type { Tool } from "./ingest-tools";
 import { worktreeOf } from "./worktree";
 export type Kind = "transcript" | "subagent" | "rollout";
@@ -100,10 +99,10 @@ export function createIngester(db: Database) {
 
   const upsertMessage = db.prepare(
     `INSERT INTO message (id, session_id, ts, role, model, turn_id, prompt_source, origin_kind,
-       is_meta, is_skill_body, attribution_skill, interrupted_message_id, denial_kind,
+       is_meta, is_skill_body, attribution_skill, command_name, interrupted_message_id, denial_kind,
        user_feedback, text, text_chars, src_file, src_line, extra)
      VALUES ($id, $sessionId, $ts, $role, $model, $turnId, $promptSource, $originKind,
-       $isMeta, $isSkillBody, $attributionSkill, $interruptedMessageId, $denialKind,
+       $isMeta, $isSkillBody, $attributionSkill, $commandName, $interruptedMessageId, $denialKind,
        $userFeedback, $text, $textChars, $srcFile, $srcLine, $extra)
      ON CONFLICT(id) DO UPDATE SET
        ts                     = min(message.ts, excluded.ts),
@@ -117,6 +116,7 @@ export function createIngester(db: Database) {
        interrupted_message_id = coalesce(excluded.interrupted_message_id, message.interrupted_message_id),
        denial_kind            = coalesce(excluded.denial_kind, message.denial_kind),
        user_feedback          = coalesce(excluded.user_feedback, message.user_feedback),
+       command_name           = coalesce(excluded.command_name, message.command_name),
        text                   = ${MERGED_TEXT},
        text_chars             = length(${MERGED_TEXT}),
        src_file               = excluded.src_file,
@@ -201,13 +201,12 @@ export function createIngester(db: Database) {
      VALUES ($sessionId, $messageId, $ts, $model, $skillName, $how)
      ${skillLoadConflict}`,
   );
-  const selectMessageText = db.prepare<{ text: string | null }, [string]>(
-    "SELECT text FROM message WHERE id = ?",
-  );
   const insertTypedSkillBody = db.prepare(
     `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
        body_chars, body_sha256, skill_path)
-     SELECT $sessionId, id, ts, model, $skillName, 'user',
+     SELECT $sessionId, id, ts, model,
+       CASE WHEN command_name = $skillName OR command_name LIKE '%:' || $skillName
+         THEN command_name ELSE $skillName END, 'user',
        $bodyChars, $bodySha256, $skillPath
      FROM message
      WHERE id = $parentUuid
@@ -279,6 +278,7 @@ export function createIngester(db: Database) {
         $isMeta: m.isMeta ? 1 : 0,
         $isSkillBody: m.isSkillBody ? 1 : 0,
         $attributionSkill: m.attributionSkill ?? null,
+        $commandName: m.commandName ?? null,
         $interruptedMessageId: m.interruptedMessageId ?? null,
         $denialKind: m.denialKind ?? null,
         $userFeedback: m.userFeedback ?? null,
@@ -365,11 +365,10 @@ export function createIngester(db: Database) {
         continue;
       }
       if ("parentUuid" in l) {
-        const parentText = selectMessageText.get(l.parentUuid)?.text ?? undefined;
         insertTypedSkillBody.run({
           $sessionId: spec.sessionId,
           $parentUuid: l.parentUuid,
-          $skillName: typedSkillName(parentText, l.skillName),
+          $skillName: l.skillName,
           $bodyChars: l.bodyChars,
           $bodySha256: l.bodySha256,
           $skillPath: l.skillPath,

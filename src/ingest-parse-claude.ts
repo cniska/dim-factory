@@ -293,6 +293,7 @@ export function parseClaudeChunk(
         originKind: nonEmpty(line.origin?.kind),
         isMeta: line.isMeta === true,
         isSkillBody: line.isMeta === true && (text?.startsWith(SKILL_BODY_PREFIX) ?? false),
+        commandName: named,
         interruptedMessageId: nonEmpty(line.interruptedMessageId),
         denialKind: nonEmpty(line.toolDenialKind),
         userFeedback: feedbackText(line.userFeedback),

@@ -7,7 +7,7 @@ const TOOLS_SQL = sqlList(TOOLS);
 const HARNESSES_SQL = sqlList(HarnessName.options);
 const HOOK_EVENTS_SQL = sqlList(Object.values(HOOK_EVENTS));
 
-export const SCHEMA_VERSION = 96;
+export const SCHEMA_VERSION = 97;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS source_file (
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS message (
   is_meta         INTEGER NOT NULL DEFAULT 0,
   is_skill_body   INTEGER NOT NULL DEFAULT 0,
   attribution_skill TEXT,
+  command_name    TEXT,
   interrupted_message_id TEXT,
   denial_kind     TEXT,
   user_feedback   TEXT,

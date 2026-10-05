@@ -30,11 +30,6 @@ export function skillFromCommand(text: string): string | undefined {
   return COMMAND_NAME.exec(text)?.[1];
 }
 
-export function typedSkillName(commandText: string | undefined, bodyName: string): string {
-  const named = commandText ? skillFromCommand(commandText) : undefined;
-  return named === bodyName || named?.endsWith(`:${bodyName}`) ? named : bodyName;
-}
-
 export function skillFromFileRead(command: string): string | undefined {
   return SKILL_FILE.exec(command)?.[1];
 }
