@@ -6,6 +6,9 @@ const DIM_PLUGIN = resolve(import.meta.dir, "..");
 
 const NOT_ALPHANUMERIC = /[^A-Za-z0-9]/g;
 
+const projectDir = (home: string, workspace: string) =>
+  join(home, ".claude", "projects", workspace.replace(NOT_ALPHANUMERIC, "-"));
+
 const absoluteRule = (path: string) => `/${path}`;
 
 function sessionFlags(session: SessionStart): readonly string[] {
@@ -85,7 +88,7 @@ export const claude: Adapter = {
     DIM_PLUGIN,
     ...sessionFlags(start.session),
   ],
-  transcript: (home, workspace, session) =>
-    join(home, ".claude", "projects", workspace.replace(NOT_ALPHANUMERIC, "-"), `${session}.jsonl`),
+  transcript: (home, workspace, session) => join(projectDir(home, workspace), `${session}.jsonl`),
+  subagents: (home, workspace, session) => join(projectDir(home, workspace), session, "subagents"),
   outcome,
 };

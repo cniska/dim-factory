@@ -94,5 +94,6 @@ export type Adapter = {
   readonly tempRoot: string;
   argv(start: Start): readonly string[];
   transcript(home: string, workspace: string, session: string): string;
+  subagents(home: string, workspace: string, session: string): string;
   outcome(ended: Ended, session: SessionStart): Outcome;
 };

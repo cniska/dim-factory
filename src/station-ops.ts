@@ -303,7 +303,9 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     const id = idOf(session);
     const outcome = WORKER_HARNESS.outcome(served.ended, startOf(session));
     const transcript = WORKER_HARNESS.transcript(opened.home, dir, id);
-    if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(trace, transcript, copies, id);
+    if (outcome.kind === "finished" || sessionWritten(transcript)) {
+      copySession(trace, transcript, WORKER_HARNESS.subagents(opened.home, dir, id), copies, id);
+    }
     return {
       acting,
       session: id,

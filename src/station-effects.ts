@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { Glob } from "bun";
 import { invariant } from "./assert";
 import type { Turn } from "./station";
 import type { Trace } from "./trace-contract";
@@ -123,10 +124,24 @@ export function guardFile(trace: Trace, path: string): FileGuard {
 
 const copyOf = (sessions: string, session: string) => join(sessions, `${session}.jsonl`);
 
-export function copySession(trace: Trace, transcript: string, sessions: string, session: string): void {
+const SUBAGENT_FILES = new Glob("agent-*.{jsonl,meta.json}");
+
+export function copySession(
+  trace: Trace,
+  transcript: string,
+  subagents: string,
+  sessions: string,
+  session: string,
+): void {
   trace.step("session_copy", { session }, () => {
     mkdirSync(sessions, { recursive: true });
     copyFileSync(transcript, copyOf(sessions, session));
+    if (!existsSync(subagents)) return;
+    const copied = join(sessions, session, "subagents");
+    for (const name of SUBAGENT_FILES.scanSync({ cwd: subagents })) {
+      mkdirSync(copied, { recursive: true });
+      copyFileSync(join(subagents, name), join(copied, name));
+    }
   });
 }
 
