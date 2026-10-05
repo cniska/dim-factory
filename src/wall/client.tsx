@@ -98,7 +98,7 @@ function OrderCard({
       onClick={() => onOpen(order)}
       stopped={isStopped(order)}
       className={cn(
-        "h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]",
+        "h-[172px] justify-between p-[var(--space-md)] text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
         bumped && "border-accent",
       )}
@@ -110,7 +110,7 @@ function OrderCard({
         </span>
       </div>
 
-      <div className="flex min-h-[72px] shrink-0 flex-col leading-[18px]">
+      <div className="flex min-h-[80px] shrink-0 flex-col gap-[var(--space-sm)] leading-[18px]">
         <p className="line-clamp-3 text-quiet">{order.description}</p>
         <p className="mt-auto truncate text-quiet/60">{order.project}</p>
       </div>
