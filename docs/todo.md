@@ -8,7 +8,6 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 
 - **A rebuild loses worker attribution** — `dim rebuild` empties `worker` and `worker_session` while orders are disposable ([`core.md`](core.md#record-versions)), so worker sessions read again after it are no longer joined to their workers. Keep worker identity across a rebuild once orders stop being disposable.
 - **Install a project's gates when dim adopts it** — built when dim adopts hoodly, not before. `dim` brings the machinery that writes a project's gates into the project, where every contributor runs them, copied from dim-factory's own: `.githooks` set through `prepare`, its commit-subject script, the no-comments test, a CI commits job, and a report of a project whose copy differs from the canonical one.
-- **The module checks read imports with a parser** — `src/factory-modules.test.ts` `importsOf` takes value imports from `Bun.Transpiler.scanImports`, which drops `import type`, so type-only imports come from a regex a reformatted import slips past; `sqlBreaches` and `coded-error.test.ts` `errorBreaches` match text, strings included. The installed TypeScript 7 has no stable parser API. Take the import graph from the compiler or the linter.
 - **Codex trust is read by key, not hash** — `hooks-codex-trust.ts` counts a hook trusted when its positional key has any hash, so a hook moved onto another's key reads trusted until Codex asks again. Compare the hash once Codex's algorithm is known.
 
 ## Features

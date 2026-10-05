@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Glob } from "bun";
+import { nodesOf } from "./syntax.test-support";
 
 const SRC = import.meta.dir;
 
@@ -9,18 +10,32 @@ const BUILDS_THE_BASE = "coded-error.ts";
 
 const FILLS_ITS_RESOLVE_WHEN_PRINTED = "cli-contract.ts";
 
-const BUILT_IN = "(?:Aggregate|Eval|Range|Reference|Syntax|Type|URI)?Error";
+const BUILT_IN = new Set(
+  ["Aggregate", "Eval", "Range", "Reference", "Syntax", "Type", "URI", ""].map((kind) => `${kind}Error`),
+);
 
 export function errorBreaches(file: string, text: string): readonly string[] {
+  const built = new Set<string>();
+  const extended = new Set<string>();
+  for (const node of nodesOf(file, text)) {
+    if (node.type === "NewExpression" && node.callee.type === "Identifier") {
+      built.add(node.callee.name);
+    } else if (
+      (node.type === "ClassDeclaration" || node.type === "ClassExpression") &&
+      node.superClass?.type === "Identifier"
+    ) {
+      extended.add(node.superClass.name);
+    }
+  }
   const breaches: string[] = [];
-  if (new RegExp(`\\bnew ${BUILT_IN}\\(`).test(text)) breaches.push(`${file} throws an error with no code`);
-  if (new RegExp(`\\bextends ${BUILT_IN}\\b`).test(text) && file !== BUILDS_THE_BASE) {
+  if ([...built].some((name) => BUILT_IN.has(name))) breaches.push(`${file} throws an error with no code`);
+  if ([...extended].some((name) => BUILT_IN.has(name)) && file !== BUILDS_THE_BASE) {
     breaches.push(`${file} declares its own error class`);
   }
-  if (/\bnew CodedError\(/.test(text) && file !== BUILDS_THE_BASE) {
+  if (built.has("CodedError") && file !== BUILDS_THE_BASE) {
     breaches.push(`${file} builds a refusal outside a refusal table`);
   }
-  if (/\bextends CodedError\b/.test(text) && file !== FILLS_ITS_RESOLVE_WHEN_PRINTED) {
+  if (extended.has("CodedError") && file !== FILLS_ITS_RESOLVE_WHEN_PRINTED) {
     breaches.push(`${file} declares its own refusal class`);
   }
   return breaches;
@@ -54,6 +69,14 @@ describe("the error check", () => {
     ]);
     expect(errorBreaches("db.ts", "class Held extends CodedError {}")).toEqual([
       "db.ts declares its own refusal class",
+    ]);
+  });
+
+  test("reads syntax, not text", () => {
+    expect(errorBreaches("order-ops.ts", 'const help = "throw new Error(x)"')).toEqual([]);
+    expect(errorBreaches("order-ops.ts", "const help = `class A extends Error {}`")).toEqual([]);
+    expect(errorBreaches("order-ops.ts", 'throw new\n  Error("x")')).toEqual([
+      "order-ops.ts throws an error with no code",
     ]);
   });
 
