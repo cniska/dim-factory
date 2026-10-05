@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   admits,
   fold,
+  nextAct,
   nextOf,
   type OrderState,
   operatorActRefusal,
@@ -362,6 +363,21 @@ describe("which act an order admits", () => {
     expect(admits(state(...planned))).toEqual(["approve", "return", "update", "cancel", "message"]);
     expect(admits(state(...planned, approve("plan")))).toEqual(["run", "cancel", "message"]);
     expect(admits(state(...planned, { action: "order_cancelled", details: { reason: "x" } }))).toEqual([]);
+  });
+
+  test("names as its next step only an act it admits", () => {
+    const stuck = state(
+      ...planned,
+      approve("plan"),
+      { action: "order_returned", details: { station: "build", reason: "the plan misses a case" } },
+      RUN,
+      { action: "order_returned", details: { station: "plan", reason: "which case?" } },
+    );
+    expect(admits(stuck)).toEqual(["cancel", "message"]);
+    expect(nextAct(stuck)).toBeNull();
+    expect(
+      nextAct(state(RUN, BASE, { action: "order_returned", details: { station: "plan", reason: "x" } })),
+    ).toBe("update");
   });
 
   test("refuses an act the order does not admit, naming what it admits and its next step", () => {

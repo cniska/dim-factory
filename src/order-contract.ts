@@ -135,8 +135,8 @@ const text = z.string().trim().min(1);
 export const Slice = z.object({ title: text, outcome: text });
 export type Slice = z.infer<typeof Slice>;
 
-export const Severity = z.enum(["critical", "high", "medium"]);
-export type Severity = z.infer<typeof Severity>;
+const Severity = z.enum(["critical", "high", "medium"]);
+type Severity = z.infer<typeof Severity>;
 
 export const Finding = z.object({
   area: text,

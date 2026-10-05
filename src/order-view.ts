@@ -1,4 +1,4 @@
-import { admits, nextOf, type OrderState, slicesOf, stationOf } from "./order";
+import { admits, nextAct, type OrderState, slicesOf, stationOf } from "./order";
 import type { LogEntry, OrderView, SessionView, WorkerView } from "./order-contract";
 import type { WorkerRecord } from "./worker-contract";
 import { branchOf } from "./workspace";
@@ -36,7 +36,7 @@ export function orderView(
     description: state.description,
     status: state.status,
     station: stationOf(state),
-    next: nextOf(state.phase),
+    next: nextAct(state),
     admits: admits(state),
     branch: branchOf(state.id),
     workspace,

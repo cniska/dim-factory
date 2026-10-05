@@ -150,8 +150,7 @@ export function updateOrder(
   act(db, order, caller, { kind: "update", ...fields });
 }
 
-export type Cancelled = {
-  readonly state: OrderState;
+type Cancelled = {
   readonly cause: number;
   readonly harness: ProcessId | null;
 };
@@ -168,10 +167,10 @@ export function recordCancel(
     { act: "cancel" },
     () =>
       writeTransaction(db, () => {
-        const { state, seq } = act(db, order, caller, { kind: "cancel", reason });
+        const { seq } = act(db, order, caller, { kind: "cancel", reason });
         const run = runOf(db, order);
         const live = run?.harness ?? null;
-        return { state, cause: seq, harness: live !== null && isRunning(live, caller.running) ? live : null };
+        return { cause: seq, harness: live !== null && isRunning(live, caller.running) ? live : null };
       }),
     ({ cause }) => ({ cause }),
   );

@@ -405,11 +405,16 @@ export function admits(state: OrderState): readonly ActKind[] {
   return [...STEPS[next], ...(state.planApproved ? [] : ["update" as const]), "cancel", "message"];
 }
 
+export function nextAct(state: OrderState): Next | null {
+  const next = nextOf(state.phase);
+  return next !== null && admits(state).includes(next) ? next : null;
+}
+
 export function stepRefusal(state: OrderState, act: ActKind): CodedError | null {
   const admitted = admits(state);
   return admitted.includes(act)
     ? null
-    : refuseOrder("not_admitted", { order: state.id, act, admits: admitted, next: nextOf(state.phase) });
+    : refuseOrder("not_admitted", { order: state.id, act, admits: admitted, next: nextAct(state) });
 }
 
 function busyRefusal(state: OrderState, act: ActKind, live: RunKind | null): CodedError | null {
