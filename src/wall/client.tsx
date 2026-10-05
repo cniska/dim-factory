@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { z } from "zod";
 import { invariant, unreachable } from "../assert";
 import type { RefusalRecord } from "../coded-error";
 import type { Status } from "../order-contract";
@@ -15,15 +16,16 @@ import { itemLabel } from "./item";
 import { cn } from "./lib/utils";
 import { WallMarkdown } from "./markdown";
 import { msUntilNextMinute } from "./minute-beat";
-import type {
+import {
   BoardPush,
-  BoardStatus,
+  type BoardStatus,
   OrderPush,
-  WallItemEntry,
-  WallItemView,
-  WallOrder,
-  WallSnapshot,
-  WallWorker,
+  parsePush,
+  type WallItemEntry,
+  type WallItemView,
+  type WallOrder,
+  type WallSnapshot,
+  type WallWorker,
 } from "./wall-contract";
 import "./styles.css";
 
@@ -538,7 +540,11 @@ const CLOCK_BLINK_MS = 1000;
 
 type SocketState = "connecting" | "open" | "closed";
 
-function useSocket<Push>(path: string, receive: (push: Push) => void): SocketState {
+function useSocket<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  receive: (push: z.infer<S>) => void,
+): SocketState {
   const [state, setState] = useState<SocketState>("connecting");
   const latest = useRef(receive);
 
@@ -571,7 +577,9 @@ function useSocket<Push>(path: string, receive: (push: Push) => void): SocketSta
         if (socket === next) setState("open");
       };
       next.onmessage = (event) => {
-        if (socket === next) latest.current(JSON.parse(event.data) as Push);
+        if (socket !== next) return;
+        const push = parsePush(schema, event.data);
+        if (push !== null) latest.current(push);
       };
       next.onclose = () => {
         if (socket !== next) return;
@@ -587,7 +595,7 @@ function useSocket<Push>(path: string, receive: (push: Push) => void): SocketSta
       release(socket);
       socket = undefined;
     };
-  }, [path]);
+  }, [path, schema]);
 
   return state;
 }
@@ -602,7 +610,7 @@ function useSnapshot() {
 
   useEffect(() => () => clearTimeout(clearBump.current), []);
 
-  const socket = useSocket<BoardPush>("/ws", (push) => {
+  const socket = useSocket("/ws", BoardPush, (push) => {
     switch (push.kind) {
       case "failure":
         setBoard({ snapshot: unavailableSnapshot, failure: push.failure, readAt: Date.now() });
@@ -651,7 +659,7 @@ const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
 function useItemView(orderId: string): ItemRead {
   const [read, setRead] = useState<ItemRead>({ state: "reading", view: null });
 
-  useSocket<OrderPush>(`/ws?order=${encodeURIComponent(orderId)}`, (push) => {
+  useSocket(`/ws?order=${encodeURIComponent(orderId)}`, OrderPush, (push) => {
     switch (push.kind) {
       case "order":
         setRead({ state: "read", view: push.view });

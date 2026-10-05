@@ -1,55 +1,92 @@
-import type { RefusalRecord } from "../coded-error";
-import type { Action, Next, Station, Status } from "../order-contract";
-import type { Role } from "../worker-contract";
+import { z } from "zod";
+import { invariant } from "../assert";
+import { RefusalRecord } from "../coded-error";
+import { type Action, Detailed, Next, Station, Status } from "../order-contract";
+import { ROLES } from "../worker-contract";
 
-export type BoardStatus = Exclude<Status, "cancelled">;
+export const BoardStatus = Status.exclude(["cancelled"]);
+export type BoardStatus = z.infer<typeof BoardStatus>;
 
-export type WallWorker = { name: string; role: Role };
+export const WallWorker = z.object({ name: z.string(), role: z.enum(ROLES) });
+export type WallWorker = z.infer<typeof WallWorker>;
 
-export type WallOrder = {
-  id: string;
-  title: string;
-  project: string;
-  description: string;
-  station: Station | null;
-  worker: WallWorker | null;
-  status: Status;
-  lastEventAt: string;
-  next: Next | null;
-};
+export const WallOrder = z.object({
+  id: z.string(),
+  title: z.string(),
+  project: z.string(),
+  description: z.string(),
+  station: Station.nullable(),
+  worker: WallWorker.nullable(),
+  status: Status,
+  lastEventAt: z.string(),
+  next: Next.nullable(),
+});
+export type WallOrder = z.infer<typeof WallOrder>;
 
-export type BoardOrder = WallOrder & { status: BoardStatus };
+export const BoardOrder = WallOrder.extend({ status: BoardStatus });
+export type BoardOrder = z.infer<typeof BoardOrder>;
 
-export type WallSnapshot = {
-  orders: BoardOrder[];
-  totals: Record<BoardStatus, number>;
-};
+export const WallSnapshot = z.object({
+  orders: z.array(BoardOrder),
+  totals: z.record(BoardStatus, z.number()),
+});
+export type WallSnapshot = z.infer<typeof WallSnapshot>;
 
-export type WallItemEntry = {
-  at: string;
-  action: Action;
-  code: string | null;
-  station: Station | null;
-  worker: WallWorker | null;
-};
+function actionsOf(schema: z.core.$ZodType): string[] {
+  if (schema instanceof z.ZodUnion) return schema.options.flatMap(actionsOf);
+  invariant(schema instanceof z.ZodObject, "an entry schema is an object or a union of them");
+  const action = schema.shape.action;
+  invariant(action instanceof z.ZodLiteral, "an entry schema names its action as a literal");
+  return [String(action.value)];
+}
 
-export type WallArtifact = {
-  revision: number;
-  body: string;
-  worker: WallWorker;
-  approved: boolean;
-};
+const ACTIONS: ReadonlySet<string> = new Set(actionsOf(Detailed));
 
-export type WallItemView = {
-  order: WallOrder;
-  plan: WallArtifact | null;
-  build: WallArtifact | null;
-  review: WallArtifact | null;
-  entries: WallItemEntry[];
-};
+const isAction = (value: string): value is Action => ACTIONS.has(value);
 
-export type BoardPush =
-  | { kind: "snapshot"; snapshot: WallSnapshot }
-  | { kind: "failure"; failure: RefusalRecord };
+export const WallItemEntry = z.object({
+  at: z.string(),
+  action: z.string().refine(isAction),
+  code: z.string().nullable(),
+  station: Station.nullable(),
+  worker: WallWorker.nullable(),
+});
+export type WallItemEntry = z.infer<typeof WallItemEntry>;
 
-export type OrderPush = { kind: "order"; view: WallItemView } | { kind: "failure"; failure: RefusalRecord };
+export const WallArtifact = z.object({
+  revision: z.number(),
+  body: z.string(),
+  worker: WallWorker,
+  approved: z.boolean(),
+});
+export type WallArtifact = z.infer<typeof WallArtifact>;
+
+export const WallItemView = z.object({
+  order: WallOrder,
+  plan: WallArtifact.nullable(),
+  build: WallArtifact.nullable(),
+  review: WallArtifact.nullable(),
+  entries: z.array(WallItemEntry),
+});
+export type WallItemView = z.infer<typeof WallItemView>;
+
+export const BoardPush = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("snapshot"), snapshot: WallSnapshot }),
+  z.object({ kind: z.literal("failure"), failure: RefusalRecord }),
+]);
+export type BoardPush = z.infer<typeof BoardPush>;
+
+export const OrderPush = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("order"), view: WallItemView }),
+  z.object({ kind: z.literal("failure"), failure: RefusalRecord }),
+]);
+export type OrderPush = z.infer<typeof OrderPush>;
+
+export function parsePush<S extends z.ZodType>(schema: S, text: string): z.infer<S> | null {
+  try {
+    const parsed = schema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
