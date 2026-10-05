@@ -157,21 +157,19 @@ describe("an opened order", () => {
     expect(item.review).toBeNull();
   });
 
-  test("lists every log entry in order, with its station, the worker that recorded it, and no code on a failed station", () => {
+  test("lists every log entry in order, with its station and the worker that recorded it, and no stop code", () => {
     const entries = itemViewOf(viewOf({ log })).entries;
 
     expect(entries.map((entry) => entry.action)).toEqual(log.map((entry) => entry.action));
-    expect(entries[2]).toEqual({
+    expect(entries[2]).toStrictEqual({
       at: at(2),
       action: "artifact_returned",
-      code: null,
       station: "plan",
       worker: { name: "hinge-1", role: "operator" },
     });
-    expect(entries[5]).toEqual({
+    expect(entries[5]).toStrictEqual({
       at: at(5),
       action: "station_failed",
-      code: null,
       station: null,
       worker: null,
     });

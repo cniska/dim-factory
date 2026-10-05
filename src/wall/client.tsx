@@ -214,7 +214,6 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
                         {timeLabel(entry.at)}
                       </time>
                       <strong className="font-normal text-foreground">{itemLabel(entry)}</strong>
-                      {entry.code === null ? null : <span className="text-quiet">{entry.code}</span>}
                     </div>
                     <EntryWorker entry={entry} />
                   </div>

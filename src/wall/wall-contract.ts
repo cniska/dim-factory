@@ -47,7 +47,6 @@ const isAction = (value: string): value is Action => ACTIONS.has(value);
 export const WallItemEntry = z.object({
   at: z.string(),
   action: z.string().refine(isAction),
-  code: z.string().nullable(),
   station: Station.nullable(),
   worker: WallWorker.nullable(),
 });
