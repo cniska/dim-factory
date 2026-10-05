@@ -109,11 +109,22 @@ function OrderCard({
       onClick={() => onOpen(order)}
       stopped={isStopped(order)}
       className={cn(
-        "h-[172px] justify-between p-[var(--space-md)] text-left text-[11px]",
-        "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
+        order.status === "running" ? "h-[172px]" : "h-[142px]",
+        "justify-between p-[var(--space-md)] text-left text-[11px]",
+        "cursor-pointer hover:border-accent has-[button:focus-visible]:border-accent",
         bumped && "border-accent",
       )}
     >
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen(order);
+        }}
+        className="sr-only"
+      >
+        Open {order.title}
+      </button>
       <div className={cn(ROW, "justify-between gap-[var(--space-sm)]")}>
         <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
         <span className="shrink-0 tabular-nums text-quiet">
@@ -126,26 +137,14 @@ function OrderCard({
         <p className="mt-auto truncate text-quiet/60">{order.project}</p>
       </div>
 
-      <CardFooter className={cn(ROW, "justify-between gap-[var(--space-sm)] text-quiet")}>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen(order);
-          }}
-          className="sr-only focus-visible:not-sr-only focus-visible:rounded-wall focus-visible:border focus-visible:px-[var(--space-xs)]"
-        >
-          Open {order.title}
-        </button>
-        <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
-          {order.worker ? (
-            <WorkerLabel worker={order.worker} className="truncate" />
-          ) : order.status === "running" ? (
-            <NoWorkerLabel />
-          ) : null}
-        </span>
-        {order.station === null ? null : <Badge>{STATION_LABELS[order.station]}</Badge>}
-      </CardFooter>
+      {order.status === "running" ? (
+        <CardFooter className={cn(ROW, "justify-between gap-[var(--space-sm)] text-quiet")}>
+          <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
+            {order.worker ? <WorkerLabel worker={order.worker} className="truncate" /> : <NoWorkerLabel />}
+          </span>
+          {order.station === null ? null : <Badge>{STATION_LABELS[order.station]}</Badge>}
+        </CardFooter>
+      ) : null}
     </Card>
   );
 }
@@ -297,12 +296,14 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                 <dd className="text-muted-foreground lowercase">{STATION_LABELS[order.station]}</dd>
               </div>
             ) : null}
-            <div className="flex min-w-0 max-w-full items-center">
-              <dt className="sr-only">assignee</dt>
-              <dd className="flex min-w-0 items-center gap-[var(--space-xs)] text-muted-foreground">
-                {order.worker ? <WorkerLabel worker={order.worker} /> : <NoWorkerLabel />}
-              </dd>
-            </div>
+            {order.worker || order.status === "running" ? (
+              <div className="flex min-w-0 max-w-full items-center">
+                <dt className="sr-only">assignee</dt>
+                <dd className="flex min-w-0 items-center gap-[var(--space-xs)] text-muted-foreground">
+                  {order.worker ? <WorkerLabel worker={order.worker} /> : <NoWorkerLabel />}
+                </dd>
+              </div>
+            ) : null}
             <div className="flex items-center">
               <dt className="sr-only">status</dt>
               <dd

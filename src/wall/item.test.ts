@@ -3,7 +3,7 @@ import { ACTION_LABELS, DECIDED_LABELS, itemLabel } from "./item";
 
 describe("factory wall item view", () => {
   test("calls each logged action what a person calls it, not what the log stores", () => {
-    expect(ACTION_LABELS.order_added).toBe("Added");
+    expect(ACTION_LABELS.order_added).toBe("Queued");
     expect(ACTION_LABELS.slice_accepted).toBe("Slice accepted");
     expect(ACTION_LABELS.finding_answered).toBe("Finding answered");
     expect(ACTION_LABELS.ship_landed).toBe("Shipped");

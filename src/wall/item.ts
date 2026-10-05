@@ -6,7 +6,7 @@ import type { WallItemEntry } from "./wall-contract";
 type Decided = "artifact_approved" | "artifact_returned" | "order_returned";
 
 export const ACTION_LABELS: Record<Exclude<Action, Decided>, string> = {
-  order_added: "Added",
+  order_added: "Queued",
   order_updated: "Updated",
   order_run: "Run",
   workspace_created: "Workspace created",
