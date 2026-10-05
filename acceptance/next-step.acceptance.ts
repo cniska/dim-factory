@@ -113,7 +113,6 @@ describe("what an order admits", () => {
     });
     const id = await planned(m.operator);
     await approve(m.operator, id);
-    resultOf(await runOrder(m.operator, id));
     expect((await showOrder(m.operator, id)).next).toBe(NEXT.update);
 
     resultOf(await updateOrder(m.operator, id, IN_ENGLISH));

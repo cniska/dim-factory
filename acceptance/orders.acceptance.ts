@@ -273,7 +273,7 @@ describe("returns and approvals", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("AC-5 AC-6 a builder that finds a problem in the plan puts the order back at plan with the problem in the planner's brief", async () => {
+  test("AC-5 AC-6 a builder that finds a problem in the plan puts the order back at plan in the same run, with the problem in the planner's brief", async () => {
     const m = await start({
       script: {
         planner: [planTurn(), planTurn()],
@@ -282,12 +282,13 @@ describe("returns and approvals", () => {
     });
     const id = await built(m.operator);
 
-    expect((await showOrder(m.operator, id)).station).toBe("plan");
-    resultOf(await runOrder(m.operator, id));
+    const order = await showOrder(m.operator, id);
+    expect(order.station).toBe("plan");
+    expect(order.next).toBe(NEXT.approve);
     expect(m.invocation("planner", 1).prompt).toContain("the second slice contradicts the first");
   });
 
-  test("AC-5 a reviewer that finds a problem in the build puts the order back at build with the problem in the builder's brief", async () => {
+  test("AC-5 a reviewer that finds a problem in the build puts the order back at build in the same run, with the problem in the builder's brief", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -297,8 +298,9 @@ describe("returns and approvals", () => {
     });
     const id = await reviewed(m.operator);
 
-    expect((await showOrder(m.operator, id)).station).toBe("build");
-    resultOf(await runOrder(m.operator, id));
+    const order = await showOrder(m.operator, id);
+    expect(order.station).toBe("build");
+    expect(order.next).toBe(NEXT.approve);
     expect(m.invocation("builder", 1).prompt).toContain("the Build artifact claims a check that never ran");
   });
 
