@@ -1,5 +1,5 @@
 import type { SourceFile } from "./ingest";
-import { listClaudeSubagents, listClaudeTranscripts } from "./ingest-claude-source";
+import { listClaudeSessions } from "./ingest-claude-source";
 import { codexTitlesPath, listCodexRollouts, readCodexTitles } from "./ingest-codex-source";
 import { listGrokSessions } from "./ingest-grok-source";
 import { listPiSessions } from "./ingest-pi-source";
@@ -12,7 +12,7 @@ export type SessionSource = {
 };
 
 export const SESSION_SOURCES: Readonly<Record<Tool, SessionSource>> = {
-  claude: { list: (env) => [...listClaudeTranscripts(env), ...listClaudeSubagents(env)] },
+  claude: { list: listClaudeSessions },
   codex: { list: listCodexRollouts, titles: { path: codexTitlesPath, read: readCodexTitles } },
   grok: { list: listGrokSessions },
   pi: { list: (env) => listPiSessions(piSessionsDir(env)) },

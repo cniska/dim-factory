@@ -15,7 +15,7 @@ import {
   writePrefix,
 } from "./fixtures.test-support";
 import { sync } from "./ingest-sync";
-import { claudeProjectsDir, codexDir, dbPath, type Env } from "./paths";
+import { claudeProjectsDir, codexDir, dbPath, type Env, workerSessionsDir } from "./paths";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -865,6 +865,145 @@ describe("skill loads", () => {
       writePrefix(path, lines, fullBytes(lines));
       expect(sync(db, env).failures).toEqual([]);
       expect(skillLoads(db)).toEqual([]);
+    } finally {
+      closeDb(db);
+    }
+  });
+});
+
+describe("worker transcript copies", () => {
+  const WORKER = "latch-7";
+  const base = { sessionId: SESSION, cwd: "/Users/x/data/workspaces/acme/widgets/ord1", isSidechain: false };
+  const at = (n: number) => `2026-09-20T10:0${n}:00.000Z`;
+  const turn = (n: number, text: string, content: unknown[]) => [
+    {
+      ...base,
+      type: "user",
+      uuid: `u-${n}`,
+      timestamp: at(n),
+      promptSource: "typed",
+      message: { role: "user", content: text },
+    },
+    {
+      ...base,
+      type: "assistant",
+      uuid: `a-${n}`,
+      timestamp: at(n + 1),
+      message: { id: `msg-${n}`, role: "assistant", model: "claude-opus-5-5", content },
+    },
+  ];
+  const lines = [
+    ...turn(1, "read the notes", [
+      { type: "tool_use", id: "toolu-read", name: "Read", input: { file_path: "/Users/x/data/notes.md" } },
+      { type: "tool_use", id: "toolu-skill", name: "Skill", input: { skill: "dim:dim-plan" } },
+    ]),
+    {
+      ...base,
+      type: "user",
+      uuid: "u-body",
+      parentUuid: "a-1",
+      timestamp: at(3),
+      isMeta: true,
+      sourceToolUseID: "toolu-skill",
+      message: { role: "user", content: "Base directory for this skill: /Users/x/skills/dim-plan\n\n# Body" },
+    },
+    ...turn(4, "now the next step", []),
+  ];
+
+  function writeCopy(env: Env, content: unknown[]): string {
+    const path = join(workerSessionsDir(WORKER, env), `${SESSION}.jsonl`);
+    writePrefix(path, content, fullBytes(content));
+    return path;
+  }
+
+  function writeProjects(env: Env, content: unknown[]): string {
+    const path = join(claudeProjectsDir(env), "-Users-x-data-workspaces-acme", `${SESSION}.jsonl`);
+    writePrefix(path, content, fullBytes(content));
+    return path;
+  }
+
+  function attribute(db: Database): void {
+    db.run(
+      "INSERT INTO worker (name, role, project, order_id) VALUES (?, 'builder', 'acme/widgets', 'ord1')",
+      [WORKER],
+    );
+    db.run(
+      "INSERT INTO worker_session (id, worker, harness, pid, pid_started_at) VALUES (?, ?, 'claude', 1, 'x')",
+      [SESSION, WORKER],
+    );
+  }
+
+  const messageTexts = (db: Database) =>
+    db.prepare("SELECT text FROM message WHERE role = 'user' ORDER BY ts").all();
+
+  test("records a copied worker session with its tool calls and skill load, attributed to its worker", () => {
+    const env = scratchEnv(newRoot());
+    writeCopy(env, lines);
+    const db = run(env);
+    try {
+      attribute(db);
+      expect(
+        db
+          .prepare(
+            `SELECT s.id, w.worker FROM session s JOIN worker_session w USING (id) WHERE s.tool = 'claude'`,
+          )
+          .all(),
+      ).toEqual([{ id: SESSION, worker: WORKER }]);
+      expect(db.prepare("SELECT tool_name, file_path FROM tool_call WHERE id = 'toolu-read'").all()).toEqual([
+        { tool_name: "Read", file_path: "/Users/x/data/notes.md" },
+      ]);
+      expect(db.prepare("SELECT session_id, skill_name FROM skill_load").all()).toEqual([
+        { session_id: SESSION, skill_name: "dim:dim-plan" },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("reads a session id found in both places from the projects file alone", () => {
+    const env = scratchEnv(newRoot());
+    const projects = writeProjects(env, lines);
+    writeCopy(env, lines.slice(0, 2));
+    const db = run(env);
+    try {
+      const before = messageTexts(db);
+      expect(before).toHaveLength(3);
+      const again = sync(db, env);
+      expect(again.filesRead).toBe(0);
+      expect(again.sources[0]).toEqual({ tool: "claude", files: 1 });
+      expect(db.prepare("SELECT path FROM source_file").all()).toEqual([{ path: projects }]);
+      expect(messageTexts(db)).toEqual(before);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("reads the copy once the projects file is gone, holding each message once", () => {
+    const env = scratchEnv(newRoot());
+    const projects = writeProjects(env, lines);
+    const copy = writeCopy(env, lines);
+    const db = run(env);
+    try {
+      const before = messageTexts(db);
+      rmSync(projects);
+      const after = sync(db, env);
+      expect(after.failures).toEqual([]);
+      expect(db.prepare("SELECT path FROM source_file").all()).toEqual([{ path: copy }]);
+      expect(messageTexts(db)).toEqual(before);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("follows a session to the projects file when it appears after the copy was read", () => {
+    const env = scratchEnv(newRoot());
+    writeCopy(env, lines.slice(0, 2));
+    const db = run(env);
+    try {
+      const projects = writeProjects(env, lines);
+      expect(sync(db, env).failures).toEqual([]);
+      expect(db.prepare("SELECT path FROM source_file").all()).toEqual([{ path: projects }]);
+      expect(messageTexts(db)).toHaveLength(3);
     } finally {
       closeDb(db);
     }

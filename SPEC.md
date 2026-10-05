@@ -111,7 +111,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-85** — Every decision on an order — an approval, a return, a worker's return, a cancellation, a refused finding — records who decided it and why. An approval or return records the owner, or the operator where the owner has handed it that decision; a worker's own decision, such as its return or a refused finding, records that worker. Every stop — a failed station, a refused slice, a stopped ship, a session that died — records its cause as a code with its details.
 - **FR-86** — Each order has one log, and it holds every action that touched the order, whoever took it — a worker's session or the factory — and nothing that did not. Evidence, such as a check's output, is attached to the action that produced it.
 - **FR-87** — The factory keeps a trace of its own steps for diagnosing the factory, apart from the order logs. Nothing in an order's log depends on it, it can be followed live for one order, and it can be thrown away.
-- **FR-88** — How the factory performs is measured by queries over the order logs and the session record, with no separate telemetry stream.
+- **FR-88** — How the factory performs is measured by queries over the order logs and the session record, with no separate telemetry stream. A worker's session is in that record, attributed to its worker, as any Claude session is.
 - **FR-89** — A worker's work reaches the record only while its turn is open, and each piece of it, a slice's commit or a station's return, is recorded whole or not at all.
 
 ## 7. The wall

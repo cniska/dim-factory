@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { Glob } from "bun";
 import type { SourceFile } from "./ingest";
 import { parseClaudeChunk } from "./ingest-parse-claude";
-import { claudeProjectsDir, type Env } from "./paths";
+import { claudeProjectsDir, type Env, workersDir } from "./paths";
 import { listInstalledSkills } from "./skill-installed";
 
 function parserFor(env: Env) {
@@ -11,12 +11,11 @@ function parserFor(env: Env) {
   return (lines: string[], firstLineNumber: number) => parseClaudeChunk(lines, firstLineNumber, known);
 }
 
-export function listClaudeTranscripts(env: Env = process.env): SourceFile[] {
-  const root = claudeProjectsDir(env);
+function transcriptsUnder(root: string, pattern: string, env: Env): SourceFile[] {
   if (!existsSync(root)) return [];
-  const specs: SourceFile[] = [];
   const parse = parserFor(env);
-  for (const path of new Glob("*/*.jsonl").scanSync({ cwd: root, absolute: true })) {
+  const specs: SourceFile[] = [];
+  for (const path of new Glob(pattern).scanSync({ cwd: root, absolute: true })) {
     specs.push({
       path,
       kind: "transcript",
@@ -25,6 +24,21 @@ export function listClaudeTranscripts(env: Env = process.env): SourceFile[] {
     });
   }
   return specs.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export function listClaudeTranscripts(env: Env = process.env): SourceFile[] {
+  return transcriptsUnder(claudeProjectsDir(env), "*/*.jsonl", env);
+}
+
+export function listWorkerTranscripts(env: Env = process.env): SourceFile[] {
+  return transcriptsUnder(workersDir(env), "*/sessions/*.jsonl", env);
+}
+
+export function listClaudeSessions(env: Env = process.env): SourceFile[] {
+  const transcripts = listClaudeTranscripts(env);
+  const held = new Set(transcripts.map((file) => file.sessionId));
+  const copies = listWorkerTranscripts(env).filter((copy) => !held.has(copy.sessionId));
+  return [...transcripts, ...copies, ...listClaudeSubagents(env)];
 }
 
 function agentTypeOf(path: string): string | undefined {

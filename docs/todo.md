@@ -4,12 +4,11 @@ What is not built, highest priority first. An entry is here only for a need this
 
 ## Bugs
 
-- **Worker sessions never reach the record** — the copy of each worker's transcript in `workers/<name>/sessions/` is read only by `dim session show`; ingestion reads `~/.claude/projects` alone, so no skill load or file read by a worker is queryable and no skill's effect on workers is measurable. `ingest-claude-source.ts` `listClaudeTranscripts`, `paths.ts` `workerSessionsDir`. Ingest the worker copies as sessions.
-
 ## Debt
 
 Each entry is one change. [schema] entries change the schema and run with nothing else in flight.
 
+- **Worker subagents never reach the record** — only the main transcript is copied to `workers/<name>/sessions/` (`station-effects.ts` `copySession`), so what a worker's subagents read or load is not queryable. Copy the subagent transcripts and read them as `<agent id>@<parent>` sessions.
 - **Install a project's gates when dim adopts it** — built when dim adopts hoodly, not before. `dim` brings the machinery that writes a project's gates into the project, where every contributor runs them, copied from dim-factory's own: `.githooks` set through `prepare`, its commit-subject script, the no-comments test, a CI commits job, and a report of a project whose copy differs from the canonical one.
 - **The module checks read imports with a parser** — `src/factory-modules.test.ts` `importsOf` takes value imports from `Bun.Transpiler.scanImports`, which drops `import type`, so type-only imports come from a regex a reformatted import slips past; `sqlBreaches` and `coded-error.test.ts` `errorBreaches` match text, strings included. The installed TypeScript 7 has no stable parser API. Take the import graph from the compiler or the linter.
 - **Codex trust is read by key, not hash** — `hooks-codex-trust.ts` counts a hook trusted when its positional key has any hash, so a hook moved onto another's key reads trusted until Codex asks again. Compare the hash once Codex's algorithm is known.
