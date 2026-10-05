@@ -27,9 +27,11 @@ if [ "$1" = new ]; then
   git -C "$repo" config user.email verify@example.com
   git -C "$repo" config commit.gpgsign false
   git -C "$repo" remote add origin https://github.com/example/verify.git
-  printf '{"scripts":{"verify":"true"}}\n' > "$repo/package.json"
-  : > "$repo/bun.lock"
-  printf '.claude/\n' > "$repo/.gitignore"
+  mkdir -p "$repo/noop"
+  printf '{"name":"noop","version":"1.0.0"}\n' > "$repo/noop/package.json"
+  printf '{"name":"verify","scripts":{"verify":"true"},"dependencies":{"noop":"file:./noop"}}\n' > "$repo/package.json"
+  (cd "$repo" && bun install --silent)
+  printf '.claude/\nnode_modules/\n' > "$repo/.gitignore"
   git -C "$repo" add .
   env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
     git -C "$repo" commit -q -m "chore: start"
