@@ -1,6 +1,9 @@
+import { z } from "zod";
 import type { ActKind, Later, Station } from "./order-contract";
 import type { TurnRequest } from "./station-contract";
 import type { Rebased } from "./workspace";
+
+export const TraceLine = z.looseObject({ order: z.string() });
 
 type LineKey = "at" | "pid" | "order" | "seq" | "step" | "phase" | "ms" | "outcome";
 

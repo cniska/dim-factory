@@ -1,6 +1,6 @@
 import { isRefusal } from "./coded-error";
 import { type Env, tracePath } from "./paths";
-import type { StepOutcome, Trace } from "./trace-contract";
+import { type StepOutcome, type Trace, TraceLine } from "./trace-contract";
 import { appendLine, readFrom, sizeOf } from "./trace-effects";
 
 const FOLLOW_POLL_MS = 100;
@@ -78,7 +78,7 @@ export async function followTrace(
     const end = pending.lastIndexOf(NEWLINE);
     partial = pending.subarray(end + 1);
     const lines = end < 0 ? [] : pending.subarray(0, end).toString("utf8").split("\n");
-    for (const line of lines) if (JSON.parse(line).order === order) print(line);
+    for (const line of lines) if (TraceLine.parse(JSON.parse(line)).order === order) print(line);
     await Bun.sleep(FOLLOW_POLL_MS);
   }
 }

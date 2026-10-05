@@ -149,4 +149,20 @@ describe("following the trace", () => {
 
     expect(printed.map((printedLine) => JSON.parse(printedLine).path)).toEqual(["/tmp/är", "/b"]);
   });
+
+  test("fails on a line that names no order, rather than skipping it", async () => {
+    const env = scratchEnv();
+    const path = tracePath(env);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify({ order: 7, step: "lock" })}\n`);
+
+    await expect(
+      followTrace(
+        "k7m2qx4d",
+        env,
+        () => false,
+        () => {},
+      ),
+    ).rejects.toThrow();
+  });
 });
