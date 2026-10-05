@@ -245,6 +245,32 @@ describe("spool", () => {
     }
   });
 
+  test("applies a payload whose reason and cwd are null", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    spool(env, "claude", "1789000000000000000", { ...endEvent(SESSION, "other"), cwd: null, reason: null });
+    const db = openDb(dbPath(env));
+    try {
+      expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("sets aside a payload whose read field has the wrong type", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const path = spool(env, "claude", "1789000000000000000", { ...endEvent(SESSION, "other"), cwd: 42 });
+    const db = openDb(dbPath(env));
+    try {
+      expect(drainSpool(db, env)).toMatchObject({ applied: 0, unreadable: 1 });
+      expect(existsSync(path)).toBe(false);
+      expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 0 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("sets aside a file it cannot place rather than dropping it", () => {
     const root = newRoot();
     const env = scratchEnv(root);

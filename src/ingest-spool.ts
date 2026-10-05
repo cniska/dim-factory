@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
+import { z } from "zod";
 import { writeTransaction } from "./db";
 import { HarnessName } from "./harness-contract";
 import { hookEventOf } from "./hook-events";
@@ -25,12 +26,13 @@ export function ensureSpoolDirs(env: Env = process.env): void {
   mkdirSync(join(spoolDir(env), "unreadable"), { recursive: true });
 }
 
-type HookPayload = {
-  session_id?: string;
-  hook_event_name?: string;
-  cwd?: string;
-  reason?: string;
-};
+const HookPayload = z.looseObject({
+  session_id: z.string().optional(),
+  hook_event_name: z.string().optional(),
+  cwd: z.string().nullish(),
+  reason: z.string().nullish(),
+});
+type HookPayload = z.infer<typeof HookPayload>;
 
 function text(value: string | undefined): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -55,7 +57,8 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
         let payload: HookPayload | undefined;
         if (match) {
           try {
-            payload = JSON.parse(readFileSync(path, "utf8")) as HookPayload;
+            const parsed = HookPayload.safeParse(JSON.parse(readFileSync(path, "utf8")));
+            payload = parsed.success ? parsed.data : undefined;
           } catch {
             payload = undefined;
           }
