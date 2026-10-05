@@ -17,7 +17,7 @@ I route work by capability: a powerful model for hard design and high-risk revie
 Before deciding anything, ask the record: where this shape already exists (`dim query prior-art`) and what was settled before (`dim query search`).
 
 - **Check:** nothing is re-derived that the record already holds.
-- **Factory:** the planner's brief (`dim-plan`).
+- **Factory:** the planner's instructions ([`prompts/plan.md`](../prompts/plan.md)).
 
 ### 2. Design with a second model
 
@@ -38,14 +38,14 @@ Types, schemas, states, errors and function layout are settled before code is wr
 One slice at a time, each verified and committed on its own. Features go in dependency order: the contract and data model, then schema and lifecycle, then the service path, then jobs or agents, then the consumer surface. Every slice runs the loop: edit, the repo's check, simplify, the check again, a read-only checking agent, an answer to every finding, commit. Simplifying is in the loop because agents overengineer, and maintainability is where agent-built code fails first.
 
 - **Check:** each slice is green on the repo's own check, and the model has exercised the change itself rather than handing me something only I can confirm. Every finding is fixed or refused with a reason.
-- **Factory:** the builder runs this loop (`dim-build`), and the slice gates keep each commit only once the project's check passes on it in the check sandbox. The model exercising the product itself is a gap.
+- **Factory:** the builder runs this loop ([`prompts/build.md`](../prompts/build.md)), and the slice gates keep each commit only once the project's check passes on it in the check sandbox. The model exercising the product itself is a gap.
 
 ### 5. Review by dimension
 
 The finished work is reviewed one agent per dimension — correctness, tests, architecture, maintainability, docs, security, style — so no reader carries every checklist at once. Findings go back until each is answered. High-risk changes also get my own read.
 
 - **Check:** no finding is left unanswered.
-- **Factory:** the reviewer and its report (`dim-review`), and my approval of the Review artifact.
+- **Factory:** the reviewer and its report ([`prompts/review.md`](../prompts/review.md)), and my approval of the Review artifact.
 
 ### 6. Hand off
 

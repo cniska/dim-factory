@@ -9,7 +9,6 @@ import type { Adapter, Outcome, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
 import { type DeathCode, type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
 import { type Env, xdgHomes } from "./paths";
-import type { SkillName } from "./skill";
 import {
   type BuildReturn,
   type FindingAnswer,
@@ -88,7 +87,6 @@ type BriefFacts = {
 };
 
 type StationTurn = {
-  readonly skill: SkillName;
   readonly policy: Policy["kind"];
   readonly briefsDiff: boolean;
   readonly briefsCheck: boolean;
@@ -97,7 +95,6 @@ type StationTurn = {
 
 const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
   plan: {
-    skill: "dim-plan",
     policy: "read",
     briefsDiff: false,
     briefsCheck: false,
@@ -109,7 +106,6 @@ const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
     }),
   },
   build: {
-    skill: "dim-build",
     policy: "edit",
     briefsDiff: false,
     briefsCheck: true,
@@ -132,7 +128,6 @@ const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
     }),
   },
   review: {
-    skill: "dim-review",
     policy: "read",
     briefsDiff: true,
     briefsCheck: false,
@@ -175,13 +170,13 @@ export type Purpose = {
 };
 
 export function stationPurpose(station: Station): Purpose {
-  const { skill, policy, briefsDiff, briefsCheck, brief } = STATION_TURNS[station];
+  const { policy, briefsDiff, briefsCheck, brief } = STATION_TURNS[station];
   return {
     answers: "return",
     policy,
     briefsDiff,
     briefsCheck,
-    prompt: (facts) => JSON.stringify({ skill, ...brief(facts) }),
+    prompt: (facts) => JSON.stringify(brief(facts)),
     refusal: (act) =>
       STATIONS_OF[act].includes(station) ? null : refuseStation("wrong_station", { act, station }),
   };

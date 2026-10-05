@@ -2,7 +2,6 @@
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { briefOf } from "./brief";
 import { type ClaudeHooks, fireHooksSync, mergeHooks, settingsHooks } from "./claude-hooks";
 import {
   bashAllowed,
@@ -26,7 +25,7 @@ import {
 } from "./scripted-harness-state";
 import { sliceActs } from "./scripts";
 import { unreachable } from "./unreachable";
-import { roleOfSkill, type StationRole } from "./vocabulary";
+import { roleOfInstructions } from "./vocabulary";
 import { waitFor } from "./wait";
 import { type Dim, isWorkerAct, workerCommand } from "./worker-acts";
 
@@ -35,6 +34,7 @@ type Flags = {
   readonly fork: boolean;
   readonly sessionId: string | null;
   readonly model: string | null;
+  readonly instructions: string | null;
   readonly permissionMode: PermissionMode;
   readonly settings: ClaudeSettings & { readonly hooks?: ClaudeHooks };
   readonly settingSources: string | null;
@@ -46,6 +46,7 @@ const NO_FLAGS: Flags = {
   fork: false,
   sessionId: null,
   model: null,
+  instructions: null,
   permissionMode: "default",
   settings: {},
   settingSources: null,
@@ -81,7 +82,7 @@ type Valued =
   | "--model"
   | "--resume"
   | "--session-id"
-  | "--plugin-dir";
+  | "--append-system-prompt";
 
 const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> = {
   "--output-format": (flags) => flags,
@@ -91,7 +92,7 @@ const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> =
   "--model": (flags, value) => ({ ...flags, model: value }),
   "--resume": (flags, value) => ({ ...flags, resume: value }),
   "--session-id": (flags, value) => ({ ...flags, sessionId: value }),
-  "--plugin-dir": (flags) => flags,
+  "--append-system-prompt": (flags, value) => ({ ...flags, instructions: value }),
 };
 
 const isSwitch = (arg: string): arg is Switch => Object.hasOwn(SWITCHES, arg);
@@ -121,11 +122,6 @@ function parseFlags(argv: readonly string[]): Flags {
   }
   if (pending !== null) refuse(`error: option '${pending}' argument missing`);
   return { ...flags, prompt: positional.join(" ") };
-}
-
-function briefedRole(prompt: string): StationRole | null {
-  const brief = briefOf(prompt);
-  return brief === null ? null : roleOfSkill(brief.skill);
 }
 
 const STDIN_WAIT_MS = 3000;
@@ -169,11 +165,12 @@ mkdirSync(dirname(transcript), { recursive: true });
 if (flags.resume !== null && flags.fork) copyFileSync(transcriptPath(home, cwd, flags.resume), transcript);
 const history = readTranscript(transcript);
 
-const role = flags.resume === null ? briefedRole(flags.prompt) : roleOf(state, flags.resume);
+const role =
+  flags.resume === null ? roleOfInstructions(flags.instructions ?? "") : roleOf(state, flags.resume);
 if (role === null) {
   refuse(
     flags.resume === null
-      ? "scripted claude: the brief names no station skill"
+      ? "scripted claude: the system prompt holds no station's instructions"
       : `scripted claude: session ${flags.resume} was never started by this harness`,
   );
 }
@@ -203,6 +200,7 @@ const invocation: Invocation = {
   resumed: flags.resume,
   forked: flags.fork,
   model: flags.model,
+  instructions: flags.instructions,
   prompt: flags.prompt,
   cwd,
   home,

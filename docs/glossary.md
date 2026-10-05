@@ -12,7 +12,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Session | The harness process that currently carries a worker's context. A worker's session can die and be replaced; the worker stays |
 | Role | What a worker is: `operator`, `planner`, `builder` or `reviewer` |
 | Harness | The agent product that runs a session, such as Claude Code or Codex |
-| Station | One step of work on an order: `plan`, `build` or `review`. Their skills are `dim-plan`, `dim-build` and `dim-review` |
+| Station | One step of work on an order: `plan`, `build` or `review` |
+| Instructions | What a worker or the operator is told to do. A station's are markdown in `prompts/` that its worker starts with in its system prompt; the operator's are the `dim-factory` skill |
 | Order | One piece of work: a title, a description and a project. It waits until the operator runs it, and is built in its own workspace and branch |
 | Workspace | The isolated checkout an order is built in, with its own branch, apart from the project's checkout and every other order's. A git worktree of the checkout is how one is made |
 | Status | The state an order is in, read from its log: `queued`, `running`, `shipped` or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
@@ -21,7 +22,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Update | The operator's change to an order's title or description, allowed until its plan is approved, or once the planner returns the order. The next run plans the order again |
 | Turn | One run of a station worker's session: the factory starts or resumes it with a brief and serves the acts it sends until its process ends |
 | Message turn | A turn that resumes a station worker's session with the operator's message instead of a brief. It only reads, and its final text is the reply |
-| Brief | The JSON a turn starts with: the station's skill, the order's facts and where the station stands. It carries no instructions |
+| Brief | The JSON a turn starts with: the order's facts and where the station stands. It carries no instructions |
 | Turn socket | The Unix socket a turn opens for its worker. It is the worker's only way to write the record, and any connection to it acts as that worker |
 | Run | A turn or a ship in flight on an order, recorded with its process so another act on the order is refused while it is alive |
 | Stop | A log entry that carries a code and the facts behind it: a refused slice, ship or message, a session's death or a failed station |
@@ -30,7 +31,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
-| Slash command | The `/name` a user types into a harness, such as `/clear` or `/dim:dim-plan` |
+| Slash command | The `/name` a user types into a harness, such as `/clear` or `/dim-factory` |
 | Declared task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/declared-tasks.ts`](../src/declared-tasks.ts)). The check is the task that says a change is sound |
 
 ## The record
@@ -44,7 +45,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Worker's return | A station worker handing the order back: a planner that cannot plan it as written, or a builder or reviewer that found a problem in the previous station's work |
 | Cancel | The owner's decision to stop an order before it ships, with the reason |
 | Finding | A problem a reviewer raised, with its area, file and line, what is wrong, the fix and a severity |
-| Area | The question a review or audit reads code against, such as correctness or tests, each with its own reader ([`skills/references/quality-areas.md`](../skills/references/quality-areas.md)) |
+| Area | The question a review or audit reads code against, such as correctness or tests, each with its own reader ([`prompts/references/quality-areas.md`](../prompts/references/quality-areas.md)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Answer | The builder's one reply to a finding: `fixed`, or `refused` with a reason |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |

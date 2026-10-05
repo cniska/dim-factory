@@ -64,6 +64,7 @@ export type Outcome =
 export type Start = {
   readonly session: SessionStart;
   readonly model: string;
+  readonly instructions: string;
   readonly policy: Policy;
   readonly socket: string;
 };

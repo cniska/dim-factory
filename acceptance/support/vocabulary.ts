@@ -49,10 +49,10 @@ export const STATION_NAMES = ["plan", "build", "review"] as const;
 export type Station = (typeof STATION_NAMES)[number];
 
 export const STATIONS = {
-  plan: { role: "planner", skill: "dim-plan" },
-  build: { role: "builder", skill: "dim-build" },
-  review: { role: "reviewer", skill: "dim-review" },
-} as const satisfies Record<Station, { readonly role: string; readonly skill: string }>;
+  plan: { role: "planner", title: "Plan" },
+  build: { role: "builder", title: "Build" },
+  review: { role: "reviewer", title: "Review" },
+} as const satisfies Record<Station, { readonly role: string; readonly title: string }>;
 
 export type StationRole = (typeof STATIONS)[Station]["role"];
 
@@ -64,6 +64,7 @@ export type WorkerRole = (typeof WORKER_ROLES)[number];
 
 export type Decider = "owner" | "operator";
 
-export function roleOfSkill(skill: string): StationRole | null {
-  return Object.values(STATIONS).find((station) => station.skill === skill)?.role ?? null;
+export function roleOfInstructions(instructions: string): StationRole | null {
+  const title = /^# (.+)$/m.exec(instructions)?.[1];
+  return Object.values(STATIONS).find((station) => station.title === title)?.role ?? null;
 }

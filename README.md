@@ -14,9 +14,9 @@ dim records sessions on this machine, brings earlier work back to agents, and ru
 
 ## Agent setup
 
-Clone this repository, open the checkout in Claude Code, and ask the agent to run the project-local [dim-setup skill](.agents/skills/dim-setup/SKILL.md). It installs the CLI and shared skills for use across projects and checks readiness with `dim doctor`.
+Clone this repository, open the checkout in Claude Code, and ask the agent to run the project-local [dim-setup skill](.agents/skills/dim-setup/SKILL.md). It installs the CLI and the `dim-factory` skill for use across projects and checks readiness with `dim doctor`.
 
-Then open a project in Claude Code. For routine factory work, ask the agent to use `dim-add` to create an order and `dim-factory` to run it by id. The agents invoke the station skills as the order advances. The [agent command reference](docs/usage.md) explains the commands behind those skills.
+Then open a project in Claude Code. For routine factory work, ask the agent to use `dim-factory` to add an order and run it by id. The factory gives each station's worker its instructions as the order advances. The [agent command reference](docs/usage.md) explains the commands behind them.
 
 `bun run verify` is the repository check.
 

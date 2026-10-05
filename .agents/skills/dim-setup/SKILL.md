@@ -5,7 +5,7 @@ description: Set up a fresh dim-factory clone for coding agents. Use after cloni
 
 # Setup
 
-Set up dim on this machine so coding agents can use its shared skills from other projects. This skill lives in the clone and runs before those skills are installed. [The agent command reference](../../../docs/usage.md) owns the command details. Doctor's observed state determines each repair; an installer exit alone does not establish readiness.
+Set up dim on this machine so coding agents can operate the factory from other projects through its `dim-factory` skill. This skill lives in the clone and runs before that skill is installed. [The agent command reference](../../../docs/usage.md) owns the command details. Doctor's observed state determines each repair; an installer exit alone does not establish readiness.
 
 ## Entry contract
 
@@ -22,7 +22,7 @@ Run `dim sync` to populate the local record. If it refuses a schema mismatch, ru
 Use the doctor's findings to choose only the needed installers. Each writes when run, so read the paths and scope doctor names before running it:
 
 - `dim hooks install` for Claude Code and Codex session hooks.
-- `dim skills install` for dim's shared skills in the agent skill directories.
+- `dim skills install` for the `dim-factory` skill in the agent skill directories.
 - `dim rules install` when its canonical Claude rules source exists.
 - `dim agent install` on macOS when scheduled sync is wanted. Run it even when doctor says the agent is loaded, because the plist names this checkout and the installed Bun path. Its result gives the command to load the launchd agent.
 
@@ -34,7 +34,7 @@ Run `dim doctor` again after repairs. Codex hook trust is granted in Codex, and 
 
 ## Exit check
 
-Setup is ready when the executable, hooks, rules and skill checks are healthy, the user's `config.json` names a model for every station role or a `default` ([configuration](../../../docs/usage.md#configuration)), and `dim-factory` resolves from the shared skill directory of each installed harness. Check the executable and skill targets from a separate project checkout; both must still lead to this clone. `dim-factory` operates an existing order id, and `dim-add` creates one from a new request. Report observational doctor failures such as insufficient session-end history separately, with the evidence needed to judge them after more sessions. If an external or owner-dependent action remains, report setup as blocked with its concrete next step. On a second run with the same inputs, the installers make no changes.
+Setup is ready when the executable, hooks, rules and skill checks are healthy, the user's `config.json` names a model for every station role or a `default` ([configuration](../../../docs/usage.md#configuration)), and `dim-factory` resolves from the shared skill directory of each installed harness. Check the executable and skill targets from a separate project checkout; both must still lead to this clone. `dim-factory` adds an order from a new request and operates an existing order id. Report observational doctor failures such as insufficient session-end history separately, with the evidence needed to judge them after more sessions. If an external or owner-dependent action remains, report setup as blocked with its concrete next step. On a second run with the same inputs, the installers make no changes.
 
 ## Result
 

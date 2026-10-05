@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { claude } from "./harness-claude";
 import type { Start } from "./harness-contract";
 
 const START: Start = {
   session: { kind: "new", id: "s1" },
   model: "opus",
+  instructions: "# Build",
   policy: { kind: "read", writable: ["/t"], denied: ["/w"] },
   socket: "/t/s",
 };
@@ -37,13 +36,10 @@ describe("starting Claude Code", () => {
     ]);
   });
 
-  test("loads dim's station skills as the dim plugin, since a worker's HOME holds none", () => {
+  test("gives the worker its station's instructions in the system prompt and loads no plugin", () => {
     const argv = claude.argv(START);
-    const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
-    expect(JSON.parse(readFileSync(join(plugin, ".claude-plugin", "plugin.json"), "utf8")).name).toBe("dim");
-    for (const skill of ["dim-plan", "dim-build", "dim-review"]) {
-      expect(existsSync(join(plugin, "skills", skill, "SKILL.md"))).toBe(true);
-    }
+    expect(argv[argv.indexOf("--append-system-prompt") + 1]).toBe("# Build");
+    expect(argv).not.toContain("--plugin-dir");
   });
 
   test("turns a read policy into default mode and Claude's sandbox, with edits allowed only in the writable directories and only the turn's socket reachable", () => {

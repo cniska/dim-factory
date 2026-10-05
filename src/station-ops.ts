@@ -59,6 +59,7 @@ import {
   sessionHeld,
   sessionWritten,
 } from "./station-effects";
+import { stationInstructions } from "./station-instructions";
 import { pinnedEnv } from "./toolchain-ops";
 import type { Trace } from "./trace-contract";
 import { traceOf } from "./trace-ops";
@@ -332,6 +333,7 @@ function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: T
   const argv = WORKER_HARNESS.argv({
     session: startOf(session),
     model: turn.model,
+    instructions: stationInstructions(turn.station),
     policy: policyOf(turn.purpose.policy, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });

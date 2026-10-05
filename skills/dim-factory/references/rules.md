@@ -1,9 +1,3 @@
----
-name: dim-rules
-description: Maintain the standing instructions agents load, machine-wide or in one repo, and the tool files that import them. Use when adding, sharpening or removing a rule, not when writing a doc that argues for one.
-argument-hint: "<the rule you want to land>"
----
-
 # Rules
 
 A rule costs tokens on every session that loads it and changes nothing on the sessions that do not. So the question is never whether the rule is true. It is which layer it belongs in, whether a gate could hold it instead of a sentence, and whether it is already written somewhere this reader will reach.
@@ -11,7 +5,7 @@ A rule costs tokens on every session that loads it and changes nothing on the se
 ## Before writing a line
 
 1. Is this rule already settled? `dim query search "<words the rule would use>"` finds where it was said, across every session. Find what settled it and sharpen that instead.
-2. Is it being broken? The same search finds each time the owner had to say it again. A rule nobody breaks is a line paid for on every session to prevent nothing. A rule broken repeatedly under one skill belongs in that skill, not in the file every session loads.
+2. Is it being broken? The same search finds each time the owner had to say it again. A rule nobody breaks is a line paid for on every session to prevent nothing. A rule broken repeatedly under one station's instructions belongs in them, not in the file every session loads.
 3. What does the repo already do? `git log` reads the commit format off the repo's own history. What a repo does is the rule; a file that states something else is the thing that is wrong.
 4. Does the concept already have a word? Read the project's glossary, where it keeps one. A rule that introduces a second word for a thing already named costs more than it states, because from then on both words are searched and only one is found.
 
@@ -21,7 +15,7 @@ A rule lives in one of these, and the cost falls as you go down:
 
 - The machine-wide rules, read on every session in every repo. The most expensive line there is, so it holds only what is true of all work everywhere.
 - One repo's rules, read on every session in that repo. Only what holds there and nowhere else; a general convention restated here is paid for twice and drifts.
-- A station skill, read when that station runs. A rule governing one operation arrives exactly when it applies.
+- A station's instructions, read when that station runs. A rule governing one operation arrives exactly when it applies.
 - A doc, read when the argument is needed. The reasoning, the measurement, the case that was weighed, never the rule itself.
 - The record, read by a query. A fact, not a rule: what was decided, what a number was, which version shipped.
 

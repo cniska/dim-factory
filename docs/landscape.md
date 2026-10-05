@@ -45,6 +45,6 @@ What the survey found overall: the argument for a factory with human-held gates 
 
 ## Planning
 
-- **[Superpowers](https://github.com/obra/superpowers)**, read at v6.4.1, asks which inputs or failure modes a spec implies that no task's test exercises. *Contributed:* that question in the plan reviewer's brief in `dim-plan`.
+- **[Superpowers](https://github.com/obra/superpowers)**, read at v6.4.1, asks which inputs or failure modes a spec implies that no task's test exercises. *Contributed:* that question in the plan reviewer's brief in the planner's instructions.
 - **[tsk](https://github.com/anttikissa/tsk)** keeps a project's tasks in its repository as the recipe for rebuilding it: each task names what it `needs`, `tsk ready` lists the tasks whose dependencies are done, and the commit that finishes a task names it in a trailer. *Refused:* tasks as the permanent spec of the software, since an order is a change to code that exists; and no gate in the loop, where each artifact here waits on approval.
 - **[ModernPath](https://www.modernpath.ai/)**, read from its public site, keeps requirements and acceptance criteria as a system of record that outlives a rewrite, defines done by tests written red first, and queues decisions for approval. It publishes the concepts and not the mechanisms. *Refused:* a hosted knowledge base as the authority; the local record is.

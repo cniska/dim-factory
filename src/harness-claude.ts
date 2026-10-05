@@ -1,8 +1,6 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import type { Adapter, Ended, Outcome, Policy, SessionStart, Start } from "./harness-contract";
-
-const DIM_PLUGIN = resolve(import.meta.dir, "..");
 
 const NOT_ALPHANUMERIC = /[^A-Za-z0-9]/g;
 
@@ -84,8 +82,8 @@ export const claude: Adapter = {
     settings(start),
     "--setting-sources",
     "user",
-    "--plugin-dir",
-    DIM_PLUGIN,
+    "--append-system-prompt",
+    start.instructions,
     ...sessionFlags(start.session),
   ],
   transcript: (home, workspace, session) => join(projectDir(home, workspace), `${session}.jsonl`),

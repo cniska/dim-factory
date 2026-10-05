@@ -79,22 +79,24 @@ async function twoShippedOrders(): Promise<Machine> {
   return m;
 }
 
-describe("skills", () => {
-  test.todo("AC-18 the operator's instructions and intake are their own skills, and a shared instruction is a linked reference", () => {});
-  test.todo("AC-19 no instruction is stated in two shipped skills, and none adds nothing in the record of orders using it", () => {});
-  test.todo("AC-20 a project with no factory files runs an order to shipped, and the factory's own skills reach no user skill directory", () => {});
-  test.todo("AC-27 every skill a brief names ships with the factory, and a machine with no personal skills runs an order to shipped", () => {});
+describe("instructions", () => {
+  test.todo("AC-18 each worker's system prompt holds its station's instructions and their references, and dim-factory holds the operator's and adds orders", () => {});
+  test.todo("AC-19 no instruction is stated in two shipped sets, and none adds nothing in the record of orders using it", () => {});
+  test.todo("AC-20 a project with no factory files runs an order to shipped, and dim-factory is the only skill installed for the user", () => {});
+  test.todo("AC-27 every instruction a worker or the operator follows ships with the factory, and a machine with no personal skills runs an order to shipped", () => {});
 });
 
 describe("briefs", () => {
-  test("AC-17 each station's brief is a fixed set of fields that names its skill", async () => {
+  test("AC-17 each station's worker starts with its instructions in its system prompt, and its brief is a fixed set of fields", async () => {
     const m = await twoShippedOrders();
 
-    for (const { role, skill } of Object.values(STATIONS)) {
-      const first = briefFrom(m.invocation(role, 0).prompt);
-      const second = briefFrom(m.invocation(role, 1).prompt);
-      expect(first.skill).toBe(skill);
-      expect(Object.keys(first).sort()).toEqual(Object.keys(second).sort());
+    for (const { role, title } of Object.values(STATIONS)) {
+      const first = m.invocation(role, 0);
+      const second = m.invocation(role, 1);
+      expect(first.instructions?.startsWith(`# ${title}\n`)).toBe(true);
+      expect(Object.keys(briefFrom(first.prompt)).sort()).toEqual(
+        Object.keys(briefFrom(second.prompt)).sort(),
+      );
     }
   });
 
@@ -102,9 +104,8 @@ describe("briefs", () => {
     const m = await twoShippedOrders();
 
     const sentences = (brief: string) =>
-      Object.entries(briefFrom(brief))
-        .filter(([field]) => field !== "skill")
-        .flatMap(([, value]) => JSON.stringify(value).split(/(?<=[.!?])\s+/))
+      Object.values(briefFrom(brief))
+        .flatMap((value) => JSON.stringify(value).split(/(?<=[.!?])\s+/))
         .filter((sentence) => sentence.length > MIN_SENTENCE_LENGTH);
     for (const role of STATION_ROLES) {
       const first = sentences(m.invocation(role, 0).prompt);

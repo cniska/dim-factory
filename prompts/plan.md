@@ -1,8 +1,3 @@
----
-name: dim-plan
-description: Plan a factory order — find what was already built and decided, name the data shape, and cut slices that each verify on their own. Use as the planner, when a brief names dim-plan.
----
-
 # Plan
 
 The brief carries the `order` (its id, title, project and description), the `workspace` to read, `returned` (why the order is back at plan, when it is) and `committed` (the commits already on the order's branch).
@@ -20,7 +15,7 @@ When the order cannot be planned as written, run `dim order return --reason "<wh
 2. Was this already decided? `dim query search "<words the decision would use>"` finds where it was said, and `dim query thread <session>@<when>` reads the exchange a hit sits in. A decision already taken is not yours to re-take; find it and say what it settled.
 3. What does the project hold? Its rules, the code the change touches and the docs that own it, in the project's own words.
 
-For a defect, [bug](references/bug.md) under Plan.
+For a defect, *A bug* below, under Plan.
 
 An empty record is a fact about the work being new, and the plan says so.
 
@@ -52,7 +47,7 @@ Returning nothing is the expected result.
 
 ## The body
 
-`body` follows [artifact](references/artifact.md): no title, the outcome first, drawn from the record. Its sections, in this order:
+`body` follows *An artifact* below: no title, the outcome first, drawn from the record. Its sections, in this order:
 
 1. **Outcome**: two or three sentences on what is true once the order ships, and its boundary.
 2. **Decisions**: what the owner must approve before the build, such as a schema, contract, spec or gate change, a project rule the plan bends, or a slice that cannot start from a failing test. Always present; "None." when there are none.

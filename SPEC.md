@@ -42,10 +42,10 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 
 ## 3. Stations
 
-- **FR-31** — Every instruction the factory gives an agent, the operator's included, lives in a skill. A brief is a fixed set of fields — the skill that holds its station's instructions, the order's facts and where the station stands — messages and command output carry facts, never instructions.
+- **FR-31** — A station worker starts with its station's instructions in its system prompt, and loads no skill to find them. A brief is a fixed set of fields — the order's facts and where the station stands — and briefs, messages and command output carry facts, never instructions.
 - **FR-32** — Each station works from what the station before it produced: the planner from the order's description, the builder from the approved plan, the reviewer from the approved Build artifact and the order's diff.
-- **FR-33** — What differs from one order or turn to the next goes in the brief; what is the same for every order goes in the station's skill; what a worker may or may not do is enforced by how the factory starts it, never asked of it in words.
-- **FR-34** — The factory ships every skill its workers use and depends on no skill of the owner's own.
+- **FR-33** — What differs from one order or turn to the next goes in the brief; what is the same for every order goes in the station's instructions; what a worker may or may not do is enforced by how the factory starts it, never asked of it in words.
+- **FR-34** — The factory ships every instruction its workers and its operator follow and depends on no skill of the owner's own.
 - **FR-35** — The planner returns the plan: prose the owner can read, and the slices the builder builds in order. Each slice has a title and its outcome.
 - **FR-36** — The planner changes nothing. The plan is recorded from what it returns.
 - **FR-37** — The builder reads the approved plan, then writes, verifies and commits each slice in order until every slice is done. A slice's commit is kept on the order's branch only when it passes the gates.
@@ -82,26 +82,26 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-63** — The factory decides who a `dim` command acts as from the process that runs it. Nothing a worker can read, set or start lets it act as someone else.
 - **FR-64** — A station's worker and a check start with only a listed set of environment variables, never the owner's environment. The check gets no credentials. A station's worker gets only the sign-in its own harness needs, and nothing another worker left behind outside the workspace.
 - **FR-65** — A check writes only inside the tree it checks and its own temporary directory.
-- **FR-66** — A station's worker cannot change the factory it runs under — its code, skills, gates, hooks, settings or record. It reaches the record only through what its station accepts from it.
-- **FR-67** — A change an order makes to a gate, skill, check or setting takes effect only after the order ships.
+- **FR-66** — A station's worker cannot change the factory it runs under — its code, instructions, gates, hooks, settings or record. It reaches the record only through what its station accepts from it.
+- **FR-67** — A change an order makes to a gate, instruction, check or setting takes effect only after the order ships.
 
-## 5. Skills
+## 5. Instructions
 
-- **FR-68** — The owner invokes only `dim-add`, `dim-factory`, `dim-audit` and `dim-rules`, in the operator's session. Every other skill is for workers, invoked by the worker whose brief or skill names it.
-- **FR-69** — `dim-add` turns what the owner asks for into one order with a title, a description and a project.
+- **FR-68** — The owner invokes only `dim-factory`, in the operator's session; it is the one skill the factory installs.
+- **FR-69** — `dim-factory` turns what the owner asks for into one order with a title, a description and a project.
 - **FR-70** — `dim-factory` holds the operator's instructions: running orders, judging each artifact against the record, and carrying out the owner's decisions.
-- **FR-71** — `dim-plan` holds the planner's instructions: find what was already built and decided, find a bug's cause before planning its fix, and cut slices that each verify on their own.
-- **FR-72** — `dim-build` holds the builder's instructions: write, verify, simplify and commit each slice through the gates, writing a bug fix's failing test first.
-- **FR-73** — `dim-review` holds the reviewer's instructions: read the Build artifact and the whole diff area by area, taking what the gates proved as done, and check that a bug fix repairs the cause rather than a symptom and that its tests catch the bug.
-- **FR-74** — `dim-plan`, `dim-build` and `dim-review` share one reference on how every artifact is written for the owner: the outcome first, drawn from the record.
-- **FR-75** — `dim-build` holds the red, green, refactor method for a slice that changes behavior.
-- **FR-76** — `dim-build` holds the simplification pass, which changes no behavior and no test.
-- **FR-77** — `dim-build` holds the git rules the builder follows, such as commit subjects and who owns a workspace.
-- **FR-78** — `dim-audit` holds a read-only sweep of a project's code, whose findings become orders.
-- **FR-79** — `dim-rules` holds how the standing instructions agents load are added, sharpened or removed.
-- **FR-80** — The factory's skills are installed for the user, so the factory runs in any project without adding a file to it.
+- **FR-71** — The planner's instructions: find what was already built and decided, find a bug's cause before planning its fix, and cut slices that each verify on their own.
+- **FR-72** — The builder's instructions: write, verify, simplify and commit each slice through the gates, writing a bug fix's failing test first.
+- **FR-73** — The reviewer's instructions: read the Build artifact and the whole diff area by area, taking what the gates proved as done, and check that a bug fix repairs the cause rather than a symptom and that its tests catch the bug.
+- **FR-74** — The planner's, builder's and reviewer's instructions share one reference on how every artifact is written for the owner: the outcome first, drawn from the record.
+- **FR-75** — The builder's instructions hold the red, green, refactor method for a slice that changes behavior.
+- **FR-76** — The builder's instructions hold the simplification pass, which changes no behavior and no test.
+- **FR-77** — The builder's instructions hold the git rules the builder follows, such as commit subjects and who owns a workspace.
+- **FR-78** — `dim-factory` holds, in a reference it reads when the owner asks for an audit, a read-only sweep of a project's code whose findings become orders.
+- **FR-79** — `dim-factory` holds, in a reference it reads when the owner asks for it, how the standing instructions agents load are added, sharpened or removed.
+- **FR-80** — `dim-factory` is installed for the user, linked to the checkout `dim` runs from, so the factory runs in any project without adding a file to it.
 - **FR-81** — A project's own skills live in its `.agents/skills` and serve work on that project; the factory never installs them for the user.
-- **NF-1** — Each skill holds only what its job needs, states each instruction once across all skills, holding an instruction only it reads inline and linking a reference for one several skills share, and is kept only while the orders that use it show it improves their results.
+- **NF-1** — Each set of instructions holds only what its job needs and states each instruction once across all of them, sharing one reference where several need the same instruction, and is kept only while the orders that use it show it improves their results.
 
 ## 6. Record
 
@@ -154,17 +154,17 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-14** — While a station works on an order, or the order ships, a second station run, an approval, a return and a ship are each refused. Once the station's worker process has ended, they are allowed again. (FR-28, FR-61)
 - **AC-15** — Cancelling an order in the middle of a build stops its builder, records nothing of the unfinished turn, removes its workspace and its branch, and leaves the order cancelled. A cancel the checkout cannot carry out is refused and leaves the order as it was. (FR-29, FR-90)
 - **AC-16** — After a failed station run, running the order again resumes the same worker from where the record puts the order. (FR-30, FR-56)
-- **AC-17** — The plan, build and review briefs each name their skill and contain no instructions, and each recorded slice of a plan has a title and an outcome. (FR-31, FR-35)
-- **AC-18** — Each station's brief names its station's skill, the operator's instructions are `dim-factory` and intake is `dim-add`, and an instruction several skills share is a reference they link rather than repeated in them. (FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75, FR-76, FR-77, FR-78, FR-79)
-- **AC-19** — A review of all shipped skills finds no instruction stated in two of them and no skill that the record of orders using it shows adding nothing. (NF-1)
-- **AC-20** — After installing the factory, a project with no factory files runs an order to shipped, and dim-factory's own `.agents/skills` appear in no user skill directory. (FR-80, FR-81)
+- **AC-17** — Each station worker starts with its station's instructions in its system prompt, the plan, build and review briefs contain no instructions, and each recorded slice of a plan has a title and an outcome. (FR-31, FR-35)
+- **AC-18** — Each station worker's system prompt holds its station's instructions and every reference they use, `dim-factory` holds the operator's instructions and adds orders, and an instruction several sets share is one reference rather than repeated in them. (FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75, FR-76, FR-77, FR-78, FR-79)
+- **AC-19** — A review of all shipped instructions finds no instruction stated in two of them and none that the record of orders using it shows adding nothing. (NF-1)
+- **AC-20** — After installing the factory, a project with no factory files runs an order to shipped, `dim-factory` is the only skill installed for the user, and dim-factory's own `.agents/skills` appear in no user skill directory. (FR-80, FR-81)
 - **AC-21** — Every `dim` command is one whole word, each with more than one action takes its action as a subcommand, and no command name joins two words with a hyphen or shortens a word. (NF-6)
 - **AC-22** — A slice with a comment, an unchanged test or an unusual subject line is kept when the project's check passes, while a slice whose check fails, whose check rewrote files, that changed the check's definition, or whose commit is not on the recorded head of the order's branch is refused. (FR-39)
-- **AC-23** — The planner's brief holds the description, the builder's the approved plan, and the reviewer's the approved Build artifact and the diff; no brief holds a sentence that every order's brief would repeat, and no brief or skill asks a worker not to do what the factory already prevents. The builder's brief names the project's check as the gates run it. (FR-31, FR-32, FR-33)
+- **AC-23** — The planner's brief holds the description, the builder's the approved plan, and the reviewer's the approved Build artifact and the diff; no brief holds a sentence that every order's brief would repeat, and no brief or instruction asks a worker not to do what the factory already prevents. The builder's brief names the project's check as the gates run it. (FR-31, FR-32, FR-33)
 - **AC-24** — With a first operator session gone, the operator's next session in the project runs its orders and receives its station workers' replies as the same worker, and a second live operator session in one project is refused. (FR-50)
 - **AC-25** — A builder that returns an order to plan after two committed slices leaves both on the branch, and the revised plan's next build keeps, changes or removes them as the plan says. (FR-47)
 - **AC-26** — A planner's return saying the order cannot be planned lets the operator update the order and run it again, and the next plan is briefed with the updated description. An update to a queued order or to a plan awaiting approval is accepted and the next run plans again; an update after the plan is approved is refused, except once the planner has returned the order. (FR-15, FR-16, FR-49)
-- **AC-27** — Every skill a brief or the operator's instructions name is shipped with the factory, and a machine with no personal skills installed runs an order to shipped. (FR-31, FR-34)
+- **AC-27** — Every instruction a station worker or the operator follows ships with the factory, and a machine with no personal skills installed runs an order to shipped. (FR-31, FR-34)
 - **AC-28** — A planner's attempt to write to the workspace or the record is refused, and its plan appears in the record only from what it returns. It still reads the record through its turn. (FR-36, FR-66)
 - **AC-29** — A plan with no slice, a slice commit with no subject line, and a review finding with no file each record nothing and go back to the same worker with what was wrong; a corrected return is accepted, and a second refused return fails the station for the operator. (FR-35, FR-41, FR-44, FR-48)
 - **AC-30** — One build of a plan with several slices commits each slice in order through the gates and returns once, with the Build artifact. (FR-37, FR-41)
@@ -183,7 +183,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-43** — Each station's worker starts on the model the user's settings name for its role, a role they leave out starts on their default, and a role with neither refuses to start. (FR-62)
 - **AC-44** — A command whose environment claims to be the operator, with no registered process above it, is refused. So is a process reusing a registered process's id with a different start time, and a process started by a running station before its worker registers. (FR-63, FR-84)
 - **AC-45** — With an owner environment holding API keys, a code-hosting token and an agent socket, neither a station's worker nor the check sees any of them, and each station's worker sees only the sign-in its own harness needs. A file one worker leaves outside the workspace is not there for the next. (FR-64)
-- **AC-46** — A station worker's attempt to write to the record directly, or to edit the running factory's code, installed skills, hooks or settings, is refused and leaves them unchanged. A build that redefines the project's check is refused. (FR-39, FR-66)
+- **AC-46** — A station worker's attempt to write to the record directly, or to edit the running factory's code, instructions, hooks or settings, is refused and leaves them unchanged. A build that redefines the project's check is refused. (FR-39, FR-66)
 - **AC-47** — An order that changes the project's check or a gate is judged by the default branch's check and gates until it ships. (FR-67)
 - **AC-48** — Running an order from added to shipped leaves one log in which every action that touched the order appears once, in order, naming its worker's session or the factory — the factory's checks, rebase and landing included, each with its evidence attached — and no command changes or removes an entry. (FR-82, FR-83, FR-86)
 - **AC-49** — A decision without a reason is refused, whether the operator or a station's worker makes it. After an order has run, each decision shows who decided it and why: the owner's approval carried out by the operator shows as the owner's, and one on a decision handed to the operator shows as the operator's. Each failed station, refused slice and stopped ship shows its cause as a code. (FR-14, FR-85)

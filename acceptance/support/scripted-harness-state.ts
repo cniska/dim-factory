@@ -14,6 +14,7 @@ const Invocation = z.strictObject({
   resumed: z.string().nullable(),
   forked: z.boolean(),
   model: z.string().nullable(),
+  instructions: z.string().nullable(),
   prompt: z.string(),
   cwd: z.string(),
   home: z.string(),

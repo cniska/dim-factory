@@ -54,14 +54,17 @@ A turn resumes or replaces the worker's session, spawns the harness with a brief
 
 [`src/harness-claude.ts`](../src/harness-claude.ts) builds the `claude -p` command line. A station worker gets:
 
-- **Its own `HOME`**, so nothing of the owner's home or settings reaches it, and the factory's skills through `--plugin-dir`.
+- **Its own `HOME`**, so nothing of the owner's home or settings reaches it.
+- **Its station's instructions** in its system prompt, through `--append-system-prompt`.
 - **A listed environment** ([`src/station.ts`](../src/station.ts) `workerEnv`): the owner's git identity, its own turn's temp directory (passed as `CLAUDE_CODE_TMPDIR` too, since Claude's sandboxed Bash takes `$TMPDIR` from it), and only the sign-in its harness needs.
 - **A sandbox**: the builder writes its workspace and turn directory; the planner and reviewer write only the turn directory. The record, the factory and every harness config are out of reach. The checkout's git hooks are denied, and a changed git config is put back and fails the station.
 - **The model** its role's entry in the user's `models` setting names.
 
-## Skills
+## Instructions
 
-A skill under [`skills/`](../skills) is one the owner or a worker invokes by name. What only one skill reads sits in that skill's folder: inline, since a worker reads a skill it loads and sometimes skips what it links, or in its own `references/` when the skill hands it to its agents. What several skills read is one file in `skills/references/`, linked from each skill's own `references/` folder.
+A station's instructions are [`prompts/<station>.md`](../prompts), followed by each reference in [`prompts/references/`](../prompts/references) they name as *Title* below ([`src/station-instructions.ts`](../src/station-instructions.ts)). They reach the worker whole, so they link no file.
+
+The operator's instructions are the one installed skill, [`skills/dim-factory`](../skills/dim-factory). What it needs only on request, such as adding an order or an audit, is a reference in its `references/` folder that it loads then; a file it shares with a station is a link there to the file in `prompts/`.
 
 ## Slices
 

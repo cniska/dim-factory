@@ -37,26 +37,18 @@ afterEach(() => {
 });
 
 describe("skill install", () => {
-  test("ships the skills that need dim on PATH", () => {
-    expect(shipped()).toEqual([
-      "dim-add",
-      "dim-audit",
-      "dim-build",
-      "dim-factory",
-      "dim-plan",
-      "dim-review",
-      "dim-rules",
-    ]);
+  test("ships one skill, the operator's", () => {
+    expect(shipped()).toEqual(["dim-factory"]);
   });
 
-  test("every skill a shipped skill names is shipped too", () => {
-    const named = [...new Glob("**/*.md").scanSync({ cwd: SKILLS, followSymlinks: false })].flatMap((file) =>
-      [...readFileSync(join(SKILLS, file), "utf8").matchAll(/`(dim-[a-z]+)`/g)].flatMap(
-        (match) => match[1] ?? [],
+  test("every file a shipped skill links is shipped too", () => {
+    const links = [...new Glob("**/*.md").scanSync({ cwd: SKILLS })].flatMap((file) =>
+      [...readFileSync(join(SKILLS, file), "utf8").matchAll(/\]\(([^)#]+\.md)\)/g)].flatMap((match) =>
+        match[1] === undefined ? [] : [join(SKILLS, dirname(file), match[1])],
       ),
     );
-    expect(named.length).toBeGreaterThan(0);
-    expect(named.filter((name) => !shipped().includes(name))).toEqual([]);
+    expect(links.length).toBeGreaterThan(0);
+    expect(links.filter((link) => !existsSync(link))).toEqual([]);
   });
 
   test("installs every skill directory in the repo, so a new one is not left behind", () => {

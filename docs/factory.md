@@ -14,10 +14,10 @@ A factory with no human reading the work ships whatever the checks miss, and the
 
 The factory aims to give each project the conditions that let its owner delegate work with evidence:
 
-- **Codebase quality.** Clear boundaries, current docs and tests give a worker a reliable starting point. [`dim-audit`](../skills/dim-audit/SKILL.md) inspects an existing project and reports debt for the owner to turn into work.
+- **Codebase quality.** Clear boundaries, current docs and tests give a worker a reliable starting point. An [audit](../skills/dim-factory/references/audit.md) inspects an existing project and reports debt for the owner to turn into work.
 - **Static analysis and tests.** The project declares the check it needs; its own hooks and CI run it before accepting code, and the factory's slice gates run it on every commit a worker hands in.
 - **Rules.** Standing instructions tell agents what holds throughout a project. Mechanical rules become the project's own checks and hooks, which still run when an agent misses an instruction.
-- **Skills.** Shared, task-specific procedures guide planning, building, review and audit. [`dim-setup`](../.agents/skills/dim-setup/SKILL.md) installs them for use from other projects.
+- **Instructions.** Task-specific procedures guide planning, building, review and audit. The factory hands each station its own, and [`dim-setup`](../.agents/skills/dim-setup/SKILL.md) installs the operator's `dim-factory` skill for use from other projects.
 - **Style guide.** The project's conventions and examples show what its code and docs should look like: names, file boundaries, API patterns and writing. Formatting is one enforceable part; reviewers judge conventions that tools cannot decide. [Google's style guide overview](https://github.com/google/styleguide/blob/gh-pages/README.md) uses the term for conventions ranging from names to design choices.
 
 Setup installs the shared controls, while each project supplies its declared check and local conventions. An audit reports codebase quality problems; fixing them remains work with its own evidence and approvals.

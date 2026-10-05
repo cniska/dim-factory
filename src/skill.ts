@@ -17,15 +17,7 @@ import { type Env, locksDir } from "./paths";
 
 const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");
 
-export const SKILL_NAMES = [
-  "dim-add",
-  "dim-audit",
-  "dim-plan",
-  "dim-build",
-  "dim-review",
-  "dim-factory",
-  "dim-rules",
-] as const;
+export const SKILL_NAMES = ["dim-factory"] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
 
