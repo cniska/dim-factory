@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { Glob } from "bun";
+import { z } from "zod";
 import type { SourceFile } from "./ingest";
 import { parseGrokChunk } from "./ingest-parse-grok";
 import { projectOf, type SessionFacts } from "./ingest-session-records";
@@ -17,39 +18,44 @@ type GrokSummary = {
   startedAt?: string;
 };
 
-type SummaryFile = {
-  info?: { id?: string; cwd?: string };
-  generated_title?: string;
-  head_branch?: string;
-  parent_session_id?: string;
-  created_at?: string;
-  agent_name?: string;
-};
+const SummaryFile = z.looseObject({
+  info: z.looseObject({ id: z.string().optional(), cwd: z.string().optional() }).optional(),
+  generated_title: z.string().nullish(),
+  head_branch: z.string().nullish(),
+  parent_session_id: z.string().nullish(),
+  created_at: z.string().nullish(),
+  agent_name: z.string().nullish(),
+});
 
-function nonEmpty(value: string | undefined): string | undefined {
+function nonEmpty(value: string | null | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
+}
+
+function readSummaryFile(path: string): z.infer<typeof SummaryFile> | undefined {
+  try {
+    const parsed = SummaryFile.safeParse(JSON.parse(readFileSync(path, "utf8")));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readGrokSummary(sessionDir: string): GrokSummary | undefined {
   const path = join(sessionDir, "summary.json");
   if (!existsSync(path)) return undefined;
-  let parsed: SummaryFile;
-  try {
-    parsed = JSON.parse(readFileSync(path, "utf8")) as SummaryFile;
-  } catch {
-    return undefined;
-  }
-  const id = nonEmpty(parsed.info?.id) ?? basename(sessionDir);
-  const cwd = nonEmpty(parsed.info?.cwd);
+  const file = readSummaryFile(path);
+  if (!file) return undefined;
+  const id = nonEmpty(file.info?.id) ?? basename(sessionDir);
+  const cwd = nonEmpty(file.info?.cwd);
   return {
     id,
     cwd,
     project: projectOf(cwd),
-    gitBranch: nonEmpty(parsed.head_branch),
-    title: nonEmpty(parsed.generated_title),
-    parentId: nonEmpty(parsed.parent_session_id),
-    agentType: nonEmpty(parsed.agent_name),
-    startedAt: nonEmpty(parsed.created_at),
+    gitBranch: nonEmpty(file.head_branch),
+    title: nonEmpty(file.generated_title),
+    parentId: nonEmpty(file.parent_session_id),
+    agentType: nonEmpty(file.agent_name),
+    startedAt: nonEmpty(file.created_at),
   };
 }
 

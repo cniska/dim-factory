@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { scratchEnv } from "./fixtures.test-support";
+import { listGrokSessions } from "./ingest-grok-source";
+import { parseGrokChunk } from "./ingest-parse-grok";
 import { sync } from "./ingest-sync";
 import { dbPath, type Env, grokDir } from "./paths";
 
@@ -225,5 +227,37 @@ describe("grok sessions", () => {
     } finally {
       closeDb(db);
     }
+  });
+
+  test("drops an update line whose read field has the wrong type", () => {
+    const bad = event({ sessionUpdate: "tool_call", toolCallId: 7 }, "tool-bad");
+    const good = event({ sessionUpdate: "tool_call", toolCallId: "call-9" }, "tool-good");
+    const parsed = parseGrokChunk([JSON.stringify(bad), JSON.stringify(good)], 1);
+    expect(parsed.dropped).toEqual([1]);
+    expect(parsed.toolCalls.map((call) => call.id)).toEqual(["call-9"]);
+  });
+
+  test("keeps an update line whose optional fields are null", () => {
+    const line = event(
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-8",
+        rawInput: null,
+        status: null,
+        content: null,
+      },
+      "tool-null",
+    );
+    const parsed = parseGrokChunk([JSON.stringify(line)], 1);
+    expect(parsed.dropped).toEqual([]);
+    expect(parsed.toolCalls.map((call) => call.id)).toEqual(["call-8"]);
+  });
+
+  test("ignores a summary.json that fails its schema", () => {
+    const env = scratchEnv(newRoot());
+    writeSession(env, ORPHAN, [], { info: { id: 5 }, parent_session_id: PARENT });
+    const [spec] = listGrokSessions(env);
+    expect(spec?.sessionId).toBe(ORPHAN);
+    expect(spec?.parentId).toBeUndefined();
   });
 });

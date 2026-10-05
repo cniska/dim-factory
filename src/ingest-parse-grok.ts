@@ -1,26 +1,37 @@
+import { z } from "zod";
 import type { MessageRow, ParsedChunk, SessionFacts, ToolCallRow } from "./ingest-session-records";
 
-type GrokContent = { type?: string; text?: string };
+const GrokContent = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
+type GrokContent = z.infer<typeof GrokContent>;
 
-type GrokToolMeta = { name?: string };
+const GrokUpdate = z.looseObject({
+  sessionUpdate: z.string().optional(),
+  content: GrokContent.nullish(),
+  toolCallId: z.string().optional(),
+  rawInput: z.record(z.string(), z.unknown()).nullish(),
+  locations: z.array(z.looseObject({ path: z.string().nullish() })).nullish(),
+  status: z.string().nullish(),
+  _meta: z
+    .looseObject({
+      modelId: z.string().nullish(),
+      "x.ai/tool": z.looseObject({ name: z.string().nullish() }).nullish(),
+    })
+    .nullish(),
+});
+type GrokUpdate = z.infer<typeof GrokUpdate>;
 
-type GrokUpdate = {
-  sessionUpdate?: string;
-  content?: GrokContent;
-  toolCallId?: string;
-  rawInput?: Record<string, unknown>;
-  locations?: { path?: string }[];
-  status?: string;
-  _meta?: { modelId?: string; "x.ai/tool"?: GrokToolMeta };
-};
-
-type GrokLine = {
-  timestamp?: number;
-  params?: {
-    update?: GrokUpdate;
-    _meta?: { eventId?: string; agentTimestampMs?: number };
-  };
-};
+const GrokLine = z.looseObject({
+  timestamp: z.number().optional(),
+  params: z
+    .looseObject({
+      update: GrokUpdate.optional(),
+      _meta: z
+        .looseObject({ eventId: z.string().optional(), agentTimestampMs: z.number().optional() })
+        .optional(),
+    })
+    .optional(),
+});
+type GrokLine = z.infer<typeof GrokLine>;
 
 function iso(ms: number | undefined, seconds: number | undefined): string | undefined {
   const value = ms ?? (seconds == null ? undefined : seconds * 1000);
@@ -28,28 +39,38 @@ function iso(ms: number | undefined, seconds: number | undefined): string | unde
   return new Date(value).toISOString();
 }
 
-function textOf(content: GrokContent | undefined): string | undefined {
-  if (content?.type !== "text" || typeof content.text !== "string" || content.text === "") return undefined;
+function textOf(content: GrokContent | null | undefined): string | undefined {
+  if (content?.type !== "text" || content.text === undefined || content.text === "") return undefined;
   return content.text;
 }
 
-function stringField(raw: Record<string, unknown> | undefined, key: string): string | undefined {
+function stringField(raw: Record<string, unknown> | null | undefined, key: string): string | undefined {
   const value = raw?.[key];
   return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+function nonEmpty(value: string | null | undefined): string | undefined {
+  return value != null && value !== "" ? value : undefined;
 }
 
 function filePathOf(update: GrokUpdate): string | undefined {
   const fromInput = stringField(update.rawInput, "file_path") ?? stringField(update.rawInput, "target_file");
   if (fromInput) return fromInput;
-  const located = update.locations?.find(
-    (location) => typeof location.path === "string" && location.path !== "",
-  );
-  return located?.path;
+  const located = update.locations?.find((location) => nonEmpty(location.path));
+  return nonEmpty(located?.path);
 }
 
 function toolNameOf(update: GrokUpdate): string {
-  const name = update._meta?.["x.ai/tool"]?.name;
-  return typeof name === "string" ? name : "";
+  return update._meta?.["x.ai/tool"]?.name ?? "";
+}
+
+function parseLine(raw: string): GrokLine | undefined {
+  try {
+    const parsed = GrokLine.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseGrokChunk(lines: string[], firstLineNumber: number): ParsedChunk {
@@ -61,10 +82,8 @@ export function parseGrokChunk(lines: string[], firstLineNumber: number): Parsed
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
     const srcLine = firstLineNumber + index;
-    let line: GrokLine;
-    try {
-      line = JSON.parse(raw) as GrokLine;
-    } catch {
+    const line = parseLine(raw);
+    if (!line) {
       dropped.push(srcLine);
       continue;
     }
@@ -82,7 +101,7 @@ export function parseGrokChunk(lines: string[], firstLineNumber: number): Parsed
         id,
         ts,
         role: kind === "user_message_chunk" ? "user" : "assistant",
-        model: update._meta?.modelId,
+        model: update._meta?.modelId ?? undefined,
         isMeta: false,
         isSkillBody: false,
         text,
