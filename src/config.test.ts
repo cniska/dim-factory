@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { projectConfigPath, readConfig, userConfigPath, writeConfigValue } from "./config";
+import { projectConfigPath, readConfig, SETTINGS, userConfigPath, writeConfigValue } from "./config";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -36,6 +36,16 @@ function repo(project: string | null): string {
 describe("the layers a setting is read from", () => {
   test("is empty with neither layer written", () => {
     expect(readConfig({ env: { HOME: scratch() } })).toEqual({});
+  });
+
+  test("carries every setting the table names through both layers", () => {
+    for (const [name, [value]] of Object.entries(SETTINGS)) {
+      const home = scratch();
+      put(join(home, ".config", "dim", "config.json"), JSON.stringify({ [name]: value }));
+      expect(readConfig({ env: { HOME: home } })).toEqual({ [name]: value });
+      const dir = repo(JSON.stringify({ [name]: value }));
+      expect(readConfig({ env: { HOME: scratch() }, root: dir })).toEqual({ [name]: value });
+    }
   });
 
   test("reads the user layer from the home config", () => {

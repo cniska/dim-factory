@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { applyEdits, modify } from "jsonc-parser";
 import { z } from "zod";
 import { unreachable } from "./assert";
-import { type ConfigRefusal, invalidConfig, refuseConfig } from "./config-error";
+import { type ConfigRefusal, refuseConfig } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
 import { committedTree } from "./git-committed";
@@ -54,24 +54,24 @@ function refusal(file: string, defect: SettingDefect): ConfigRefusal {
   return refuseConfig("config_invalid", { path: file, at: null, problem: problemOf(defect) });
 }
 
-function refuseValue(file: string, name: Setting, value: unknown): void {
-  const allowed: readonly string[] = SETTINGS[name];
-  if (typeof value !== "string" || !allowed.includes(value)) {
+function allowedValue(file: string, name: Setting, value: unknown): Config[Setting] {
+  const allowed = SETTINGS[name].find((one) => one === value);
+  if (allowed === undefined) {
     throw refuseConfig("config_invalid", {
       path: file,
       at: name,
-      problem: `${name} is ${JSON.stringify(value)}, where it takes one of ${allowed.join(", ")}`,
+      problem: `${name} is ${JSON.stringify(value)}, where it takes one of ${SETTINGS[name].join(", ")}`,
     });
   }
+  return allowed;
 }
 
-const Settings = z.object({ ship: z.enum(SETTINGS.ship).optional() });
-
 function settingsOf(raw: Record<string, unknown>, file: string): Config {
-  for (const [name, value] of Object.entries(raw)) if (isSetting(name)) refuseValue(file, name, value);
-  const settings = Settings.safeParse(raw);
-  if (!settings.success) throw invalidConfig(file, settings.error);
-  return settings.data;
+  const config: Config = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (isSetting(name)) config[name] = allowedValue(file, name, value);
+  }
+  return config;
 }
 
 function parseConfig(text: string, file: string): Config {
@@ -125,7 +125,7 @@ export function readConfig(options: { env?: Env; root?: string; at?: string } = 
 }
 
 export function writeConfigValue(path: string, name: Setting, value: string | undefined): void {
-  if (value !== undefined) refuseValue(path, name, value);
+  if (value !== undefined) allowedValue(path, name, value);
   const before = readJsoncText(path);
   parseConfig(before, path);
   if (value === undefined && !existsSync(path)) return;
