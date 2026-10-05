@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { SCHEMA_SQL } from "./db-schema";
 import { scratchEnv } from "./fixtures.test-support";
+import { HOOK_EVENTS } from "./hook-events";
 import { sync } from "./ingest-sync";
 import { TOOLS } from "./ingest-tools";
 import { dbPath } from "./paths";
@@ -27,18 +28,35 @@ describe("the tool vocabulary", () => {
     }
   });
 
-  test("reaches every tool column, so the code and the constraint cannot disagree", () => {
-    const constrained = SCHEMA_SQL.match(/CHECK \(tool IN \('claude','codex','grok','pi','omp'\)\)/g) ?? [];
-    expect(constrained.length).toBe(3);
-  });
-
-  test("is what the database accepts and the boundary of it", () => {
+  test("is what every tool column accepts and the boundary of it", () => {
     const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    for (const tool of TOOLS) {
-      db.run("INSERT INTO session (id, tool) VALUES (?, ?)", [tool, tool]);
+    const event = HOOK_EVENTS.SessionStart;
+    const inserts: Record<string, (tool: string, key: string) => void> = {
+      source_file: (tool, key) =>
+        db.run("INSERT INTO source_file (path, tool, kind, session_id) VALUES (?, ?, 'transcript', ?)", [
+          key,
+          tool,
+          key,
+        ]),
+      session: (tool, key) => db.run("INSERT INTO session (id, tool) VALUES (?, ?)", [key, tool]),
+      hook_event: (tool, key) =>
+        db.run(
+          "INSERT INTO hook_event (tool, session_id, event, ts) VALUES (?, ?, ?, '2026-01-01T00:00:00Z')",
+          [tool, key, event],
+        ),
+    };
+    try {
+      db.run(SCHEMA_SQL);
+      for (const [table, insert] of Object.entries(inserts)) {
+        for (const tool of TOOLS) {
+          expect(() => insert(tool, `${table}-${tool}`), `${table} accepts ${tool}`).not.toThrow();
+        }
+        expect(() => insert("cursor", `${table}-cursor`), `${table} refuses cursor`).toThrow(
+          /CHECK constraint failed: tool IN/,
+        );
+      }
+    } finally {
+      db.close();
     }
-    expect(() => db.run("INSERT INTO session (id, tool) VALUES ('s', 'cursor')")).toThrow();
-    db.close();
   });
 });
