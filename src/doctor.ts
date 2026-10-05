@@ -113,14 +113,14 @@ function judgeEnds(hooks: HookRead, since: string | null, judgeable: number, end
     return {
       name,
       state: "fail",
-      detail: `only ${ended} of ${judgeable} sessions that ran since the hooks went in recorded an end`,
+      detail: `only ${ended} of ${judgeable} sessions whose start hook fired recorded an end`,
       fix: RUNS,
     };
   }
   return {
     name,
     state: "ok",
-    detail: `${ended} of ${judgeable} sessions since the hooks went in recorded an end`,
+    detail: `${ended} of ${judgeable} sessions whose start hook fired recorded an end`,
   };
 }
 
@@ -209,22 +209,12 @@ function freshness(db: Database): Health {
 
 function endReasons(db: Database, hooks: HookRead): Health {
   const since = text(db, "SELECT min(ts) AS v FROM hook_event");
-  const settled = `last_seen_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-${SESSION_SETTLED_HOURS} hours')`;
-  const judgeable = since
-    ? scalar(
-        db,
-        `SELECT count(*) AS n FROM session
-         WHERE parent_id IS NULL AND started_at >= ? AND ${settled}`,
-        [since],
-      )
-    : 0;
+  const hooked = `parent_id IS NULL AND started_at >= ?
+    AND last_seen_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-${SESSION_SETTLED_HOURS} hours')
+    AND id IN (SELECT session_id FROM hook_event WHERE event = 'session_start')`;
+  const judgeable = since ? scalar(db, `SELECT count(*) AS n FROM session WHERE ${hooked}`, [since]) : 0;
   const ended = since
-    ? scalar(
-        db,
-        `SELECT count(*) AS n FROM session
-         WHERE parent_id IS NULL AND started_at >= ? AND end_reason IS NOT NULL AND ${settled}`,
-        [since],
-      )
+    ? scalar(db, `SELECT count(*) AS n FROM session WHERE ${hooked} AND end_reason IS NOT NULL`, [since])
     : 0;
   return judgeEnds(hooks, since, judgeable, ended);
 }

@@ -16,6 +16,7 @@ import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.t
 import { wantedHooks } from "./hook-commands";
 import { installHooks } from "./hooks";
 import { agentPlistPath } from "./ingest-launchd";
+import { ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { sync } from "./ingest-sync";
 import { dbPath, type Env, resolveHomeDir } from "./paths";
 import { installSkill } from "./skill";
@@ -192,6 +193,31 @@ describe("doctor", () => {
     });
     installHooks(env);
     expect(check(env, "hooks")?.state).toBe("ok");
+  });
+
+  test("judges only the sessions whose start hook fired, since no other session could record an end", () => {
+    const env = seeded();
+    for (const id of ["22222222-2222-3333-4444-555555555555", "33333333-2222-3333-4444-555555555555"]) {
+      writeClaudeTranscript(env, "-Users-x-code-demo", id);
+    }
+    installHooks(env);
+    ensureSpoolDirs(env);
+    const spooled = (at: string, suffix: string, payload: object) =>
+      writeFileSync(
+        join(toolSpoolDir("claude", env), `${Date.parse(at)}000000-${suffix}.json`),
+        JSON.stringify({
+          session_id: "11111111-2222-3333-4444-555555555555",
+          cwd: "/Users/x/code/demo",
+          ...payload,
+        }),
+      );
+    spooled("2026-09-16T09:59:00.000Z", "1-2-", { hook_event_name: "SessionStart", source: "startup" });
+    spooled("2026-09-16T10:30:00.000Z", "1-", { hook_event_name: "SessionEnd", reason: "exit" });
+    const db = openDb(dbPath(env));
+    sync(db, env);
+    closeDb(db);
+
+    expect(check(env, "end reasons")).toMatchObject({ state: "ok" });
   });
 
   test("says no harness is installed rather than calling absent hooks installed", () => {
