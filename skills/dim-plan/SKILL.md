@@ -46,9 +46,19 @@ Hand the plan and what the queries returned to one agent with read-only tools an
 - does the change imply an input or failure mode that no slice's outcome exercises
 - does the plan add a function, file, column or term the outcome does not need, or give an existing name a second meaning
 - does it ask the owner a question the record or an experiment could answer
+- does the change touch a rule the project's docs state, such as a module boundary or a glossary word, that the plan does not name
 
 Returning nothing is the expected result.
 
 ## The body
 
-`body` follows [artifact](references/artifact.md): no title, the outcome first, drawn from the record. Its sections, where the change earns them: the outcome and its boundary; the evidence from the record and what it ruled out; the data shape and contracts; the slices; the decisions that are the owner's, and the risks; what review should aim at in this change.
+`body` follows [artifact](references/artifact.md): no title, the outcome first, drawn from the record. Its sections, in this order:
+
+1. **Outcome**: two or three sentences on what is true once the order ships, and its boundary.
+2. **Decisions**: what the owner must approve before the build, such as a schema, contract, spec or gate change, a project rule the plan bends, or a slice that cannot start from a failing test. Always present; "None." when there are none.
+3. **Cause**: for a defect, with the evidence and what it ruled out.
+4. **Slices**: a table of title, a one-line outcome and the test that fails before the slice. The JSON `outcome` is that same line.
+5. **Risks**, and what review should aim at.
+6. **For the builder**: the data shape, contracts and paths the build needs, last and terse.
+
+A section the change does not earn is omitted, except Decisions.
