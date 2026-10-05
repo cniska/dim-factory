@@ -406,7 +406,7 @@ type Running = {
   readonly setup: ProjectSetup;
   readonly cause: number;
   readonly state: OrderState;
-  turnOf(purpose: Purpose): TurnOf;
+  turnOf(station: Station, purpose: Purpose): TurnOf;
 };
 
 type NewWorkspace = {
@@ -460,13 +460,13 @@ async function withRun<T>(
         setup,
         cause,
         state,
-        turnOf: (purpose) => {
-          invariant(prepared !== null && station !== null, `order ${order} was prepared for a station`);
+        turnOf: (at, purpose) => {
+          const ready = at === station && prepared !== null ? prepared : prepareTurn(setup, at, runEnv);
           const checkoutGit = gitCommonDir(setup.root);
           return {
             trace,
             order,
-            station,
+            station: at,
             by,
             cause,
             checkout: setup.root,
@@ -475,7 +475,7 @@ async function withRun<T>(
             defaultBranch: setup.branch,
             env: runEnv,
             purpose,
-            ...prepared,
+            ...ready,
           };
         },
       });
@@ -483,6 +483,13 @@ async function withRun<T>(
       endRun(db, order);
     }
   });
+}
+
+function stationAfter(state: OrderState, turn: Station): Station | null {
+  const { phase } = state;
+  if (phase.kind !== "run") return null;
+  invariant(phase.station !== turn, `order ${state.id}'s ${turn} turn moved it to another phase`);
+  return phase.station;
 }
 
 export async function advanceOrder(
@@ -503,7 +510,9 @@ export async function advanceOrder(
     env,
     async ({ trace, env: runEnv, setup, cause, state, turnOf }) => {
       if (station !== null) {
-        await turnAt(db, turnOf(stationPurpose(station)));
+        for (let at: Station | null = station; at !== null; at = stationAfter(orderState(db, order), at)) {
+          await turnAt(db, turnOf(at, stationPurpose(at)));
+        }
         return;
       }
       invariant(expected?.kind === "ship", `order ${order} runs a station or ships after ${act.kind}`);
@@ -532,7 +541,7 @@ export async function messageWorker(
   if (worker === null) throw refuseOrder("no_worker", { order, station });
   const act = { kind: "message", to: worker.name, text } as const;
   return withRun(db, order, caller, act, station, env, async ({ turnOf }) => {
-    const reply = await turnAt(db, turnOf(messagePurpose(text)));
+    const reply = await turnAt(db, turnOf(station, messagePurpose(text)));
     invariant(reply !== null, `a message turn on order ${order} ends in a reply or a refusal`);
     return reply;
   });

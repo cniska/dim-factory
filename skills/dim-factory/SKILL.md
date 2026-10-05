@@ -23,7 +23,7 @@ Intake is `dim-add`.
 ## Running an order
 
 1. `dim order show <order>`. `next` is `run`, `approve` or `update`, and `admits` lists what the order takes now; any other action is refused naming them. An order whose run is alive refuses every action but cancelling a station turn.
-2. `next` is `run`: `dim order run <order>`. It returns once the station has returned, or with the refusal that stopped it, and `dim order show` holds the result.
+2. `next` is `run`: `dim order run <order>`. It returns once an artifact waits for a decision, taking the build after review findings in the same run, or with the refusal that stopped it, and `dim order show` holds the result.
 3. `next` is `approve`: an artifact waits. Judge it as below, then approve or return it.
 4. `next` is `update`: the planner returned the order, and its `order_returned` entry holds why. Update the order and run it, or cancel it with the reason.
 5. A failed run leaves the order where the record puts it. The refusal names its code, its cause and the command that resolves it, mostly `dim order run <order>` once a cause outside the order is cleared: a dirty checkout of the default branch, a session that died at its usage limit with `resetsAt` in the log, a role with no model in the user's config.

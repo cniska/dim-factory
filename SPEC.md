@@ -139,7 +139,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 ## 9. Acceptance criteria
 
 - **AC-1** — An order added, run, planned, built, reviewed and approved at each station lands on the default branch and is recorded as shipped. (FR-2, FR-12, FR-13, FR-14, FR-19)
-- **AC-2** — An order runs from its first station to shipped with the operator's only actions being running it once and approving or returning artifacts. (FR-1)
+- **AC-2** — An order runs from its first station to shipped with the operator's only actions being running it once and approving or returning artifacts, including when review findings send it back to build. (FR-1, FR-46)
 - **AC-3** — An order added in a checkout whose `origin` remote is `github.com:acme/widgets` belongs to `acme/widgets`. An order added anywhere else is refused unless it names its project. (FR-3)
 - **AC-4** — Two orders are built at once, each in its own workspace and branch, and their ships do not overlap. (FR-6, FR-22)
 - **AC-5** — A returned artifact comes back revised by the same station's worker. A builder or reviewer that returns the order to the previous station puts it there, with the problem in that station's next brief. (FR-14, FR-15, FR-56)
@@ -170,7 +170,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-30** — One build of a plan with several slices commits each slice in order through the gates and returns once, with the Build artifact. (FR-37, FR-41)
 - **AC-31** — A slice whose check fails is refused with the order's branch left as it was, and the order's log holds the refusal with the check's output attached. (FR-37, FR-38, FR-86)
 - **AC-32** — Code more complex than its outcome needs comes back from review as a maintainability finding, and every Review artifact reports which areas it covered. (FR-40, FR-45)
-- **AC-33** — A reviewer's attempt to write to the workspace or the record is refused. Its findings put the order at build, where a turn that leaves a finding unanswered or answers one twice is refused, and its fixes pass the slice gates. (FR-44, FR-46)
+- **AC-33** — A reviewer's attempt to write to the workspace or the record is refused. Its findings put the order at build in the same run, where a turn that leaves a finding unanswered or answers one twice is refused, and its fixes pass the slice gates. (FR-44, FR-46)
 - **AC-34** — A worker that is not the operator is refused each operator action, and the order and its record are left unchanged. (FR-26, FR-49)
 - **AC-35** — The operator's attempt to record a plan, a commit or a finding itself is refused. (FR-51)
 - **AC-36** — An owner's `dim order` action from a session that is not the operator's is refused. (FR-52)

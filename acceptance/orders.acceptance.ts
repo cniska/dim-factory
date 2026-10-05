@@ -21,7 +21,15 @@ import {
 } from "./support/operator-acts";
 import { actions, entriesOf, entryOf, finalStop, OrderView, sessionOf, workerOf } from "./support/order-view";
 import { descendantRunning, killPid } from "./support/processes";
-import { buildTurn, happyPath, planTurn, reviewTurn } from "./support/scripts";
+import {
+  BUILD_ARTIFACT,
+  buildTurn,
+  finding,
+  findingsTurn,
+  happyPath,
+  planTurn,
+  reviewTurn,
+} from "./support/scripts";
 import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
 import { waitFor } from "./support/wait";
 
@@ -142,6 +150,34 @@ describe("an order from added to shipped", () => {
       ACTION.approved,
       ACTION.approved,
     ]);
+  });
+
+  test("AC-2 an order whose review finds something is still run once, the fix built in the same run", async () => {
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [
+          buildTurn(),
+          [
+            { act: "answer", file: "slice-1.txt", line: 1, answer: "refused", reason: "it holds" },
+            { act: "build-return", artifact: BUILD_ARTIFACT },
+          ],
+        ],
+        reviewer: [findingsTurn([finding()]), reviewTurn()],
+      },
+    });
+    const id = await addOrder(m.operator);
+    resultOf(await runOrder(m.operator, id));
+    for (let approval = 0; approval < 4; approval++) resultOf(await approve(m.operator, id));
+    const shipped = await showOrder(m.operator, id);
+    const operator = workerOf(shipped, "operator").name;
+
+    expect(shipped.status).toBe("shipped");
+    expect(
+      shipped.log
+        .filter((entry) => entry.by.kind === "worker" && entry.by.worker === operator)
+        .map((entry) => entry.action),
+    ).toEqual([ACTION.added, ACTION.run, ACTION.approved, ACTION.approved, ACTION.approved, ACTION.approved]);
   });
 
   test("AC-3 an order added in a checkout belongs to the project its origin remote names", async () => {

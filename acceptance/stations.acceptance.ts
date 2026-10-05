@@ -570,7 +570,7 @@ describe("review findings", () => {
     return id;
   }
 
-  test("AC-33 findings put the order at build, where the builder's fix passes the slice gates and answers each finding once", async () => {
+  test("AC-33 findings put the order at build in the same run, where the builder's fix passes the slice gates and answers each finding once", async () => {
     const m = await start({
       script: reviewedWithFinding([
         { act: "write", path: "slice-1.txt", content: "hello\n" },
@@ -580,11 +580,9 @@ describe("review findings", () => {
       ]),
     });
     const id = await atFindings(m);
-    expect((await showOrder(m.operator, id)).station).toBe("build");
-
-    await runOrder(m.operator, id);
 
     const order = await showOrder(m.operator, id);
+    expect(order.station).toBe("build");
     expect(order.findings[0]?.answer).toBe("fixed");
     expect(m.commitsOn(order.branch).at(-1)).toBe("fix: say hello");
     expect(order.next).toBe(NEXT.approve);
@@ -597,8 +595,6 @@ describe("review findings", () => {
       script: reviewedWithFinding([{ act: "build-return", artifact: BUILD_ARTIFACT }]),
     });
     const id = await atFindings(m);
-
-    await runOrder(m.operator, id);
 
     const order = await showOrder(m.operator, id);
     expect(order.findings).toHaveLength(1);
@@ -616,7 +612,6 @@ describe("review findings", () => {
       ]),
     });
     const id = await atFindings(m);
-    await runOrder(m.operator, id);
 
     const order = await showOrder(m.operator, id);
     expect(order.findings[0]?.answer).toBe("refused");
