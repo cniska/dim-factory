@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import type { Node } from "@babel/types";
 import { Glob } from "bun";
-import { importsOf } from "./syntax.test-support";
+import { importsOf, nodesOf } from "./syntax.test-support";
 
 const SRC = import.meta.dir;
 
@@ -66,10 +67,25 @@ export function boundaryBreaches(file: string, text: string): readonly string[] 
     .map((path) => `${file} imports ${path}, another module's own file`);
 }
 
+function runsSql(node: Node): boolean {
+  if (node.type !== "CallExpression" && node.type !== "OptionalCallExpression") return false;
+  const callee = node.callee;
+  if (callee.type !== "MemberExpression" && callee.type !== "OptionalMemberExpression") return false;
+  if (callee.property.type !== "Identifier") return false;
+  const method = callee.property.name;
+  if (method === "query" || method === "prepare") return true;
+  const owner = callee.object;
+  const isDb =
+    (owner.type === "Identifier" && owner.name === "db") ||
+    ((owner.type === "MemberExpression" || owner.type === "OptionalMemberExpression") &&
+      owner.property.type === "Identifier" &&
+      owner.property.name === "db");
+  return method === "run" && isDb;
+}
+
 export function sqlBreaches(file: string, text: string): readonly string[] {
-  return !file.endsWith("-store.ts") && /\.(query|prepare)\(|\bdb\.run\(/.test(text)
-    ? [`${file} runs SQL`]
-    : [];
+  if (file.endsWith("-store.ts")) return [];
+  return [...nodesOf(file, text)].some(runsSql) ? [`${file} runs SQL`] : [];
 }
 
 describe("the factory's modules", () => {
@@ -158,5 +174,9 @@ describe("the module checks", () => {
   test("catch SQL outside a store", () => {
     expect(sqlBreaches("order-ops.ts", 'db.query("SELECT 1")')).toEqual(["order-ops.ts runs SQL"]);
     expect(sqlBreaches("order-store.ts", 'db.query("SELECT 1")')).toEqual([]);
+    for (const text of ['db?.query("x")', 'this.db.run("x")', 'db.run("x")', 'x.prepare("y")']) {
+      expect(sqlBreaches("order-ops.ts", text)).toEqual(["order-ops.ts runs SQL"]);
+    }
+    expect(sqlBreaches("order-ops.ts", 'const help = "db.query(x)"')).toEqual([]);
   });
 });
