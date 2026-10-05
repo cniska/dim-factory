@@ -34,7 +34,7 @@ const CodexLine = z.looseObject({
       type: z.string().optional(),
       id: z.string().nullish(),
       role: z.string().optional(),
-      content: z.array(CodexContent.nullable()).optional(),
+      content: z.array(CodexContent.nullable()).nullish(),
       timestamp: z.string().optional(),
       cwd: z.string().optional(),
       originator: z.string().nullish(),
@@ -90,7 +90,9 @@ function nonEmpty(value: string | null | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
 }
 
-function visibleText(content: (z.infer<typeof CodexContent> | null)[] | undefined): string | undefined {
+function visibleText(
+  content: (z.infer<typeof CodexContent> | null)[] | null | undefined,
+): string | undefined {
   if (!Array.isArray(content)) return undefined;
   const parts = content.flatMap((b) => (b?.text !== undefined ? [b.text] : []));
   return parts.length > 0 ? parts.join("\n") : undefined;

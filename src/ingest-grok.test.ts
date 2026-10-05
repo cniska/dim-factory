@@ -237,6 +237,14 @@ describe("grok sessions", () => {
     expect(parsed.toolCalls.map((call) => call.id)).toEqual(["call-9"]);
   });
 
+  test("keeps an update line whose content is a list of tool output blocks", () => {
+    const content = [{ type: "content", content: { type: "text", text: "output" } }];
+    const line = event({ sessionUpdate: "tool_call_update", toolCallId: "call-7", content }, "tool-list");
+    const parsed = parseGrokChunk([JSON.stringify(line)], 1);
+    expect(parsed.dropped).toEqual([]);
+    expect(parsed.toolCalls.map((call) => call.id)).toEqual(["call-7"]);
+  });
+
   test("keeps an update line whose optional fields are null", () => {
     const line = event(
       {

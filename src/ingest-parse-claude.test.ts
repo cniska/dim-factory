@@ -109,6 +109,23 @@ describe("parseClaudeChunk", () => {
     expect(chunk.turns).toEqual([]);
   });
 
+  test("keeps a user line whose toolUseResult is an array", () => {
+    const chunk = parseClaudeChunk(
+      [
+        JSON.stringify({
+          type: "user",
+          uuid: "u-10",
+          timestamp: "2026-09-16T10:03:00.000Z",
+          message: { content: [{ type: "tool_result", tool_use_id: "tu-10", content: "ok" }] },
+          toolUseResult: [{ type: "text", text: "ok" }],
+        }),
+      ],
+      1,
+    );
+    expect(chunk.dropped).toEqual([]);
+    expect(chunk.toolCalls).toMatchObject([{ id: "tu-10", resultBytes: 2 }]);
+  });
+
   test("keeps a user line whose toolUseResult is a bare string", () => {
     const chunk = parseClaudeChunk(
       [

@@ -70,7 +70,13 @@ const ClaudeLine = z.looseObject({
   subtype: z.string().optional(),
   durationMs: z.number().optional(),
   messageCount: z.number().optional(),
-  toolUseResult: z.union([ClaudeToolUseResult, z.string().transform(() => undefined)]).optional(),
+  toolUseResult: z
+    .union([
+      ClaudeToolUseResult,
+      z.string().transform(() => undefined),
+      z.array(z.unknown()).transform(() => undefined),
+    ])
+    .optional(),
   message: z
     .looseObject({
       id: z.string().optional(),

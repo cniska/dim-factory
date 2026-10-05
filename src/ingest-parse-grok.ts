@@ -6,7 +6,7 @@ type GrokContent = z.infer<typeof GrokContent>;
 
 const GrokUpdate = z.looseObject({
   sessionUpdate: z.string().optional(),
-  content: GrokContent.nullish(),
+  content: z.union([GrokContent, z.array(z.unknown())]).nullish(),
   toolCallId: z.string().optional(),
   rawInput: z.record(z.string(), z.unknown()).nullish(),
   locations: z.array(z.looseObject({ path: z.string().nullish() })).nullish(),
@@ -39,8 +39,9 @@ function iso(ms: number | undefined, seconds: number | undefined): string | unde
   return new Date(value).toISOString();
 }
 
-function textOf(content: GrokContent | null | undefined): string | undefined {
-  if (content?.type !== "text" || content.text === undefined || content.text === "") return undefined;
+function textOf(content: GrokContent | unknown[] | null | undefined): string | undefined {
+  if (!content || Array.isArray(content)) return undefined;
+  if (content.type !== "text" || content.text === undefined || content.text === "") return undefined;
   return content.text;
 }
 

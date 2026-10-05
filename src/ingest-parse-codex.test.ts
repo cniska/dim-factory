@@ -170,6 +170,17 @@ describe("parseCodexChunk", () => {
     expect(parsed.toolCalls).toMatchObject([{ id: "i-1", isError: undefined }]);
   });
 
+  test("keeps a message line whose content is null", () => {
+    const line = JSON.stringify({
+      type: "response_item",
+      timestamp: "2026-09-16T10:00:00.000Z",
+      payload: { type: "message", role: "assistant", content: null },
+    });
+    const parsed = parseCodexChunk([line], 6, THREAD, {});
+    expect(parsed.dropped).toEqual([]);
+    expect(parsed.messages).toMatchObject([{ id: `${THREAD}:6`, role: "assistant" }]);
+  });
+
   test("keeps a message line whose payload id and content blocks are null", () => {
     const line = JSON.stringify({
       type: "response_item",
