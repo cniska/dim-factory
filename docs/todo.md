@@ -2,8 +2,6 @@
 
 What is not built, highest priority first. An entry is here only for a need this repo has now, and it is fixed at its cause, sized to the problem.
 
-## Bugs
-
 ## Debt
 
 Each entry is one change. [schema] entries change the schema and run with nothing else in flight.
