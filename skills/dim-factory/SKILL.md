@@ -13,7 +13,7 @@ The operator runs the line and never does a station's work. The first operator a
 - `dim order run <order>` runs whatever the record says comes next, the station the order is at or its ship, and returns when it finishes.
 - `dim order show <order>` prints the order: its status, station, `next`, `admits`, branch, workspace, log, workers, slices and findings.
 - `dim order approve <order> --reason <reason> --decided owner|operator` and `dim order return <order> --reason <reason> --decided owner|operator` carry out the decision on the artifact that waits. Approval runs the next station or ships; a return reruns the same station with the reason in its brief.
-- `dim order update <order> [--title <title>] [--description <description>]` changes the order until its plan is approved, and the next run plans it again.
+- `dim order update <order> [--title <title>] [--description <description>]` changes the order until its plan is approved, or once the planner returns it, and the next run plans it again.
 - `dim order cancel <order> --reason <reason>` ends the order, stopping any station working on it.
 - `dim message send <text> --order <order> --to plan|build|review` runs a turn of that station's worker and prints its reply.
 - `dim trace <order>` follows one order's factory steps while it runs. `dim session show <session>` prints a worker's transcript. `dim query search`, `dim query prior-art` and `dim query thread` read the record.

@@ -365,19 +365,22 @@ describe("which act an order admits", () => {
     expect(admits(state(...planned, { action: "order_cancelled", details: { reason: "x" } }))).toEqual([]);
   });
 
-  test("names as its next step only an act it admits", () => {
-    const stuck = state(
+  test("admits an update once the planner returns an order whose plan was approved, and the update needs the plan approved again", () => {
+    const returned = [
       ...planned,
       approve("plan"),
       { action: "order_returned", details: { station: "build", reason: "the plan misses a case" } },
       RUN,
       { action: "order_returned", details: { station: "plan", reason: "which case?" } },
-    );
-    expect(admits(stuck)).toEqual(["cancel", "message"]);
-    expect(nextAct(stuck)).toBeNull();
-    expect(
-      nextAct(state(RUN, BASE, { action: "order_returned", details: { station: "plan", reason: "x" } })),
-    ).toBe("update");
+    ] satisfies Later[];
+    expect(admits(state(...returned))).toEqual(["update", "cancel", "message"]);
+    expect(nextAct(state(...returned))).toBe("update");
+
+    const updated = state(...returned, {
+      action: "order_updated",
+      details: { title: "Greet", description: "Say hello, and the case." },
+    });
+    expect(admits(updated)).toEqual(["run", "update", "cancel", "message"]);
   });
 
   test("refuses an act the order does not admit, naming what it admits and its next step", () => {

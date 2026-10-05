@@ -18,7 +18,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Status | The state an order is in, read from its log: `queued`, `running`, `shipped` or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
 | Admits | The operator actions an order accepts now, worked out from its log alone. Any other action is refused, naming these |
 | Next step | The admitted action that moves an order on: `run`, `approve` or `update` |
-| Update | The operator's change to an order's title or description, allowed until its plan is approved. The next run plans the order again |
+| Update | The operator's change to an order's title or description, allowed until its plan is approved, or once the planner returns the order. The next run plans the order again |
 | Turn | One run of a station worker's session: the factory starts or resumes it with a brief and serves the acts it sends until its process ends |
 | Message turn | A turn that resumes a station worker's session with the operator's message instead of a brief. It only reads, and its final text is the reply |
 | Brief | The JSON a turn starts with: the station's skill, the order's facts and where the station stands. It carries no instructions |

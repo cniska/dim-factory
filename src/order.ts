@@ -180,6 +180,7 @@ function apply(state: OrderState, entry: Later): OrderState {
         title: entry.details.title,
         description: entry.details.description,
         returned: null,
+        planApproved: false,
       };
     case "order_run":
       return { ...state, status: "running" };
@@ -402,7 +403,8 @@ const STEPS: Readonly<Record<Next, readonly ActKind[]>> = {
 export function admits(state: OrderState): readonly ActKind[] {
   const next = nextOf(state.phase);
   if (next === null) return [];
-  return [...STEPS[next], ...(state.planApproved ? [] : ["update" as const]), "cancel", "message"];
+  const updatable = !state.planApproved || state.phase.kind === "update";
+  return [...STEPS[next], ...(updatable ? ["update" as const] : []), "cancel", "message"];
 }
 
 export function nextAct(state: OrderState): Next | null {

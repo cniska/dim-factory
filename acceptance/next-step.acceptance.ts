@@ -100,6 +100,29 @@ describe("what an order admits", () => {
     expect(await showOrder(m.operator, id)).toEqual(building);
   });
 
+  test("AC-26 an order the planner returns after its plan was approved takes an update and plans again", async () => {
+    const m = await start({
+      script: {
+        planner: [
+          planTurn(),
+          [{ act: "order-return", reason: "the description names no language" }],
+          planTurn(),
+        ],
+        builder: [[{ act: "order-return", reason: "the plan misses which language" }]],
+      },
+    });
+    const id = await planned(m.operator);
+    await approve(m.operator, id);
+    resultOf(await runOrder(m.operator, id));
+    expect((await showOrder(m.operator, id)).next).toBe(NEXT.update);
+
+    resultOf(await updateOrder(m.operator, id, IN_ENGLISH));
+    resultOf(await runOrder(m.operator, id));
+
+    expect(m.invocation("planner", 2).prompt).toContain(IN_ENGLISH);
+    expect((await showOrder(m.operator, id)).next).toBe(NEXT.approve);
+  });
+
   test("AC-13 a cancelled order refuses every action", async () => {
     const m = await start({ script: happyPath() });
     const id = await planned(m.operator);
