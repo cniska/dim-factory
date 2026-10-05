@@ -111,15 +111,16 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-85** — Every decision on an order — an approval, a return, a worker's return, a cancellation, a refused finding — records who decided it and why. An approval or return records the owner, or the operator where the owner has handed it that decision; a worker's own decision, such as its return or a refused finding, records that worker. Every stop — a failed station, a refused slice, a stopped ship, a session that died — records its cause as a code with its details.
 - **FR-86** — Each order has one log, and it holds every action that touched the order, whoever took it — a worker's session or the factory — and nothing that did not. Evidence, such as a check's output, is attached to the action that produced it.
 - **FR-87** — The factory keeps a trace of its own steps for diagnosing the factory, apart from the order logs. Nothing in an order's log depends on it, it can be followed live for one order, and it can be thrown away.
-- **FR-88** — How the factory performs is measured by queries over the order logs and the session record, with no separate telemetry stream. A worker's session is in that record, attributed to its worker, as any Claude session is.
-- **FR-89** — A worker's work reaches the record only while its turn is open, and each piece of it, a slice's commit or a station's return, is recorded whole or not at all.
+- **FR-88** — How the factory performs is measured by queries over the order logs and the session record, with no separate telemetry stream.
+- **FR-89** — A station worker's session is in the session record, attributed to its worker, as any Claude session is.
+- **FR-90** — A worker's work reaches the record only while its turn is open, and each piece of it, a slice's commit or a station's return, is recorded whole or not at all.
 
 ## 7. The wall
 
-- **FR-90** — The wall shows the owner every order across all projects on one board, each with its title, project, station and worker, in one column per order status: queued, running and shipped. A cancelled order leaves the board. It changes nothing.
-- **FR-91** — Opening an order on the wall shows that order alone: its facts, its plan, Build and Review artifacts as documents the owner reads in place of the diff and the sessions, and its log in order.
-- **FR-92** — The board and an open order follow the record as it changes, without a reload, and the wall says so when it cannot read the record rather than showing what it last read as current.
-- **FR-93** — The wall has a development mode in which a change to the wall's own code reloads the open page by itself.
+- **FR-91** — The wall shows the owner every order across all projects on one board, each with its title, project, station and worker, in one column per order status: queued, running and shipped. A cancelled order leaves the board. It changes nothing.
+- **FR-92** — Opening an order on the wall shows that order alone: its facts, its plan, Build and Review artifacts as documents the owner reads in place of the diff and the sessions, and its log in order.
+- **FR-93** — The board and an open order follow the record as it changes, without a reload, and the wall says so when it cannot read the record rather than showing what it last read as current.
+- **FR-94** — The wall has a development mode in which a change to the wall's own code reloads the open page by itself.
 - **NF-2** — Only the owner's own browser page can read the wall. Another website, or a web address pointed at this machine, reads nothing.
 - **NF-3** — Showing a worker's artifact on the wall loads nothing the worker linked to.
 
@@ -151,7 +152,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-12** — Shipping an order whose workspace cannot be removed lands its commits, records it as shipped, and names the kept workspace and branch with the reasons. (FR-24)
 - **AC-13** — For every state an order can be in and every action, the action is allowed exactly when the order admits it. Each refused action names the actions the order admits and leaves the record unchanged, and a shipped or cancelled order refuses them all. (FR-25, FR-26, FR-27)
 - **AC-14** — While a station works on an order, or the order ships, a second station run, an approval, a return and a ship are each refused. Once the station's worker process has ended, they are allowed again. (FR-28, FR-61)
-- **AC-15** — Cancelling an order in the middle of a build stops its builder, records nothing of the unfinished turn, removes its workspace and its branch, and leaves the order cancelled. A cancel the checkout cannot carry out is refused and leaves the order as it was. (FR-29, FR-89)
+- **AC-15** — Cancelling an order in the middle of a build stops its builder, records nothing of the unfinished turn, removes its workspace and its branch, and leaves the order cancelled. A cancel the checkout cannot carry out is refused and leaves the order as it was. (FR-29, FR-90)
 - **AC-16** — After a failed station run, running the order again resumes the same worker from where the record puts the order. (FR-30, FR-56)
 - **AC-17** — The plan, build and review briefs each name their skill and contain no instructions, and each recorded slice of a plan has a title and an outcome. (FR-31, FR-35)
 - **AC-18** — Each station's brief names its station's skill, the operator's instructions are `dim-factory` and intake is `dim-add`, and an instruction several skills share is a reference they link rather than repeated in them. (FR-68, FR-69, FR-70, FR-71, FR-72, FR-73, FR-74, FR-75, FR-76, FR-77, FR-78, FR-79)
@@ -186,11 +187,11 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-47** — An order that changes the project's check or a gate is judged by the default branch's check and gates until it ships. (FR-67)
 - **AC-48** — Running an order from added to shipped leaves one log in which every action that touched the order appears once, in order, naming its worker's session or the factory — the factory's checks, rebase and landing included, each with its evidence attached — and no command changes or removes an entry. (FR-82, FR-83, FR-86)
 - **AC-49** — A decision without a reason is refused, whether the operator or a station's worker makes it. After an order has run, each decision shows who decided it and why: the owner's approval carried out by the operator shows as the owner's, and one on a decision handed to the operator shows as the operator's. Each failed station, refused slice and stopped ship shows its cause as a code. (FR-14, FR-85)
-- **AC-50** — A station stopped between any two of its writes leaves each slice commit and each return either whole or absent, and work returned after its turn closed records nothing. (FR-89)
-- **AC-51** — Orders from two projects appear on one wall board with their title, project, station and worker, each in the column of its status — queued, running or shipped — a cancelled order appears in none, and the wall offers no way to change an order. (FR-90)
+- **AC-50** — A station stopped between any two of its writes leaves each slice commit and each return either whole or absent, and work returned after its turn closed records nothing. (FR-90)
+- **AC-51** — Orders from two projects appear on one wall board with their title, project, station and worker, each in the column of its status — queued, running or shipped — a cancelled order appears in none, and the wall offers no way to change an order. (FR-91)
 - **AC-52** — The wall refuses a request for the board or an order addressed to anything but this machine's local address, and a live connection opened from another website. (NF-2)
 - **AC-53** — An artifact containing an image and a link shows neither as something the browser loads. (NF-3)
-- **AC-54** — Across many runs of one order in which stations, ships and worker sessions are killed at random points, every run ends with the order shipped or a problem reported to the operator with its cause. Nothing is recorded twice, and the record differs from an undisturbed run only by the dead sessions it records. (NF-4, FR-23, FR-89)
+- **AC-54** — Across many runs of one order in which stations, ships and worker sessions are killed at random points, every run ends with the order shipped or a problem reported to the operator with its cause. Nothing is recorded twice, and the record differs from an undisturbed run only by the dead sessions it records. (NF-4, FR-23, FR-90)
 - **AC-55** — Each `dim` command prints one structured result, and each refusal it prints carries a code, its details and the command that resolves it. (NF-5)
 - **AC-56** — A session hook whose `dim` command fails or is missing still lets the session carry on. (NF-7)
 - **AC-57** — A git hook in a repository whose owner, settings or check it cannot read lets the commit through. One that blocks a subject line, check or push says why. (NF-8)
@@ -207,13 +208,14 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-68** — A builder's commit names the owner's git identity as author and committer and carries no signature, in a checkout whose config signs commits. (FR-42)
 - **AC-69** — A project hook in the checkout runs on a builder's commit, and a hook that refuses the commit leaves it uncommitted. (FR-43)
 - **AC-70** — In a checkout whose config signs commits, every commit that lands on the default branch is signed with the owner's key, and a landing whose key cannot be reached leaves the default branch where it was and the order ready to ship again. (FR-21)
-- **AC-71** — An opened order shows its facts, each artifact it has rendered as a document and every entry of its log in order, and a new artifact or log entry appears on an open order and on the board without a reload. With the record unreadable, the wall says so and shows no order as current. (FR-91, FR-92)
-- **AC-72** — With the wall served in development mode, an edit to the wall's code shows on the open page without a manual reload. (FR-93)
+- **AC-71** — An opened order shows its facts, each artifact it has rendered as a document and every entry of its log in order, and a new artifact or log entry appears on an open order and on the board without a reload. With the record unreadable, the wall says so and shows no order as current. (FR-92, FR-93)
+- **AC-72** — With the wall served in development mode, an edit to the wall's code shows on the open page without a manual reload. (FR-94)
 - **AC-73** — An order in a project whose check needs a dependency its lockfile pins ships, with that dependency installed in the workspace before the plan station works and none of the project's lifecycle scripts run. (FR-7, FR-9)
 - **AC-74** — An install that fails stops the run with a refusal naming the command, and no station works on the order. (FR-8)
 - **AC-75** — A slice whose check writes inside the workspace, in its temporary directory and outside both is kept, and only the write outside is refused. (FR-65)
 - **AC-76** — In a project that pins a tool version the operator's environment does not find first, the check and a station's worker each run the pinned version, and the order ships. (FR-10)
 - **AC-77** — A toolchain that cannot be resolved stops the run with a refusal naming its cause, and no station works on the order. (FR-11)
+- **AC-78** — After an order's planner has worked and the record is synced, the planner's session and its tool calls are in the record, joined to the planner by name. (FR-89)
 
 ## 10. Constraints
 

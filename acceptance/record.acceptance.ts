@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { parseDim, quote, refusal, resultOf } from "./support/dim-output";
 import { type Machine, machines } from "./support/machine";
 import {
@@ -313,6 +314,30 @@ describe("the trace", () => {
     rmSync(trace);
 
     expect(await showOrder(m.operator, id)).toEqual(before);
+  });
+
+  test("AC-78 a planner's session and its tool calls are in the record after a sync, joined to the planner", async () => {
+    const m = await start({ script: { planner: [[{ act: "sh", command: "true" }, ...planTurn()]] } });
+    const order = await showOrder(m.operator, await planned(m.operator));
+    resultOf(await m.operator.dim(["sync"], z.unknown()));
+
+    const found = resultOf(
+      await m.operator.dim(
+        [
+          "sql",
+          "select w.worker as worker, count(t.id) as calls from worker_session w join session s using (id) join tool_call t on t.session_id = s.id group by w.worker",
+        ],
+        z.strictObject({
+          denominator: z.string(),
+          rows: z.array(z.strictObject({ worker: z.string(), calls: z.number() })),
+          more: z.string().nullable(),
+          note: z.string().nullable(),
+        }),
+      ),
+    ).rows;
+
+    const planner = found.find((row) => row.worker === workerOf(order, "planner").name);
+    expect(planner?.calls).toBeGreaterThan(0);
   });
 
   test("AC-65 the trace follows one order's factory steps while it runs, and ends once the run does", async () => {
