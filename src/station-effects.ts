@@ -36,19 +36,35 @@ export function closeTurn(trace: Trace, turn: Turn): void {
 
 type Listening = { stop(): void };
 
+type Writing = { unsent: Buffer; endWhenSent: boolean };
+
+function flush(socket: { write(data: Buffer): number; end(): void }, writing: Writing): void {
+  while (writing.unsent.length > 0) {
+    const wrote = socket.write(writing.unsent);
+    if (wrote <= 0) return;
+    writing.unsent = writing.unsent.subarray(wrote);
+  }
+  if (writing.endWhenSent) socket.end();
+}
+
 export function listen(socket: string, serve: (line: string) => string): Listening {
-  const server = Bun.listen<{ buffer: string }>({
+  const server = Bun.listen<{ buffer: string; writing: Writing | null }>({
     unix: socket,
     socket: {
       open(client) {
-        client.data = { buffer: "" };
+        client.data = { buffer: "", writing: null };
       },
       data(client, chunk) {
+        if (client.data.writing !== null) return;
         client.data.buffer += chunk.toString();
         const end = client.data.buffer.indexOf("\n");
         if (end === -1) return;
-        client.write(`${serve(client.data.buffer.slice(0, end))}\n`);
-        client.end();
+        const reply = Buffer.from(`${serve(client.data.buffer.slice(0, end))}\n`);
+        client.data.writing = { unsent: reply, endWhenSent: true };
+        flush(client, client.data.writing);
+      },
+      drain(client) {
+        if (client.data.writing !== null) flush(client, client.data.writing);
       },
     },
   });
@@ -58,11 +74,15 @@ export function listen(socket: string, serve: (line: string) => string): Listeni
 export function send(socket: string, line: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let reply = "";
+    const writing: Writing = { unsent: Buffer.from(`${line}\n`), endWhenSent: false };
     Bun.connect({
       unix: socket,
       socket: {
         open(server) {
-          server.write(`${line}\n`);
+          flush(server, writing);
+        },
+        drain(server) {
+          flush(server, writing);
         },
         data(_, chunk) {
           reply += chunk.toString();

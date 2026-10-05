@@ -380,6 +380,14 @@ describe("slice gates", () => {
     expect(refused.details.exitCode).toBe(1);
   });
 
+  test("AC-62 a plan larger than one socket write hands over whole", async () => {
+    const body = `## Outcome\n\n${Array.from({ length: 60_000 }, () => "A long plan line.").join("\n")}`;
+    const m = await start({ script: { planner: [planTurn(undefined, body)] } });
+    const order = await showOrder(m.operator, await planned(m.operator));
+
+    expect(entryOf(order, ACTION.planReturned).details.body).toBe(body);
+  });
+
   test("AC-62 a builder returns a Build artifact it wrote in its temp directory", async () => {
     const m = await start({
       script: {
