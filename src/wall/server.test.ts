@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { z } from "zod";
 import wallServeConfig from "../../bunfig.toml";
 import { openDb } from "../db";
 import type { LogEntry } from "../order-contract";
@@ -12,10 +13,12 @@ import { wallHandler } from "./server";
 const WALL_PAGE = new URL("./index.html", import.meta.url).pathname;
 const ORDER = "k7m2qx4d";
 
+const BunConfig = z.object({ serve: z.object({ static: z.object({ plugins: z.array(z.string()) }) }) });
+
 const roots: string[] = [];
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 const ADDED: LogEntry = {
@@ -96,9 +99,10 @@ describe("serving", () => {
 
   test("bundles a page whose script and stylesheet load with the plugins the server uses", async () => {
     const plugins = await Promise.all(
-      (wallServeConfig as { serve: { static: { plugins: string[] } } }).serve.static.plugins.map(
-        async (name) => (await import(name)).default as Bun.BunPlugin,
-      ),
+      BunConfig.parse(wallServeConfig).serve.static.plugins.map(async (name): Promise<Bun.BunPlugin> => {
+        const loaded = await import(name);
+        return loaded.default;
+      }),
     );
     const built = await Bun.build({ entrypoints: [WALL_PAGE], plugins });
     expect(built.success).toBe(true);

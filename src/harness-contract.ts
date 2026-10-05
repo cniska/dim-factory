@@ -29,7 +29,9 @@ export const HARNESSES: Readonly<Record<HarnessName, Harness>> = {
     editedPaths: ({ command }) =>
       command === undefined
         ? []
-        : [...command.matchAll(PATCH_TARGET)].map((match) => (match[1] as string).trim()),
+        : [...command.matchAll(PATCH_TARGET)].flatMap((match) =>
+            match[1] === undefined ? [] : [match[1].trim()],
+          ),
   },
   claude: {
     name: "claude",

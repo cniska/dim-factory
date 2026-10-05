@@ -7,14 +7,13 @@ const GIT = /^(?:['"]?[^\s'"]*\/)?git['"]?$/;
 function subcommandOf(segment: string): string | null {
   const tokens = segment.trim().split(/\s+/).filter(Boolean);
   let i = 0;
-  while (i < tokens.length && /^[A-Z_][A-Z0-9_]*=|^(sudo|time|command|nice)$/.test(tokens[i] as string)) {
+  while (/^[A-Z_][A-Z0-9_]*=|^(sudo|time|command|nice)$/.test(tokens[i] ?? "")) {
     i += 1;
   }
-  if (i >= tokens.length || !GIT.test(tokens[i] as string)) return null;
+  if (!GIT.test(tokens[i] ?? "")) return null;
   i += 1;
 
-  while (i < tokens.length) {
-    const token = tokens[i] as string;
+  for (let token = tokens[i]; token !== undefined; token = tokens[i]) {
     if (VALUED.has(token)) {
       i += 2;
       continue;

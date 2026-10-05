@@ -8,7 +8,7 @@ import { git, isAncestor, nulFields, ran } from "./git";
 const roots: string[] = [];
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function emptyRepo(): string {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { invariant } from "./assert";
 import { commitKind, readCommits, repoRoot } from "./ingest-git-source";
 
 function git(args: string[], cwd: string): void {
@@ -39,7 +40,9 @@ describe("reading a repo", () => {
   test("reads each commit with the files it touched", () => {
     const dir = repoWith(["feat: one", "fix: two"]);
     try {
-      const commits = readCommits(repoRoot(dir) as string, null);
+      const root = repoRoot(dir);
+      invariant(root !== null, "the fixture is a repo");
+      const commits = readCommits(root, null);
       expect(commits.length).toBe(2);
       const fix = commits.find((c) => c.subject === "fix: two");
       expect(fix?.kind).toBe("fix");

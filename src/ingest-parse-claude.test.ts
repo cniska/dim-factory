@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { claudeTranscriptLines } from "./fixtures.test-support";
+import { claudeTranscriptLines, withoutTimestamp } from "./fixtures.test-support";
 import { parseClaudeChunk } from "./ingest-parse-claude";
 
 const lines = claudeTranscriptLines("s-1").map((l) => JSON.stringify(l));
@@ -79,7 +79,7 @@ describe("parseClaudeChunk", () => {
   });
 
   test("names the line number of a complete line that is not JSON", () => {
-    const corrupt = parseClaudeChunk([lines[0] as string, "{not json", lines[1] as string], 10);
+    const corrupt = parseClaudeChunk([...lines.slice(0, 1), "{not json", ...lines.slice(1, 2)], 10);
     expect(corrupt.dropped).toEqual([11]);
     expect(corrupt.messages.length).toBeGreaterThan(0);
   });
@@ -167,13 +167,10 @@ describe("parseClaudeChunk", () => {
   });
 
   test("refuses a line whose rows need a timestamp it does not carry", () => {
-    const untimed = (line: unknown) => {
-      const { timestamp: _, ...rest } = line as Record<string, unknown>;
-      return JSON.stringify(rest);
-    };
     const source = claudeTranscriptLines("s-1");
+    const untimed = (index: number) => withoutTimestamp(source[index]);
     const chunk = parseClaudeChunk(
-      [lines[0], untimed(source[1]), untimed(source[2]), lines[3], untimed(source[8])] as string[],
+      [...lines.slice(0, 1), untimed(1), untimed(2), ...lines.slice(3, 4), untimed(8)],
       1,
     );
     expect(chunk.dropped).toEqual([2, 3, 5]);

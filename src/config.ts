@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { applyEdits, modify } from "jsonc-parser";
 import { z } from "zod";
 import { unreachable } from "./assert";
-import { type ConfigRefusal, refuseConfig } from "./config-error";
+import { type ConfigRefusal, invalidConfig, refuseConfig } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
 import { committedTree } from "./git-committed";
@@ -65,9 +65,13 @@ function refuseValue(file: string, name: Setting, value: unknown): void {
   }
 }
 
+const Settings = z.object({ ship: z.enum(SETTINGS.ship).optional() });
+
 function settingsOf(raw: Record<string, unknown>, file: string): Config {
-  for (const [name, value] of Object.entries(raw)) refuseValue(file, name as Setting, value);
-  return raw as Config;
+  for (const [name, value] of Object.entries(raw)) if (isSetting(name)) refuseValue(file, name, value);
+  const settings = Settings.safeParse(raw);
+  if (!settings.success) throw invalidConfig(file, settings.error);
+  return settings.data;
 }
 
 function parseConfig(text: string, file: string): Config {

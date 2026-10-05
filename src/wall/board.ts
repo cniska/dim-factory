@@ -14,11 +14,8 @@ export const STATION_LABELS: Record<Station, string> = {
 };
 
 export function ordersByStatus(orders: WallOrder[]): Record<BoardStatus, WallOrder[]> {
-  return WALL_COLUMNS.reduce(
-    (columns, column) => {
-      columns[column.status] = orders.filter((order) => order.status === column.status);
-      return columns;
-    },
-    { queued: [], running: [], shipped: [] } as Record<BoardStatus, WallOrder[]>,
-  );
+  const columns: Record<BoardStatus, WallOrder[]> = { queued: [], running: [], shipped: [] };
+  for (const column of WALL_COLUMNS)
+    columns[column.status] = orders.filter((order) => order.status === column.status);
+  return columns;
 }

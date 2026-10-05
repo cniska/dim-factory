@@ -18,6 +18,7 @@ import {
   dimPath,
   editCommand,
   HOOK_CONTRACT_VERSION,
+  HookConfig,
   hookCommand,
   hookContractVersion,
   startCommand,
@@ -39,7 +40,7 @@ function newRoot(): string {
 }
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function spool(env: Env, tool: HarnessName, nanos: string, payload: unknown): string {
@@ -558,11 +559,13 @@ describe("installHooks", () => {
     const env = hookEnv(dir);
     installHooks(env);
     const installed = (["claude", "codex"] as const).flatMap((tool) => {
-      const config = JSON.parse(readFileSync(HARNESSES[tool].hookConfig(env), "utf8")) as {
-        hooks: Record<string, { hooks: { command: string }[] }[]>;
-      };
-      return Object.values(config.hooks).flatMap((entries) =>
-        entries.flatMap((entry) => entry.hooks.map((hook) => ({ tool, command: hook.command }))),
+      const config = HookConfig.parse(JSON.parse(readFileSync(HARNESSES[tool].hookConfig(env), "utf8")));
+      return Object.values(config.hooks ?? {}).flatMap((entries) =>
+        entries.flatMap((entry) =>
+          (entry.hooks ?? []).flatMap((hook) =>
+            hook.command === undefined ? [] : [{ tool, command: hook.command }],
+          ),
+        ),
       );
     });
     expect(installed.map(({ command }) => command).sort()).toEqual(

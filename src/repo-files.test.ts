@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
+import { errorCode } from "./error-code";
 import { indexRepoFiles, trackedFiles } from "./repo-files";
 
 function repoWith(files: string[]): string {
@@ -30,13 +31,13 @@ function freshDb(): Database {
 }
 
 const failures: { path: string; code: unknown }[] = [];
-const fail = (path: string, error: unknown) =>
-  failures.push({ path, code: (error as { code?: unknown }).code });
+const fail = (path: string, error: unknown) => failures.push({ path, code: errorCode(error) });
 
 const pathsIn = (db: Database, repo: string): string[] =>
-  (db.prepare("SELECT path FROM repo_file ORDER BY path").all() as { path: string }[]).map((r) =>
-    r.path.replace(`${repo}/`, ""),
-  );
+  db
+    .prepare<{ path: string }, []>("SELECT path FROM repo_file ORDER BY path")
+    .all()
+    .map((r) => r.path.replace(`${repo}/`, ""));
 
 describe("indexing what a repo tracks", () => {
   test("records tracked files and leaves ignored ones out", () => {

@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Glob } from "bun";
+import { invariant } from "./assert";
 import { withPathLock } from "./db-lock";
 import { harnessesOnPath } from "./fixtures.test-support";
 import { installSkill, planSkill, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
@@ -32,7 +33,7 @@ function machine(harnesses: readonly string[]): { HOME: string; PATH: string } {
 }
 
 afterEach(() => {
-  while (homes.length > 0) rmSync(homes.pop() as string, { recursive: true, force: true });
+  for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
 describe("skill install", () => {
@@ -50,10 +51,12 @@ describe("skill install", () => {
 
   test("every skill a shipped skill names is shipped too", () => {
     const named = [...new Glob("**/*.md").scanSync({ cwd: SKILLS, followSymlinks: false })].flatMap((file) =>
-      [...readFileSync(join(SKILLS, file), "utf8").matchAll(/`(dim-[a-z]+)`/g)].map((match) => match[1]),
+      [...readFileSync(join(SKILLS, file), "utf8").matchAll(/`(dim-[a-z]+)`/g)].flatMap(
+        (match) => match[1] ?? [],
+      ),
     );
     expect(named.length).toBeGreaterThan(0);
-    expect(named.filter((name) => !shipped().includes(name as string))).toEqual([]);
+    expect(named.filter((name) => !shipped().includes(name))).toEqual([]);
   });
 
   test("installs every skill directory in the repo, so a new one is not left behind", () => {
@@ -115,9 +118,10 @@ describe("skill install", () => {
   test("a skill linked for one harness still leaves the other pending", () => {
     const env = machine(["claude", "codex"]);
     const [first] = skillLinkDirs(env);
-    mkdirSync(first as string, { recursive: true });
+    invariant(first !== undefined, "a machine with harnesses has skill dirs");
+    mkdirSync(first, { recursive: true });
     const name = SKILL_NAMES[0];
-    symlinkSync(skillSourceDir(name), join(first as string, name));
+    symlinkSync(skillSourceDir(name), join(first, name));
     const pending = planSkill(env).filter((p) => p.state !== "linked");
     expect(pending.some((p) => p.name === name)).toBe(true);
   });
@@ -153,12 +157,13 @@ describe("skill install", () => {
     const env = machine(["claude"]);
     installSkill(env);
     const [dir] = skillLinkDirs(env);
+    invariant(dir !== undefined, "a machine with harnesses has skill dirs");
     const unresolved = SKILL_NAMES.flatMap((name) => {
-      const skill = join(dir as string, name);
+      const skill = join(dir, name);
       return [...new Glob("**/*.md").scanSync({ cwd: skill, followSymlinks: true })].flatMap((file) => {
         const from = dirname(join(skill, file));
         return [...readFileSync(join(skill, file), "utf8").matchAll(/\]\(([^)#\s]+)(?:#[^)]*)?\)/g)]
-          .map((match) => match[1] as string)
+          .flatMap((match) => match[1] ?? [])
           .filter((target) => !/^[a-z]+:/.test(target))
           .filter((target) => !existsSync(join(from, target)))
           .map((target) => `${name}/${file} -> ${target}`);

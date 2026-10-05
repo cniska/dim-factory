@@ -7,7 +7,7 @@ import { scratchEnv } from "./fixtures.test-support";
 const roots: string[] = [];
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 test("a decision or cancel whose reason is blank is refused as usage", () => {

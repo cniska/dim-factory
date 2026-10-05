@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { harnessesOnPath } from "./fixtures.test-support";
 import { hookCommand } from "./hook-commands";
 import { planHooks } from "./hooks";
-import { planCodexTrust } from "./hooks-codex-trust";
+import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
 import type { Env } from "./paths";
 
 const roots: string[] = [];
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function codexEnv(hooksJson: (env: Env) => string): Env {
@@ -55,7 +55,7 @@ describe("reading the codex hooks a trust key points at", () => {
 
   test("refuses a codex config.toml whose hook state holds the wrong shape", () => {
     const env = codexEnv(() => "{}");
-    const config = join(env.HOME as string, ".codex", "config.toml");
+    const config = codexConfigPath(env);
     writeFileSync(config, '[hooks]\nstate = "nope"\n');
     expect(() => planCodexTrust(env)).toThrow(
       expect.objectContaining({

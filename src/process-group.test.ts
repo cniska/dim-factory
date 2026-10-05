@@ -7,7 +7,7 @@ import { runGroup } from "./process-group";
 const dirs: string[] = [];
 
 afterEach(() => {
-  while (dirs.length > 0) rmSync(dirs.pop() as string, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 function scratch(): string {

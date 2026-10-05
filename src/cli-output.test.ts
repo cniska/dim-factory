@@ -3,16 +3,20 @@ import { UsageError } from "./cli-contract";
 import { writeError } from "./cli-output";
 import { CodedError } from "./coded-error";
 
+const spies: { mockRestore: () => void }[] = [];
+
 afterEach(() => {
-  (process.stderr.write as unknown as { mockRestore?: () => void }).mockRestore?.();
+  for (const spy of spies.splice(0)) spy.mockRestore();
 });
 
 function printed(error: unknown, usage = "usage: dim trace <order>"): unknown {
   const lines: string[] = [];
-  spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
-    lines.push(String(chunk));
-    return true;
-  });
+  spies.push(
+    spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    }),
+  );
   writeError("trace", error, usage);
   return JSON.parse(lines.join(""));
 }

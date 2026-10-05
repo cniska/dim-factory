@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { z } from "zod";
+import { invariant } from "./assert";
 import { Ran } from "./cli-contract";
 import { closeDb, openDb } from "./db";
 import { openReadOnly } from "./db-read";
@@ -11,12 +13,12 @@ import { SCHEMA_VERSION } from "./db-schema";
 import { diagnose } from "./doctor";
 import { doctorCommand } from "./doctor-command";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import { wantedHooks } from "./hook-commands";
+import { HookConfig, wantedHooks } from "./hook-commands";
 import { installHooks } from "./hooks";
 import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
 import { agentPlistPath } from "./ingest-launchd";
 import { sync } from "./ingest-sync";
-import { dbPath, type Env } from "./paths";
+import { dbPath, type Env, resolveHomeDir } from "./paths";
 import { installSkill } from "./skill";
 
 const roots: string[] = [];
@@ -28,7 +30,7 @@ function newRoot(): string {
 }
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function seeded(): Env {
@@ -50,6 +52,10 @@ function check(env: Env, name: string) {
   }
 }
 
+const Checks = z.object({
+  checks: z.array(z.looseObject({ name: z.string(), state: z.string(), fix: z.string().optional() })),
+});
+
 describe("doctor", () => {
   test("diagnoses a record built by another schema version rather than refusing it", () => {
     const env = seeded();
@@ -61,7 +67,8 @@ describe("doctor", () => {
     try {
       const ran = doctorCommand.run([]);
       expect(ran).toBeInstanceOf(Ran);
-      const { checks } = (ran as Ran).result as { checks: { name: string; state: string; fix?: string }[] };
+      invariant(ran instanceof Ran, "the doctor ran");
+      const { checks } = Checks.parse(ran.result);
       expect(checks.find((c) => c.name === "schema")).toMatchObject({ state: "fail", fix: "dim rebuild" });
     } finally {
       if (dataHome === undefined) delete process.env.XDG_DATA_HOME;
@@ -108,7 +115,7 @@ describe("doctor", () => {
     installSkill(env);
     expect(check(env, "skill")?.state).toBe("ok");
 
-    const stale = join(env.HOME as string, ".agents", "skills", "dim-retired");
+    const stale = join(resolveHomeDir(env), ".agents", "skills", "dim-retired");
     symlinkSync(join(dirname(import.meta.dir), "skills", "dim-retired"), stale);
     const retired = check(env, "skill");
     expect(retired?.state).toBe("warn");
@@ -118,7 +125,7 @@ describe("doctor", () => {
 
   test("fails when retention is unset, because that deletes the sources", () => {
     const env = seeded();
-    const claudeDir = join(env.HOME as string, ".claude");
+    const claudeDir = join(resolveHomeDir(env), ".claude");
     mkdirSync(claudeDir, { recursive: true });
 
     writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({}));
@@ -179,13 +186,13 @@ describe("doctor", () => {
     expect(untrusted?.state).toBe("fail");
     expect(untrusted?.detail).toContain("session_start:0:0");
 
-    const keys = planCodexTrust(env).map((t) => t.key as string);
+    const keys = planCodexTrust(env).flatMap((t) => (t.key === null ? [] : [t.key]));
     writeFileSync(config, keys.map((k) => `[hooks.state."${k}"]\ntrusted_hash = "sha256:abc"\n`).join("\n"));
     expect(check(env, "codex trust")?.state).toBe("ok");
 
     const hooksPath = join(dirname(config), "hooks.json");
-    const hooks = JSON.parse(readFileSync(hooksPath, "utf8")) as { hooks: Record<string, unknown[]> };
-    hooks.hooks.SessionStart?.unshift({ hooks: [{ type: "command", command: "other-tool" }] });
+    const hooks = HookConfig.parse(JSON.parse(readFileSync(hooksPath, "utf8")));
+    hooks.hooks?.SessionStart?.unshift({ hooks: [{ type: "command", command: "other-tool" }] });
     writeFileSync(hooksPath, JSON.stringify(hooks));
     expect(check(env, "codex trust")?.state).toBe("fail");
   });

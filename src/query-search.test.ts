@@ -1,10 +1,13 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { invariant } from "./assert";
 import { SCHEMA_SQL } from "./db-schema";
 import type { QueryContext, QueryResult } from "./query";
 import { findQuery } from "./query-registry";
 
-const search = findQuery("search") as NonNullable<ReturnType<typeof findQuery>>;
+const found = findQuery("search");
+invariant(found !== undefined, "the search query is registered");
+const search = found;
 
 function seeded(): Database {
   const db = new Database(":memory:");
@@ -234,7 +237,8 @@ describe("thread", () => {
        VALUES ('m-sub', ?, '2026-09-01T10:45:00.000Z', 'assistant', 'What the delegate settled.', '/f.jsonl', 3)`,
       [id],
     );
-    const thread = findQuery("thread") as NonNullable<ReturnType<typeof findQuery>>;
+    const thread = findQuery("thread");
+    invariant(thread !== undefined, "the thread query is registered");
     const whole = thread.run(db, { ...ctx, arg: id });
     expect(whole.denominator).toContain("1 messages anyone said");
     expect(whole.denominator).not.toContain("centered on");

@@ -14,7 +14,7 @@ test("a broken assertion is a fault, never a refusal a caller would answer", () 
 });
 
 test("unreachable faults with its code, naming the value that reached it", () => {
-  expect(() => unreachable("stray" as never)).toThrow(
+  expect(() => Reflect.apply(unreachable, undefined, ["stray"])).toThrow(
     expect.objectContaining({ code: "unreachable", kind: "fault", message: 'unreachable: "stray"' }),
   );
 });

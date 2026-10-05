@@ -34,8 +34,9 @@ export function outsideTheCode(root: string, paths: string[]): Set<string> {
   }
   const skipped = new Set<string>();
   for (let at = 0; at < fields.length; at += 3) {
+    const path = fields[at];
     const value = fields[at + 2];
-    if (value === "set" || value === "true") skipped.add(fields[at] as string);
+    if (path !== undefined && (value === "set" || value === "true")) skipped.add(path);
   }
   return skipped;
 }

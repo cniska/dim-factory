@@ -8,7 +8,7 @@ import { listPiSessions } from "./ingest-pi-source";
 const roots: string[] = [];
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 const LINES = [
@@ -193,7 +193,7 @@ describe("a Pi or omp session", () => {
   });
 
   test("sets aside a line that does not parse", () => {
-    expect(parsePiChunk(["{not json", LINES[1] as string], 10).dropped).toEqual([10]);
+    expect(parsePiChunk(["{not json", ...LINES.slice(1, 2)], 10).dropped).toEqual([10]);
   });
 
   test("sets aside a message line whose read field has the wrong type", () => {
@@ -203,7 +203,7 @@ describe("a Pi or omp session", () => {
       timestamp: "2026-09-16T10:00:00.000Z",
       message: { role: "assistant", responseId: "resp_9", usage: { input: "3" } },
     });
-    const parsed = parsePiChunk([wrong, LINES[1] as string], 10);
+    const parsed = parsePiChunk([wrong, ...LINES.slice(1, 2)], 10);
     expect(parsed.dropped).toEqual([10]);
     expect(parsed.usage.map((u) => u.responseId)).not.toContain("resp_9");
   });

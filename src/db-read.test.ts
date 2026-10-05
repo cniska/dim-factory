@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
+import { errorCode } from "./error-code";
 import { dbPath } from "./paths";
 import { queryCommand } from "./query-command";
 import { QUERIES } from "./query-registry";
@@ -126,7 +127,7 @@ describe("each reader of the record", () => {
             await sqlCommand.run([statement]);
             return null;
           } catch (error) {
-            return (error as { code?: string }).code;
+            return errorCode(error);
           }
         });
         expect({ statement, refused }).toEqual({ statement, refused: "SQLITE_READONLY" });
@@ -147,7 +148,7 @@ describe("each reader of the record", () => {
         denominator: "more than 40 rows",
         more: "more rows than 40; --rows <n> to widen",
       });
-      expect((result as { rows: unknown[] }).rows).toHaveLength(40);
+      expect(result).toHaveProperty("rows.length", 40);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

@@ -1,4 +1,4 @@
-import { Database, type SQLiteError } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ const children: Writer[] = [];
 
 afterEach(() => {
   while (children.length > 0) children.pop()?.proc.kill();
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function scratchPath(): string {
@@ -67,9 +67,10 @@ async function exited(writer: Writer): Promise<{ code: number; stderr: string }>
 function committed(path: string): string[] {
   const reader = new Database(path, { readonly: true });
   try {
-    return (reader.query("SELECT who FROM probe ORDER BY who").all() as { who: string }[]).map(
-      (row) => row.who,
-    );
+    return reader
+      .query<{ who: string }, []>("SELECT who FROM probe ORDER BY who")
+      .all()
+      .map((row) => row.who);
   } finally {
     reader.close();
   }
@@ -187,7 +188,7 @@ describe("concurrent writers", () => {
       } catch (error) {
         caught = error;
       }
-      expect((caught as SQLiteError).code).toBe("SQLITE_BUSY");
+      expect(caught).toMatchObject({ code: "SQLITE_BUSY" });
     } finally {
       writer.close();
       holder.run("ROLLBACK");

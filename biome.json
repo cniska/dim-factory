@@ -27,7 +27,7 @@
   },
   "overrides": [
     {
-      "includes": ["acceptance/**/*.ts"],
+      "includes": ["src/**/*.ts", "src/**/*.tsx", "acceptance/**/*.ts"],
       "linter": { "rules": { "nursery": { "noUnsafeTypeAssertion": "error" } } }
     }
   ],

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { codexRolloutLines } from "./fixtures.test-support";
+import { codexRolloutLines, withoutTimestamp } from "./fixtures.test-support";
 import { parseCodexChunk } from "./ingest-parse-codex";
 
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -119,8 +119,7 @@ describe("parseCodexChunk", () => {
   test("refuses a line with no timestamp rather than writing its rows untimed", () => {
     const untimed = codexRolloutLines(THREAD, { withIds: true }).map((line, index) => {
       if (index !== 3 && index !== 4) return JSON.stringify(line);
-      const { timestamp: _, ...rest } = line as Record<string, unknown>;
-      return JSON.stringify(rest);
+      return withoutTimestamp(line);
     });
     const parsed = parseCodexChunk(untimed, 1, THREAD, {});
     expect(parsed.dropped).toEqual([4, 5]);

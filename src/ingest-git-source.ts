@@ -17,7 +17,7 @@ const RECORD = "\x1e";
 
 export function commitKind(subject: string): string | null {
   const match = /^([a-z]+)(\([^)]*\))?!?:/.exec(subject);
-  return match ? (match[1] as string) : null;
+  return match?.[1] ?? null;
 }
 
 export function repoRoot(dir: string): string | null {

@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 
 export function harnessesOnPath(root: string, executables: readonly string[]): string {
@@ -309,4 +310,9 @@ export function writeCodexRollout(env: Env, dir: "sessions" | "archived_sessions
       : join(codexDir(env), "archived_sessions", name);
   writeLines(path, codexRolloutLines(threadId, { withIds: true }));
   return path;
+}
+
+export function withoutTimestamp(line: unknown): string {
+  const { timestamp: _, ...rest } = z.record(z.string(), z.unknown()).parse(line);
+  return JSON.stringify(rest);
 }

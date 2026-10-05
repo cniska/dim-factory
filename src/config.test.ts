@@ -97,10 +97,10 @@ describe("the layers a setting is read from", () => {
     ["a repeated key", '{ "ship": "default-branch", "ship": "default-branch" }'],
     ["a layer that is not an object", '["ship"]'],
     ["a layer that does not parse", '{ "ship": '],
-  ]) {
+  ] satisfies [string, string][]) {
     test(`refuses ${what}, naming the file`, () => {
       const home = scratch();
-      put(join(home, ".config", "dim", "config.json"), text as string);
+      put(join(home, ".config", "dim", "config.json"), text);
       expect(() => readConfig({ env: { HOME: home } })).toThrow(join(home, ".config", "dim", "config.json"));
     });
   }

@@ -16,7 +16,7 @@ describe("naming the worktree a path sits in", () => {
     try {
       const expr = withoutWorktree("p");
       const one = (p: string) =>
-        (db.query(`SELECT ${expr} AS out FROM (SELECT ? AS p)`).get(p) as { out: string }).out;
+        db.query<{ out: string }, [string]>(`SELECT ${expr} AS out FROM (SELECT ? AS p)`).get(p)?.out;
 
       expect(one("/h/code/one/.claude/worktrees/side/docs/x.md")).toBe("/h/code/one/docs/x.md");
       expect(one("/h/code/one/docs/x.md")).toBe("/h/code/one/docs/x.md");

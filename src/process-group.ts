@@ -1,3 +1,5 @@
+import { errorCode } from "./error-code";
+
 export type GroupRun = {
   readonly exitCode: number | null;
   readonly output: string;
@@ -8,7 +10,7 @@ export function killProcessGroup(leader: number): void {
   try {
     process.kill(-leader, "SIGKILL");
   } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+    if (errorCode(error) !== "ESRCH") throw error;
   }
 }
 

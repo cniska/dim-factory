@@ -16,8 +16,8 @@ import { invalidConfig, refuseConfig } from "./config-error";
 export function parseJsonc<S extends z.ZodType>(text: string, file: string, schema: S): z.infer<S> {
   const errors: ParseError[] = [];
   const value: unknown = parse(text, errors, { allowTrailingComma: true });
-  if (errors.length > 0) {
-    const first = errors[0] as ParseError;
+  const [first] = errors;
+  if (first) {
     throw refuseConfig("config_unparsed", {
       path: file,
       detail: `${printParseErrorCode(first.error)} at offset ${first.offset}`,

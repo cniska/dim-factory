@@ -3,6 +3,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { invariant } from "./assert";
 import { closeDb, openDb } from "./db";
 import type { LogEntry } from "./order-contract";
 import { appendEntry, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
@@ -16,7 +17,7 @@ const opened: Database[] = [];
 
 afterEach(() => {
   while (opened.length > 0) opened.pop()?.close();
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function factory(): Database {
@@ -60,6 +61,9 @@ const ENTRIES: readonly LogEntry[] = [
   },
 ];
 
+const [FIRST, SECOND] = ENTRIES;
+invariant(FIRST !== undefined && SECOND !== undefined, "the fixture has two entries");
+
 test("reads back each entry as it was appended, in order", () => {
   const db = factory();
   appendAll(db, "k7m2qx4d", ENTRIES);
@@ -86,15 +90,15 @@ test("refuses to change or remove an entry the log holds", () => {
 test("refuses a second entry at a seq the order already holds", () => {
   const db = factory();
   appendAll(db, "k7m2qx4d", ENTRIES);
-  expect(() => appendEntry(db, "k7m2qx4d", { ...ENTRIES[1], seq: 2 } as LogEntry)).toThrow();
+  expect(() => appendEntry(db, "k7m2qx4d", { ...SECOND, seq: 2 })).toThrow();
 });
 
 test("refuses an entry naming the factory with a cause the log does not hold", () => {
   const db = factory();
-  appendEntry(db, "k7m2qx4d", ENTRIES[0] as LogEntry);
+  appendEntry(db, "k7m2qx4d", FIRST);
   expect(() =>
     appendEntry(db, "k7m2qx4d", {
-      ...(ENTRIES[1] as LogEntry),
+      ...SECOND,
       by: { kind: "factory", version: "0.1.0", cause: 9 },
     }),
   ).toThrow();

@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { closeDb, openDb } from "./db";
 import {
   bytesThroughLine,
@@ -10,6 +10,7 @@ import {
   codexRolloutLines,
   fullBytes,
   scratchEnv,
+  withoutTimestamp,
   writeClaudeTranscript,
   writeCodexRollout,
   writePrefix,
@@ -28,7 +29,7 @@ function newRoot(): string {
 }
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function run(env: Env): Database {
@@ -45,31 +46,31 @@ function snapshot(db: Database, root: string) {
     }));
   return {
     sessions: db
-      .prepare(
+      .prepare<Record<string, unknown>, []>(
         `SELECT id, tool, parent_id, agent_type, cwd, project, git_branch, cli_version, entrypoint,
                 started_at, last_seen_at, title FROM session ORDER BY id`,
       )
-      .all() as Record<string, unknown>[],
+      .all(),
     messages: strip(
       db
-        .prepare(
+        .prepare<Record<string, unknown>, []>(
           `SELECT id, session_id, role, model, ts, text, text_chars, src_file, src_line,
                   is_meta, is_skill_body, denial_kind, user_feedback FROM message ORDER BY id`,
         )
-        .all() as Record<string, unknown>[],
+        .all(),
     ),
     usage: db
-      .prepare(
+      .prepare<Record<string, unknown>, []>(
         `SELECT response_id, session_id, message_id, model, input_tokens, cache_read_tokens,
                 cache_write_tokens, output_tokens FROM usage ORDER BY response_id`,
       )
-      .all() as Record<string, unknown>[],
+      .all(),
     turns: db
-      .prepare(
+      .prepare<Record<string, unknown>, []>(
         `SELECT session_id, turn_id, ts_start, ts_end, duration_ms, message_count, status, model,
                 time_to_first_token_ms FROM turn ORDER BY session_id, turn_id`,
       )
-      .all() as Record<string, unknown>[],
+      .all(),
   };
 }
 
@@ -152,11 +153,11 @@ describe("ingest", () => {
     writeCodexRollout(env, "sessions", THREAD);
     const db = run(env);
     try {
-      const dump = db.prepare("SELECT group_concat(coalesce(text,'')) AS t FROM message").get() as {
-        t: string;
-      };
+      const dump = db
+        .prepare<{ t: string }, []>("SELECT group_concat(coalesce(text,'')) AS t FROM message")
+        .get();
       expect(JSON.stringify(snapshot(db, root))).not.toContain("SECRET AGENT MESSAGE");
-      expect(dump.t).not.toContain("SECRET AGENT MESSAGE");
+      expect(dump?.t).not.toContain("SECRET AGENT MESSAGE");
     } finally {
       closeDb(db);
     }
@@ -193,7 +194,7 @@ describe("ingest", () => {
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
     const db = run(env);
     try {
-      const dump = JSON.stringify(db.prepare("SELECT * FROM tool_call").all() as Record<string, unknown>[]);
+      const dump = JSON.stringify(db.prepare<Record<string, unknown>, []>("SELECT * FROM tool_call").all());
       expect(dump).not.toContain("SECRET FILE CONTENTS");
       expect(
         db.prepare("SELECT result_bytes, src_line_result FROM tool_call WHERE id = 'toolu-1'").get(),
@@ -322,7 +323,7 @@ describe("ingest", () => {
     try {
       const before = snapshot(db, root);
 
-      const to = join(codexDir(env), "archived_sessions", from.split("/").pop() as string);
+      const to = join(codexDir(env), "archived_sessions", basename(from));
       mkdirSync(dirname(to), { recursive: true });
       renameSync(from, to);
       expect(sync(db, env).failures).toEqual([]);
@@ -407,8 +408,7 @@ describe("ingest", () => {
     const path = join(claudeProjectsDir(env), "-Users-x-code-demo", `${SESSION}.jsonl`);
     const lines = claudeTranscriptLines(SESSION).map((line, index) => {
       if (index !== 3) return JSON.stringify(line);
-      const { timestamp: _, ...untimed } = line as Record<string, unknown>;
-      return JSON.stringify(untimed);
+      return withoutTimestamp(line);
     });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${lines.join("\n")}\n`);
@@ -1037,7 +1037,7 @@ describe("worker transcript copies", () => {
     const env = scratchEnv(newRoot());
     writeCopy(
       env,
-      lines.map((line) => ({ ...(line as object), sessionId: "99999999-8888-7777-6666-555555555555" })),
+      lines.map((line) => ({ ...line, sessionId: "99999999-8888-7777-6666-555555555555" })),
     );
     const db = run(env);
     try {

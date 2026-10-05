@@ -16,7 +16,7 @@ function parsed(path: string, text: string, recover: boolean): BabelComment[] | 
       : ["jsx"];
   const plugins: ParserPlugin[] = [...language, ["decorators", {}], "decoratorAutoAccessors"];
   try {
-    return parse(text, {
+    const { comments } = parse(text, {
       sourceType: "unambiguous",
       plugins,
       errorRecovery: recover,
@@ -25,7 +25,10 @@ function parsed(path: string, text: string, recover: boolean): BabelComment[] | 
       allowAwaitOutsideFunction: true,
       allowSuperOutsideMethod: true,
       allowUndeclaredExports: true,
-    }).comments as BabelComment[];
+    });
+    return (comments ?? []).flatMap(({ type, value, start, end }): BabelComment[] =>
+      start == null || end == null ? [] : [{ type, value, start, end }],
+    );
   } catch (error) {
     if (error instanceof SyntaxError) return null;
     throw error;

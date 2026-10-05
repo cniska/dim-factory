@@ -102,8 +102,8 @@ export function withPathLock<T>(path: string, fn: () => T): T {
     released();
     throw error;
   }
-  if (result instanceof Promise) return result.finally(released) as T;
-  released();
+  if (result instanceof Promise) result.then(released, released);
+  else released();
   return result;
 }
 

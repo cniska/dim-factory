@@ -4,12 +4,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
+import { errorCode } from "./error-code";
 import { ingestCommits, repoRoots } from "./ingest-git";
 
 const roots: string[] = [];
 
 afterEach(() => {
-  while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function dir(name: string): string {
@@ -55,8 +56,7 @@ describe("reading the repos the sessions ran in", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const failed: { path: string; code: unknown }[] = [];
-    const fail = (path: string, error: unknown) =>
-      failed.push({ path, code: (error as { code?: unknown }).code });
+    const fail = (path: string, error: unknown) => failed.push({ path, code: errorCode(error) });
     const healthy = repoWithCommit();
     const broken = brokenCheckout();
 

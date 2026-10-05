@@ -1,7 +1,9 @@
 import { Database } from "bun:sqlite";
+import { invariant } from "./assert";
 import { closeDb, openDb, writeTransaction } from "./db";
 
-const [mode, path, who] = process.argv.slice(2) as [string, string, string];
+const [mode, path, who] = process.argv.slice(2);
+invariant(mode !== undefined && path !== undefined && who !== undefined, "mode, path and who are arguments");
 function nextLine(): Promise<void> {
   return new Promise((resolve) =>
     process.stdin.once("data", () => {
