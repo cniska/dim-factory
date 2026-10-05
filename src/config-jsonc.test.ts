@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { z } from "zod";
 import { appendToJsoncArray, parseJsonc, removeJsoncValue } from "./config-jsonc";
+
+const AnyConfig = z.looseObject({ hooks: z.unknown() });
+const HookConfig = z.looseObject({
+  hooks: z.record(
+    z.string(),
+    z.array(z.looseObject({ hooks: z.array(z.looseObject({ command: z.string() })) })),
+  ),
+});
 
 const entry = { hooks: [{ type: "command", command: "dim-spool" }] };
 
@@ -10,11 +19,23 @@ describe("reading a config a person edits", () => {
   "hooks": {},
 }
 `;
-    expect(parseJsonc<{ hooks: unknown }>(text, "settings.json")).toEqual({ hooks: {} });
+    expect(parseJsonc(text, "settings.json", AnyConfig)).toEqual({ hooks: {} });
+  });
+
+  test("refuses a config whose read part has the wrong shape, naming the path into it", () => {
+    expect(() => parseJsonc('{ "hooks": { "Stop": "x" } }', "settings.json", HookConfig)).toThrow(
+      expect.objectContaining({
+        code: "config_invalid",
+        meta: expect.objectContaining({ path: "settings.json", at: "hooks.Stop" }),
+      }),
+    );
+    expect(() => parseJsonc("[]", "settings.json", HookConfig)).toThrow(
+      expect.objectContaining({ code: "config_invalid", meta: expect.objectContaining({ at: null }) }),
+    );
   });
 
   test("raises a parse error rather than a half-read config", () => {
-    expect(() => parseJsonc('{ "hooks": ', "settings.json")).toThrow(
+    expect(() => parseJsonc('{ "hooks": ', "settings.json", AnyConfig)).toThrow(
       expect.objectContaining({
         code: "config_unparsed",
         meta: expect.objectContaining({ path: "settings.json" }),
@@ -60,19 +81,14 @@ describe("appending to an array in place", () => {
 
   test("creates the array and its parents where they are absent", () => {
     const after = appendToJsoncArray("", ["hooks", "SessionStart"], entry, "settings.json");
-    expect(parseJsonc<{ hooks: Record<string, unknown[]> }>(after, "new").hooks.SessionStart).toEqual([
-      entry,
-    ]);
+    expect(parseJsonc(after, "new", HookConfig).hooks.SessionStart).toEqual([entry]);
     expect(after).toEndWith("\n");
   });
 
   test("appends beside what is there rather than replacing it", () => {
     const text = '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"existing"}]}]}}';
     const after = appendToJsoncArray(text, ["hooks", "SessionEnd"], entry, "settings.json");
-    const parsed = parseJsonc<{ hooks: Record<string, { hooks: { command: string }[] }[]> }>(
-      after,
-      "settings.json",
-    );
+    const parsed = parseJsonc(after, "settings.json", HookConfig);
     expect(parsed.hooks.SessionEnd?.map((e) => e.hooks[0]?.command)).toEqual(["existing", "dim-spool"]);
   });
 

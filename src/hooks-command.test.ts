@@ -37,6 +37,25 @@ test("hooks install reports a refreshed matcher", () => {
   }
 });
 
+test("hooks install refuses a settings file whose hooks hold the wrong shape", () => {
+  const root = mkdtempSync(join(tmpdir(), "dim-hooks-invalid-"));
+  try {
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    const settings = join(root, ".claude", "settings.json");
+    writeFileSync(settings, JSON.stringify({ hooks: { SessionStart: "nope" } }));
+    const run = Bun.spawnSync([process.execPath, resolve(import.meta.dir, "cli.ts"), "hooks", "install"], {
+      env: { ...process.env, ...scratchEnv(root), HOME: root },
+    });
+    expect(run.exitCode).not.toBe(0);
+    expect(JSON.parse(run.stderr.toString()).error).toMatchObject({
+      code: "config_invalid",
+      meta: { path: settings, at: "hooks.SessionStart" },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 function runHook(verb: string, payload: unknown, root: string) {
   return Bun.spawnSync([process.execPath, resolve(import.meta.dir, "cli.ts"), "hooks", verb], {
     env: { ...process.env, ...scratchEnv(root), HOME: root },

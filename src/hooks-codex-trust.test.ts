@@ -53,6 +53,18 @@ describe("reading the codex hooks a trust key points at", () => {
     expect(trust.map((t) => t.event)).toEqual(["SessionStart", "SessionStart", "SessionEnd", "PostToolUse"]);
   });
 
+  test("refuses a codex config.toml whose hook state holds the wrong shape", () => {
+    const env = codexEnv(() => "{}");
+    const config = join(env.HOME as string, ".codex", "config.toml");
+    writeFileSync(config, '[hooks]\nstate = "nope"\n');
+    expect(() => planCodexTrust(env)).toThrow(
+      expect.objectContaining({
+        code: "config_invalid",
+        meta: expect.objectContaining({ path: config, at: "hooks.state" }),
+      }),
+    );
+  });
+
   test("raises the parse failure rather than reporting every hook untrusted", () => {
     const env = codexEnv(() => '{ "hooks": ');
     expect(() => planCodexTrust(env)).toThrow(expect.objectContaining({ code: "config_unparsed" }));

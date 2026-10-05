@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
+
+const AnyConfig = z.looseObject({ hooks: z.unknown() });
 
 function newDir(): string {
   return mkdtempSync(join(tmpdir(), "dim-jsonc-file-"));
@@ -14,7 +17,7 @@ describe("reading a config from disk", () => {
     const path = join(dir, "settings.json");
     writeFileSync(path, '{\n  // the notifier\n  "hooks": {},\n}\n');
 
-    expect(readJsonc<{ hooks: unknown }>(path)).toEqual({ hooks: {} });
+    expect(readJsonc(path, AnyConfig)).toEqual({ hooks: {} });
     expect(readJsoncText(path)).toContain("// the notifier");
   });
 
@@ -24,9 +27,9 @@ describe("reading a config from disk", () => {
     const empty = join(dir, "empty.json");
     writeFileSync(empty, "");
 
-    expect(readJsonc(absent)).toBeNull();
+    expect(readJsonc(absent, AnyConfig)).toBeNull();
     expect(readJsoncText(absent)).toBe("");
-    expect(() => readJsonc(empty)).toThrow(expect.objectContaining({ code: "config_unparsed" }));
+    expect(() => readJsonc(empty, AnyConfig)).toThrow(expect.objectContaining({ code: "config_unparsed" }));
   });
 
   test("raises a parse error naming the file it read", () => {
@@ -34,7 +37,7 @@ describe("reading a config from disk", () => {
     const path = join(dir, "settings.json");
     writeFileSync(path, '{ "hooks": ');
 
-    expect(() => readJsonc(path)).toThrow(
+    expect(() => readJsonc(path, AnyConfig)).toThrow(
       expect.objectContaining({ code: "config_unparsed", meta: expect.objectContaining({ path }) }),
     );
   });

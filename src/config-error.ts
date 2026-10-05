@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { CodedError, type RefusalTable, refuser } from "./coded-error";
 
 type In = { readonly path: string };
@@ -34,4 +35,13 @@ export type ConfigRefusal = CodedError<keyof ConfigMetas, In>;
 
 export function isConfigRefusal(error: unknown): error is ConfigRefusal {
   return error instanceof CodedError && Object.hasOwn(CONFIG_REFUSALS, error.code);
+}
+
+export function invalidConfig(path: string, error: z.ZodError): ConfigRefusal {
+  const first = error.issues[0]?.path;
+  return refuseConfig("config_invalid", {
+    path,
+    at: first && first.length > 0 ? first.join(".") : null,
+    problem: z.prettifyError(error),
+  });
 }

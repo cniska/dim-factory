@@ -71,7 +71,7 @@ No network, credential or per-token cost, and no model reads a transcript. Nothi
 
 ## Hooks
 
-`dim hooks install` installs its hooks for each harness in `HARNESSES` ([`src/harness-contract.ts`](../src/harness-contract.ts)) whose executable is on `PATH`, into the config its entry names ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts)). An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place. A hook dim installed and no longer wants is retired: install removes it, leaving any other hook in its entry, and `dim doctor` fails until it has.
+`dim hooks install` installs its hooks for each harness in `HARNESSES` ([`src/harness-contract.ts`](../src/harness-contract.ts)) whose executable is on `PATH`, into the config its entry names ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts)). An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place. A hook dim installed and no longer wants is retired: install removes it, leaving any other hook in its entry, and `dim doctor` fails until it has. A hook config, or a Codex `config.toml`, whose hooks hold the wrong shape is refused `config_invalid`, naming the file and the path to the bad value, rather than half-read.
 
 | Event | What it does |
 |---|---|

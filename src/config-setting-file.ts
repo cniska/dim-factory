@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { duplicateKeys, parseJsonc } from "./config-jsonc";
 
 export type SettingDefect =
@@ -13,10 +14,10 @@ type SettingShape = {
 export function parseSetting(text: string, file: string, shape: SettingShape): Record<string, unknown> {
   const repeated = duplicateKeys(text, { deep: true });
   if (repeated.length > 0) throw shape.refuse({ kind: "duplicate-key", keys: repeated });
-  const raw = parseJsonc<unknown>(text, file);
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
-    throw shape.refuse({ kind: "not-object" });
-  const unknown = Object.keys(raw).filter((key) => !shape.isKey(key));
+  const raw = parseJsonc(text, file, z.unknown());
+  const settings = z.record(z.string(), z.unknown()).safeParse(raw);
+  if (!settings.success) throw shape.refuse({ kind: "not-object" });
+  const unknown = Object.keys(settings.data).filter((key) => !shape.isKey(key));
   if (unknown.length > 0) throw shape.refuse({ kind: "unknown-key", keys: unknown });
-  return raw as Record<string, unknown>;
+  return settings.data;
 }

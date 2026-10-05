@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { refuseConfig } from "./config-error";
+import { z } from "zod";
+import { invalidConfig, refuseConfig } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { HARNESSES } from "./harness-contract";
-import { type HookEntry, wantedHooks } from "./hook-commands";
+import { HookConfig, type HookEntry, wantedHooks } from "./hook-commands";
 import { codexDir, type Env } from "./paths";
 
 export type TrustState = {
@@ -21,16 +22,26 @@ function keyEvent(event: string): string {
   return event.replace(/(?<=[a-z])(?=[A-Z])/g, "_").toLowerCase();
 }
 
+const CodexConfig = z.looseObject({
+  hooks: z
+    .looseObject({
+      state: z.record(z.string(), z.looseObject({ trusted_hash: z.unknown().optional() })).optional(),
+    })
+    .optional(),
+});
+
 function recordedKeys(path: string): Set<string> {
   if (!existsSync(path)) return new Set();
-  let parsed: { hooks?: { state?: Record<string, { trusted_hash?: unknown }> } };
+  let raw: unknown;
   try {
-    parsed = Bun.TOML.parse(readFileSync(path, "utf8")) as typeof parsed;
+    raw = Bun.TOML.parse(readFileSync(path, "utf8"));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw refuseConfig("config_unparsed", { path, detail });
   }
-  const state = parsed.hooks?.state ?? {};
+  const parsed = CodexConfig.safeParse(raw);
+  if (!parsed.success) throw invalidConfig(path, parsed.error);
+  const state = parsed.data.hooks?.state ?? {};
   return new Set(Object.keys(state).filter((k) => typeof state[k]?.trusted_hash === "string"));
 }
 
@@ -44,7 +55,7 @@ function positionOf(entries: HookEntry[], command: string): [number, number] | n
 
 export function planCodexTrust(env: Env = process.env): TrustState[] {
   const hooksPath = HARNESSES.codex.hookConfig(env);
-  const config = readJsonc<{ hooks?: Record<string, HookEntry[]> }>(hooksPath) ?? {};
+  const config = readJsonc(hooksPath, HookConfig) ?? {};
   const recorded = recordedKeys(codexConfigPath(env));
 
   return wantedHooks("codex", env).map(({ event, command }) => {

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { HARNESSES, type HarnessName } from "./harness-contract";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
@@ -40,8 +41,21 @@ export function dimPath(): string {
   return Bun.which("dim") ?? "dim";
 }
 
-export type HookHandler = { type?: string; command?: string; timeout?: number };
-export type HookEntry = { matcher?: string; hooks?: HookHandler[] };
+export const HookHandler = z.looseObject({
+  type: z.string().optional(),
+  command: z.string().optional(),
+  timeout: z.number().optional(),
+});
+export type HookHandler = z.infer<typeof HookHandler>;
+
+export const HookEntry = z.looseObject({
+  matcher: z.string().optional(),
+  hooks: z.array(HookHandler).optional(),
+});
+export type HookEntry = z.infer<typeof HookEntry>;
+
+export const HookConfig = z.looseObject({ hooks: z.record(z.string(), z.array(HookEntry)).optional() });
+export type HookConfig = z.infer<typeof HookConfig>;
 
 export type WantedHook = { event: string; kind: HookKind; command: string; matcher?: string };
 

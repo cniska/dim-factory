@@ -6,6 +6,7 @@ import type { HarnessName } from "./harness-contract";
 import { installedHarnesses } from "./harness-ops";
 import {
   entryFor,
+  HookConfig,
   type HookEntry,
   type HookHandler,
   type HookKind,
@@ -58,10 +59,8 @@ export type HookPlan = {
   installedVersion?: number | null;
 };
 
-type HookConfig = { hooks?: Record<string, HookEntry[]> };
-
 function readConfig(path: string): HookConfig {
-  return readJsonc<HookConfig>(path) ?? {};
+  return readJsonc(path, HookConfig) ?? {};
 }
 
 function hasCommand(entries: HookEntry[], command: string, matcher: string | undefined): boolean {
@@ -177,7 +176,7 @@ export function outdatedLabel(plan: HookPlan): string {
 }
 
 function refuseIneffective(text: string, configPath: string, plans: HookPlan[]): void {
-  const config = parseJsonc<HookConfig>(text, configPath);
+  const config = parseJsonc(text, configPath, HookConfig);
   for (const plan of plans) {
     if (hasCommand(config.hooks?.[plan.event] ?? [], plan.command, plan.matcher)) continue;
     throw refuseConfig("config_unwritable", {
@@ -190,7 +189,7 @@ function refuseIneffective(text: string, configPath: string, plans: HookPlan[]):
 
 function applyRemovals(text: string, removals: readonly HookRemoval[], configPath: string): string {
   if (removals.length === 0) return text;
-  const config = parseJsonc<HookConfig>(text, configPath);
+  const config = parseJsonc(text, configPath, HookConfig);
   const byEntry = new Map<string, HookRemoval[]>();
   for (const removal of removals) {
     const key = JSON.stringify([removal.event, removal.entry]);

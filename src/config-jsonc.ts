@@ -10,11 +10,12 @@ import {
   parseTree,
   printParseErrorCode,
 } from "jsonc-parser";
-import { refuseConfig } from "./config-error";
+import type { z } from "zod";
+import { invalidConfig, refuseConfig } from "./config-error";
 
-export function parseJsonc<T>(text: string, file: string): T {
+export function parseJsonc<S extends z.ZodType>(text: string, file: string, schema: S): z.infer<S> {
   const errors: ParseError[] = [];
-  const value = parse(text, errors, { allowTrailingComma: true }) as T;
+  const value: unknown = parse(text, errors, { allowTrailingComma: true });
   if (errors.length > 0) {
     const first = errors[0] as ParseError;
     throw refuseConfig("config_unparsed", {
@@ -22,7 +23,9 @@ export function parseJsonc<T>(text: string, file: string): T {
       detail: `${printParseErrorCode(first.error)} at offset ${first.offset}`,
     });
   }
-  return value;
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) throw invalidConfig(file, parsed.error);
+  return parsed.data;
 }
 
 export function duplicateKeys(text: string, options: { deep?: boolean } = {}): string[] {

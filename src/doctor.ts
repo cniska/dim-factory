@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
+import { z } from "zod";
 import { invariant } from "./assert";
 import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
@@ -162,11 +163,13 @@ function launchdLoaded(): boolean {
   }).success;
 }
 
+const ClaudeSettings = z.looseObject({ cleanupPeriodDays: z.unknown().optional() });
+
 function retention(env: Env): Health {
   const path = HARNESSES.claude.hookConfig(env);
   let days: unknown;
   try {
-    days = readJsonc<Record<string, unknown>>(path)?.cleanupPeriodDays;
+    days = readJsonc(path, ClaudeSettings)?.cleanupPeriodDays;
   } catch (error) {
     if (!isConfigRefusal(error)) throw error;
     return unreadable("retention", error);
