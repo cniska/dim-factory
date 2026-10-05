@@ -84,6 +84,88 @@ describe("parseClaudeChunk", () => {
     expect(corrupt.messages.length).toBeGreaterThan(0);
   });
 
+  test("drops a line whose read field has the wrong type, and writes no row from it", () => {
+    const stamp = "2026-09-16T10:03:00.000Z";
+    const chunk = parseClaudeChunk(
+      [
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a-1",
+          timestamp: stamp,
+          message: { id: "msg-x", usage: { output_tokens: "12" } },
+        }),
+        JSON.stringify({
+          type: "system",
+          subtype: "turn_duration",
+          uuid: "t-1",
+          timestamp: stamp,
+          durationMs: "x",
+        }),
+      ],
+      1,
+    );
+    expect(chunk.dropped).toEqual([1, 2]);
+    expect(chunk.usage).toEqual([]);
+    expect(chunk.turns).toEqual([]);
+  });
+
+  test("keeps a user line whose toolUseResult is a bare string", () => {
+    const chunk = parseClaudeChunk(
+      [
+        JSON.stringify({
+          type: "user",
+          uuid: "u-9",
+          timestamp: "2026-09-16T10:03:00.000Z",
+          message: {
+            content: [{ type: "tool_result", tool_use_id: "tu-9", content: "boom", is_error: true }],
+          },
+          toolUseResult: "Error: boom",
+        }),
+      ],
+      1,
+    );
+    expect(chunk.dropped).toEqual([]);
+    expect(chunk.toolCalls).toMatchObject([{ id: "tu-9", isError: true, resultBytes: 4 }]);
+  });
+
+  test("keeps a line whose nullable fields and content blocks are null", () => {
+    const stamp = "2026-09-16T10:03:00.000Z";
+    const chunk = parseClaudeChunk(
+      [
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a-2",
+          timestamp: stamp,
+          attributionSkill: null,
+          message: {
+            id: "msg-n",
+            usage: null,
+            content: [
+              null,
+              { type: "text", text: "hi" },
+              { type: "tool_use", id: "tu-n", name: "Bash", input: null },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "u-n",
+          timestamp: stamp,
+          isMeta: null,
+          parentUuid: null,
+          sourceToolUseID: null,
+          interruptedMessageId: null,
+          toolDenialKind: null,
+          message: { content: "hello" },
+        }),
+      ],
+      1,
+    );
+    expect(chunk.dropped).toEqual([]);
+    expect(chunk.messages.map((m) => m.text)).toEqual(["hi", "hello"]);
+    expect(chunk.toolCalls).toMatchObject([{ id: "tu-n", toolName: "Bash" }]);
+  });
+
   test("refuses a line whose rows need a timestamp it does not carry", () => {
     const untimed = (line: unknown) => {
       const { timestamp: _, ...rest } = line as Record<string, unknown>;

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { Glob } from "bun";
+import { z } from "zod";
 import type { SourceFile } from "./ingest";
 import { parseClaudeChunk } from "./ingest-parse-claude";
 import { claudeProjectsDir, type Env, workersDir } from "./paths";
@@ -41,12 +42,14 @@ export function listClaudeSessions(env: Env = process.env): SourceFile[] {
   return [...transcripts, ...copies, ...listClaudeSubagents(env)];
 }
 
+const SubagentMeta = z.looseObject({ agentType: z.string().optional() });
+
 function agentTypeOf(path: string): string | undefined {
   const meta = join(dirname(path), `${basename(path, ".jsonl")}.meta.json`);
   if (!existsSync(meta)) return undefined;
   try {
-    const parsed = JSON.parse(readFileSync(meta, "utf8")) as { agentType?: string };
-    return parsed.agentType || undefined;
+    const parsed = SubagentMeta.safeParse(JSON.parse(readFileSync(meta, "utf8")));
+    return parsed.success ? parsed.data.agentType || undefined : undefined;
   } catch {
     return undefined;
   }

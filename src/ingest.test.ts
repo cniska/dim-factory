@@ -468,6 +468,30 @@ describe("ingest", () => {
     }
   });
 
+  test("ignores a subagent meta file whose agentType is not a string", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
+    mkdirSync(agentDir, { recursive: true });
+    const agentId = "a07d010a033dbe536";
+    writeFileSync(
+      join(agentDir, `agent-${agentId}.jsonl`),
+      `${claudeTranscriptLines(SESSION)
+        .map((l) => JSON.stringify(l))
+        .join("\n")}\n`,
+    );
+    writeFileSync(join(agentDir, `agent-${agentId}.meta.json`), JSON.stringify({ agentType: 5 }));
+    const db = run(env);
+    try {
+      expect(
+        db.prepare("SELECT parent_id, agent_type FROM session WHERE id = ?").get(`${agentId}@${SESSION}`),
+      ).toEqual({ parent_id: SESSION, agent_type: null });
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("re-reads a shrunk transcript whose session spawned a subagent, keeping the subagent's link", () => {
     const root = newRoot();
     const env = scratchEnv(root);

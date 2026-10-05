@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   jsonOrUndefined,
   type MessageRow,
@@ -13,75 +14,78 @@ import { parseSkillBody, type SkillLoadRow, skillFromCommand } from "./ingest-sk
 
 const SKILL_BODY_PREFIX = "Base directory for this skill:";
 
-type ContentBlock = {
-  type?: string;
-  text?: string;
-  id?: string;
-  name?: string;
-  input?: unknown;
-  tool_use_id?: string;
-  is_error?: boolean;
-  content?: unknown;
-};
+const ContentBlock = z.looseObject({
+  type: z.string().optional(),
+  text: z.string().optional(),
+  id: z.string().optional(),
+  name: z.string().optional(),
+  input: z.record(z.string(), z.unknown()).nullish(),
+  tool_use_id: z.string().optional(),
+  is_error: z.boolean().optional(),
+  content: z.unknown().optional(),
+});
+type ContentBlock = z.infer<typeof ContentBlock>;
 
-type ClaudeToolUseResult = {
-  stdout?: string;
-  stderr?: string;
-  interrupted?: boolean;
-  gitOperation?: unknown;
-};
+const ClaudeToolUseResult = z.looseObject({
+  stdout: z.string().optional(),
+  stderr: z.string().optional(),
+  interrupted: z.boolean().optional(),
+  gitOperation: z.unknown().optional(),
+});
+type ClaudeToolUseResult = z.infer<typeof ClaudeToolUseResult>;
 
-type ClaudeUsage = {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
-};
+const ClaudeUsage = z.looseObject({
+  input_tokens: z.number().optional(),
+  output_tokens: z.number().optional(),
+  cache_read_input_tokens: z.number().optional(),
+  cache_creation_input_tokens: z.number().optional(),
+});
 
-type ClaudeLine = {
-  type?: string;
-  uuid?: string;
-  timestamp?: string;
-  cwd?: string;
-  gitBranch?: string;
-  version?: string;
-  entrypoint?: string;
-  isSidechain?: boolean;
-  isMeta?: boolean | null;
-  session_id?: string;
-  promptSource?: string;
-  promptId?: string;
-  permissionMode?: string;
-  origin?: { kind?: string };
-  attributionSkill?: string | null;
-  requestId?: string;
-  effort?: string;
-  agentId?: string;
-  parentUuid?: string | null;
-  sourceToolUseID?: string | null;
-  interruptedMessageId?: string | null;
-  toolDenialKind?: string | null;
-  userFeedback?: unknown;
-  aiTitle?: string;
-  customTitle?: string;
-  subtype?: string;
-  durationMs?: number;
-  messageCount?: number;
-  toolUseResult?: ClaudeToolUseResult;
-  message?: {
-    id?: string;
-    model?: string;
-    content?: string | ContentBlock[];
-    usage?: ClaudeUsage | null;
-  };
-};
+const ClaudeLine = z.looseObject({
+  type: z.string().optional(),
+  uuid: z.string().optional(),
+  timestamp: z.string().optional(),
+  cwd: z.string().optional(),
+  gitBranch: z.string().optional(),
+  version: z.string().optional(),
+  entrypoint: z.string().optional(),
+  isSidechain: z.boolean().optional(),
+  isMeta: z.boolean().nullish(),
+  session_id: z.string().optional(),
+  promptSource: z.string().optional(),
+  promptId: z.string().optional(),
+  permissionMode: z.string().optional(),
+  origin: z.looseObject({ kind: z.string().optional() }).optional(),
+  attributionSkill: z.string().nullish(),
+  requestId: z.string().optional(),
+  effort: z.string().optional(),
+  agentId: z.string().optional(),
+  parentUuid: z.string().nullish(),
+  sourceToolUseID: z.string().nullish(),
+  interruptedMessageId: z.string().nullish(),
+  toolDenialKind: z.string().nullish(),
+  userFeedback: z.unknown().optional(),
+  aiTitle: z.string().optional(),
+  customTitle: z.string().optional(),
+  subtype: z.string().optional(),
+  durationMs: z.number().optional(),
+  messageCount: z.number().optional(),
+  toolUseResult: z.union([ClaudeToolUseResult, z.string().transform(() => undefined)]).optional(),
+  message: z
+    .looseObject({
+      id: z.string().optional(),
+      model: z.string().optional(),
+      content: z.union([z.string(), z.array(ContentBlock.nullable())]).optional(),
+      usage: ClaudeUsage.nullish(),
+    })
+    .optional(),
+});
+type ClaudeLine = z.infer<typeof ClaudeLine>;
 
-function visibleText(content: string | ContentBlock[] | undefined): string | undefined {
+function visibleText(content: string | (ContentBlock | null)[] | undefined): string | undefined {
   if (typeof content === "string") return content.length > 0 ? content : undefined;
   if (!Array.isArray(content)) return undefined;
-  const parts = content
-    .filter((b) => b?.type === "text" && typeof b.text === "string")
-    .map((b) => b.text as string);
+  const parts = content.flatMap((b) => (b?.type === "text" && b.text !== undefined ? [b.text] : []));
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
@@ -93,8 +97,7 @@ function resultSize(content: unknown, result: ClaudeToolUseResult | undefined): 
   const parts: string[] = [];
   if (typeof content === "string") parts.push(content);
   else if (Array.isArray(content)) {
-    for (const b of content)
-      if (typeof (b as { text?: string })?.text === "string") parts.push((b as { text: string }).text);
+    for (const b of content) if (typeof b?.text === "string") parts.push(b.text);
   }
   if (typeof result?.stdout === "string") parts.push(result.stdout);
   if (typeof result?.stderr === "string") parts.push(result.stderr);
@@ -104,6 +107,15 @@ function resultSize(content: unknown, result: ClaudeToolUseResult | undefined): 
 function feedbackText(value: unknown): string | undefined {
   if (value == null) return undefined;
   return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function parseLine(raw: string): ClaudeLine | undefined {
+  try {
+    const parsed = ClaudeLine.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseClaudeChunk(
@@ -121,14 +133,12 @@ export function parseClaudeChunk(
 
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
-    let line: ClaudeLine;
-    try {
-      line = JSON.parse(raw) as ClaudeLine;
-    } catch {
-      dropped.push(firstLineNumber + index);
+    const srcLine = firstLineNumber + index;
+    const line = parseLine(raw);
+    if (!line) {
+      dropped.push(srcLine);
       continue;
     }
-    const srcLine = firstLineNumber + index;
 
     if (line.type === "ai-title" || line.type === "custom-title") {
       const title = nonEmpty(line.aiTitle) ?? nonEmpty(line.customTitle);
@@ -194,7 +204,8 @@ export function parseClaudeChunk(
       if (Array.isArray(line.message.content)) {
         for (const block of line.message.content) {
           if (block?.type !== "tool_use" || !block.id || !block.name) continue;
-          const chosen = (block.input as { skill?: unknown } | undefined)?.skill;
+          const input = block.input ?? {};
+          const chosen = input.skill;
           if (block.name === "Skill" && typeof chosen === "string") {
             skillLoads.push({
               messageId: line.message.id,
@@ -204,7 +215,6 @@ export function parseClaudeChunk(
               how: "model",
             });
           }
-          const input = (block.input ?? {}) as Record<string, unknown>;
           toolCalls.push({
             id: block.id,
             messageId: line.message.id,
