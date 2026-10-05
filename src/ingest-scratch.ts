@@ -12,25 +12,19 @@ const TEMP_ROOTS = [
   "/private/var/folders",
 ];
 
-const OWN_TEMP = ((named: string) => {
-  try {
-    return [named, realpathSync(named)];
-  } catch {
-    return [named];
-  }
-})(resolve(tmpdir()));
-
-export function isScratchRepo(path: string): boolean {
-  const target = resolve(path);
-  return [...TEMP_ROOTS, ...OWN_TEMP].some((root) => target === root || target.startsWith(`${root}/`));
-}
-
 function namedAndResolved(path: string): string[] {
   try {
     return [path, realpathSync(path)];
   } catch {
     return [path];
   }
+}
+
+const OWN_TEMP = namedAndResolved(resolve(tmpdir()));
+
+export function isScratchRepo(path: string): boolean {
+  const target = resolve(path);
+  return [...TEMP_ROOTS, ...OWN_TEMP].some((root) => target === root || target.startsWith(`${root}/`));
 }
 
 export function isFactoryWorkspace(path: string, env: Env = process.env): boolean {

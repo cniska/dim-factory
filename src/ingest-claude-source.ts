@@ -26,11 +26,11 @@ function transcriptsUnder(root: string, pattern: string, env: Env): SourceFile[]
   return specs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export function listClaudeTranscripts(env: Env = process.env): SourceFile[] {
+function listClaudeTranscripts(env: Env = process.env): SourceFile[] {
   return transcriptsUnder(claudeProjectsDir(env), "*/*.jsonl", env);
 }
 
-export function listWorkerTranscripts(env: Env = process.env): SourceFile[] {
+function listWorkerTranscripts(env: Env = process.env): SourceFile[] {
   return transcriptsUnder(workersDir(env), "*/sessions/*.jsonl", env);
 }
 
@@ -56,7 +56,7 @@ export function subagentId(agentId: string, parentId: string): string {
   return `${agentId}@${parentId}`;
 }
 
-export function listClaudeSubagents(env: Env = process.env): SourceFile[] {
+function listClaudeSubagents(env: Env = process.env): SourceFile[] {
   const root = claudeProjectsDir(env);
   if (!existsSync(root)) return [];
   const specs: SourceFile[] = [];
