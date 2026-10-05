@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Glob } from "bun";
 import type { SourceFile } from "./ingest";
-import { type CodexState, parseCodexChunk } from "./ingest-parse-codex";
+import { CodexState, parseCodexChunk } from "./ingest-parse-codex";
 import { codexDir, type Env } from "./paths";
 
 const ROLLOUT_NAME = /^rollout-[0-9T:-]+-([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/;
@@ -15,7 +15,8 @@ export function threadIdOf(path: string): string | undefined {
 function readState(raw: string | null): CodexState {
   if (!raw) return {};
   try {
-    return JSON.parse(raw) as CodexState;
+    const parsed = CodexState.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : {};
   } catch {
     return {};
   }

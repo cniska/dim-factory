@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   jsonOrUndefined,
   type MessageRow,
@@ -10,56 +11,65 @@ import {
 } from "./ingest-session-records";
 import { type SkillLoadRow, skillFromFileRead } from "./ingest-skill-load";
 
-export type CodexState = { model?: string; turnId?: string };
+export const CodexState = z.looseObject({ model: z.string().optional(), turnId: z.string().optional() });
+export type CodexState = z.infer<typeof CodexState>;
 
-type CodexContent = { type?: string; text?: string };
+const CodexContent = z.looseObject({ type: z.string().optional(), text: z.string().optional() });
 
-type CodexUsage = {
-  input_tokens?: number;
-  cached_input_tokens?: number;
-  cache_write_input_tokens?: number;
-  output_tokens?: number;
-};
+const CodexUsage = z.looseObject({
+  input_tokens: z.number().optional(),
+  cached_input_tokens: z.number().optional(),
+  cache_write_input_tokens: z.number().optional(),
+  output_tokens: z.number().optional(),
+});
 
-type CodexLine = {
-  type?: string;
-  timestamp?: string;
-  payload?: {
-    type?: string;
-    id?: string | null;
-    role?: string;
-    content?: CodexContent[];
-    timestamp?: string;
-    cwd?: string;
-    originator?: string;
-    cli_version?: string;
-    git?: { branch?: string };
-    turn_id?: string;
-    model?: string;
-    response_id?: string;
-    usage?: CodexUsage;
-    started_at?: number;
-    completed_at?: number;
-    duration_ms?: number;
-    time_to_first_token_ms?: number;
-    reason?: string;
-    started_at_ms?: number;
-    completed_at_ms?: number;
-    item?: {
-      id?: string;
-      type?: string;
-      command?: unknown;
-      changes?: Record<string, unknown>;
-      status?: string;
-      exit_code?: number;
-      duration?: { secs?: number; nanos?: number };
-      stdout?: string;
-      stderr?: string;
-    };
-  };
-};
+const CodexDuration = z.looseObject({ secs: z.number().optional(), nanos: z.number().optional() });
+type CodexDuration = z.infer<typeof CodexDuration>;
 
-function durationMs(d: { secs?: number; nanos?: number } | undefined): number | undefined {
+const CodexLine = z.looseObject({
+  type: z.string().optional(),
+  timestamp: z.string().optional(),
+  payload: z
+    .looseObject({
+      type: z.string().optional(),
+      id: z.string().nullish(),
+      role: z.string().optional(),
+      content: z.array(CodexContent.nullable()).optional(),
+      timestamp: z.string().optional(),
+      cwd: z.string().optional(),
+      originator: z.string().nullish(),
+      cli_version: z.string().nullish(),
+      git: z.looseObject({ branch: z.string().optional() }).optional(),
+      turn_id: z.string().nullish(),
+      model: z.string().nullish(),
+      response_id: z.string().optional(),
+      usage: CodexUsage.nullish(),
+      started_at: z.number().optional(),
+      completed_at: z.number().optional(),
+      duration_ms: z.number().optional(),
+      time_to_first_token_ms: z.number().optional(),
+      reason: z.string().nullish(),
+      started_at_ms: z.number().optional(),
+      completed_at_ms: z.number().optional(),
+      item: z
+        .looseObject({
+          id: z.string().optional(),
+          type: z.string().optional(),
+          command: z.unknown().optional(),
+          changes: z.record(z.string(), z.unknown()).optional(),
+          status: z.string().nullish(),
+          exit_code: z.number().optional(),
+          duration: CodexDuration.optional(),
+          stdout: z.string().optional(),
+          stderr: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+type CodexLine = z.infer<typeof CodexLine>;
+
+function durationMs(d: CodexDuration | undefined): number | undefined {
   if (!d) return undefined;
   return Math.round((d.secs ?? 0) * 1000 + (d.nanos ?? 0) / 1e6);
 }
@@ -80,10 +90,19 @@ function nonEmpty(value: string | null | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
 }
 
-function visibleText(content: CodexContent[] | undefined): string | undefined {
+function visibleText(content: (z.infer<typeof CodexContent> | null)[] | undefined): string | undefined {
   if (!Array.isArray(content)) return undefined;
-  const parts = content.filter((b) => typeof b?.text === "string").map((b) => b.text as string);
+  const parts = content.flatMap((b) => (b?.text !== undefined ? [b.text] : []));
   return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function parseLine(raw: string): CodexLine | undefined {
+  try {
+    const parsed = CodexLine.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseCodexChunk(
@@ -103,10 +122,8 @@ export function parseCodexChunk(
 
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
-    let line: CodexLine;
-    try {
-      line = JSON.parse(raw) as CodexLine;
-    } catch {
+    const line = parseLine(raw);
+    if (!line) {
       dropped.push(firstLineNumber + index);
       continue;
     }
@@ -197,8 +214,8 @@ export function parseCodexChunk(
       continue;
     }
 
-    if (line.type === "event_msg" && p.type === "item_completed" && p.item?.id) {
-      const item = p.item;
+    const item = p.item;
+    if (line.type === "event_msg" && p.type === "item_completed" && item?.id) {
       const kind = item.type ?? "";
       if (kind === "CommandExecution" || kind === "FileChange" || kind === "McpToolCall") {
         const cmd = typeof item.command === "string" ? item.command : commandText(item.command);
@@ -212,7 +229,7 @@ export function parseCodexChunk(
           });
         }
         toolCalls.push({
-          id: item.id as string,
+          id: item.id,
           model: current.model,
           tsCall: msSince(p.started_at_ms) ?? ts,
           tsResult: msSince(p.completed_at_ms) ?? ts,

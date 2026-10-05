@@ -130,4 +130,60 @@ describe("parseCodexChunk", () => {
     ]);
     expect(parsed.usage).toEqual([]);
   });
+
+  test("drops a line whose read field has the wrong type, and writes no row from it", () => {
+    const completed = (exitCode: unknown) =>
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-09-16T10:00:00.000Z",
+        payload: {
+          type: "item_completed",
+          item: { id: "item-1", type: "CommandExecution", exit_code: exitCode },
+        },
+      });
+    const parsed = parseCodexChunk([completed("1"), completed(1)], 1, THREAD, {});
+    expect(parsed.dropped).toEqual([1]);
+    expect(parsed.toolCalls).toMatchObject([{ id: "item-1", exitCode: 1 }]);
+  });
+
+  test("keeps lines whose model, turn id, usage and status are null", () => {
+    const at = "2026-09-16T10:00:00.000Z";
+    const parsed = parseCodexChunk(
+      [
+        JSON.stringify({ type: "turn_context", timestamp: at, payload: { model: null, turn_id: null } }),
+        JSON.stringify({
+          type: "token_usage_record",
+          timestamp: at,
+          payload: { response_id: "r-1", usage: null },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: at,
+          payload: { type: "item_completed", item: { id: "i-1", type: "FileChange", status: null } },
+        }),
+      ],
+      1,
+      THREAD,
+      {},
+    );
+    expect(parsed.dropped).toEqual([]);
+    expect(parsed.usage).toMatchObject([{ responseId: "r-1", outputTokens: 0 }]);
+    expect(parsed.toolCalls).toMatchObject([{ id: "i-1", isError: undefined }]);
+  });
+
+  test("keeps a message line whose payload id and content blocks are null", () => {
+    const line = JSON.stringify({
+      type: "response_item",
+      timestamp: "2026-09-16T10:00:00.000Z",
+      payload: {
+        type: "message",
+        role: "user",
+        id: null,
+        content: [null, { type: "input_text", text: "hi" }],
+      },
+    });
+    const parsed = parseCodexChunk([line], 4, THREAD, {});
+    expect(parsed.dropped).toEqual([]);
+    expect(parsed.messages).toMatchObject([{ id: `${THREAD}:4`, text: "hi" }]);
+  });
 });
