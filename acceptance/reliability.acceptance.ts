@@ -220,7 +220,20 @@ describe("random kills", () => {
         } catch (error) {
           done = true;
           const trace = await m.operator.sh(commandLine(["trace", id]));
-          throw new Error(`${error}\n\nkilled:\n${killed.join("\n")}\n\ndim trace ${id}:\n${trace.stdout}`);
+          const order = await showOrder(m.operator, id);
+          const workspace = existsSync(order.workspace)
+            ? m.git(["status", "--porcelain", "--untracked-files=all"], order.workspace)
+            : "gone";
+          throw new Error(
+            [
+              `${error}`,
+              `killed:\n${killed.join("\n")}`,
+              `slices: ${JSON.stringify(order.slices)}`,
+              `workspace status:\n${workspace}`,
+              `log:\n${order.log.map((entry) => `${entry.seq} ${entry.action} ${"code" in entry ? entry.code : ""}`).join("\n")}`,
+              `dim trace ${id}:\n${trace.stdout}`,
+            ].join("\n\n"),
+          );
         }
       },
       RANDOM_KILLS_TEST_MS,

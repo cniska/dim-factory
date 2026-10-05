@@ -306,6 +306,7 @@ async function perform(act: HarnessAct): Promise<string | null> {
       await waitFor(`the release of ${act.name}`, () => existsSync(releasePath(state, act.name)));
       return null;
     case "build-remaining": {
+      await perform({ act: "sh", command: "git reset -q --hard && git clean -fdq" });
       for (const [index, slice] of shownOrder().slices.entries()) {
         if (slice.commit !== null) continue;
         for (const step of sliceActs(index + 1)) await perform(step);
