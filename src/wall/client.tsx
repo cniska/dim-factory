@@ -282,29 +282,29 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
               <X size={16} strokeWidth={1.8} aria-hidden="true" />
             </button>
           </div>
-          <dl className="flex flex-wrap items-center gap-x-[var(--space-xl)] gap-y-[var(--space-xs)] text-quiet">
-            <div className="flex items-center gap-[var(--space-sm)]">
-              <dt>order</dt>
+          <dl className="flex flex-wrap items-center gap-y-[var(--space-xs)] text-quiet [&>div+div]:before:mx-[var(--space-sm)] [&>div+div]:before:text-quiet/60 [&>div+div]:before:content-['·']">
+            <div className="flex items-center">
+              <dt className="sr-only">order</dt>
               <dd className="text-muted-foreground">{order.id}</dd>
             </div>
-            <div className="flex min-w-0 max-w-full items-center gap-[var(--space-sm)]">
-              <dt>project</dt>
+            <div className="flex min-w-0 max-w-full items-center">
+              <dt className="sr-only">project</dt>
               <dd className="truncate text-muted-foreground">{order.project}</dd>
             </div>
             {order.station ? (
-              <div className="flex items-center gap-[var(--space-sm)]">
-                <dt>station</dt>
+              <div className="flex items-center">
+                <dt className="sr-only">station</dt>
                 <dd className="text-muted-foreground lowercase">{STATION_LABELS[order.station]}</dd>
               </div>
             ) : null}
-            <div className="flex min-w-0 max-w-full items-center gap-[var(--space-sm)]">
-              <dt>assignee</dt>
+            <div className="flex min-w-0 max-w-full items-center">
+              <dt className="sr-only">assignee</dt>
               <dd className="flex min-w-0 items-center gap-[var(--space-xs)] text-muted-foreground">
                 {order.worker ? <WorkerLabel worker={order.worker} /> : <NoWorkerLabel />}
               </dd>
             </div>
-            <div className="flex items-center gap-[var(--space-sm)]">
-              <dt>status</dt>
+            <div className="flex items-center">
+              <dt className="sr-only">status</dt>
               <dd
                 className={cn(
                   "flex items-center gap-[var(--space-sm)] lowercase",
