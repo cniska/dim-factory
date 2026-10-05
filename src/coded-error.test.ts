@@ -78,6 +78,9 @@ describe("the error check", () => {
     expect(errorBreaches("order-ops.ts", 'throw new\n  Error("x")')).toEqual([
       "order-ops.ts throws an error with no code",
     ]);
+    expect(errorBreaches("order-ops.ts", "const Failed = class extends Error {};")).toEqual([
+      "order-ops.ts declares its own error class",
+    ]);
   });
 
   test("lets the base and the one class whose resolve the printer fills through", () => {
