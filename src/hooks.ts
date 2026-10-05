@@ -16,25 +16,19 @@ import {
   type WantedHook,
   wantedHooks,
 } from "./hook-commands";
-import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
 
 function hookKind(command: string, tool: HarnessName, env: Env): HookKind | null {
   const bare = unmarked(command);
   if (bare === unmarked(hookCommand(tool, env))) return "spool";
   if (bare === unmarked(hookCommand(tool, env, "SessionStart"))) return "spool";
-  if (bare === `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`) return "spool";
-  const spool = `/spool/${tool}/$(date +%s%N)-$$`;
   if (
     hookContractVersion(command) !== null &&
     bare.startsWith('cat > "') &&
-    [`${spool}.json" 2>/dev/null; exit 0`, `${spool}-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`].some(
-      (suffix) => bare.endsWith(suffix),
-    )
+    bare.endsWith(`/spool/${tool}/$(date +%s%N)-$$-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`)
   )
     return "spool";
-  if (new RegExp(`^(?:\\S*/)?dim hooks start(?: --tool=${tool})? 2>/dev/null \\|\\| true$`).test(bare))
-    return "start";
+  if (/^(?:\S*\/)?dim hooks start 2>\/dev\/null \|\| true$/.test(bare)) return "start";
   if (/^(?:\S*\/)?dim hooks edit 2>\/dev\/null \|\| true$/.test(bare)) return "edit";
   return null;
 }

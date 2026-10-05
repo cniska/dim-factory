@@ -24,8 +24,3 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 - Does the wall become where the owner reads artifacts and approves, rather than only watches?
 - Is `dim` for one owner, or for teams with several?
 - Repo identity is `project`, `repo` and `label`, sometimes a path and sometimes owner/repo. "Finding" names review findings and checking-agent findings; the glossary lacks repo, checkout, round and brief. Which words?
-
-## Waiting on data
-
-- Whether any unmarked or v1 spool hook is still installed, so `hooks.ts` `hookKind` can drop the retired shapes it recognises only to replace them.
-- Whether Codex records a typed prompt as an event, so `ingest-parse-codex.ts` can drop its prompt-source regex.
