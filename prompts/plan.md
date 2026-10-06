@@ -52,7 +52,7 @@ Returning nothing is the expected result.
 1. **Outcome**: two or three sentences on what is true once the order ships, and its boundary.
 2. **Decisions**: what the owner must approve before the build, such as a schema, contract, spec or gate change, a project rule the plan bends, or a slice that cannot start from a failing test. Always present; "None." when there are none.
 3. **Cause**: for a defect, with the evidence and what it ruled out.
-4. **Slices**: a table of title, a one-line outcome and the test that fails before the slice. The JSON `outcome` is that same line.
+4. **Slices**: a table of two columns. The first holds the title in bold, then the one-line outcome below it; the second holds the test that fails before the slice. The JSON `outcome` is that same line.
 5. **Risks**, and what review should aim at.
 6. **For the builder**: the data shape, contracts and paths the build needs, last and terse.
 
