@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CodedError, type RefusalTable, refuser } from "./coded-error";
+import { CodedError, type ErrorTable, refuser } from "./coded-error";
 
 type In = { readonly path: string };
 
@@ -16,7 +16,7 @@ type ConfigMetas = {
 
 const resolve = () => "dim config";
 
-const CONFIG_REFUSALS: RefusalTable<ConfigMetas> = {
+const CONFIG_REFUSALS: ErrorTable<ConfigMetas> = {
   config_unparsed: { message: ({ path, detail }) => `${path}: ${detail}`, resolve },
   config_invalid: { message: ({ path, problem }) => `${path}: ${problem}`, resolve },
   config_not_an_object: { message: ({ at, holds }) => `${at} holds a ${holds}`, resolve },

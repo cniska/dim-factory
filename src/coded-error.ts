@@ -38,7 +38,7 @@ export function refusalOf({ code, message, meta, resolve }: RefusalRecord): Code
   return new CodedError(code, message, meta, resolve, "refusal");
 }
 
-export type RefusalTable<Metas extends Record<string, object>> = {
+export type ErrorTable<Metas extends Record<string, object>> = {
   readonly [Code in keyof Metas]: {
     readonly message: (meta: Metas[Code]) => string;
     readonly resolve: (meta: Metas[Code]) => string;
@@ -46,7 +46,7 @@ export type RefusalTable<Metas extends Record<string, object>> = {
 };
 
 function coder(kind: ErrorKind) {
-  return <Metas extends Record<string, object>>(table: RefusalTable<Metas>) =>
+  return <Metas extends Record<string, object>>(table: ErrorTable<Metas>) =>
     <Code extends keyof Metas & string>(code: Code, meta: Metas[Code]): CodedError<Code, Metas[Code]> =>
       new CodedError(code, table[code].message(meta), meta, table[code].resolve(meta), kind);
 }
