@@ -50,7 +50,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-36** — The planner changes nothing. The plan is recorded from what it returns.
 - **FR-37** — The builder reads the approved plan, then writes, verifies and commits each slice in order until every slice is done. A slice's commit is kept on the order's branch only when it passes the gates.
 - **FR-38** — A slice that is not kept leaves the order's branch as it was.
-- **FR-39** — A slice gate exists only for what reading the change cannot show: that the project's check passed on exactly the committed code, that nothing judging the work was changed, and that the commit sits on the order's branch where the record expects it. A commit that fails a slice gate is taken off the branch. Everything reading the change can show is left to review.
+- **FR-39** — A slice gate exists only for what reading the change cannot show: that nothing judging the work was changed, and that the commit sits on the order's branch where the record expects it. A commit that fails a slice gate is taken off the branch. Everything reading the change can show is left to review.
 - **FR-40** — The builder simplifies each slice before committing it, so the code it ships works without known bugs and stays easy to maintain.
 - **FR-41** — Each slice's commit carries its subject line. The finished build returns an answer to each review finding it was given, and the Build artifact, which explains what was built so the owner can read it instead of the diff.
 - **FR-42** — Every commit a worker or the factory makes carries the owner's git identity as its author and committer. A worker's commits are not signed.
@@ -143,6 +143,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-97** — Installing the gates is idempotent: a gate that matches the canonical one is left as it is, and one that has fallen behind is replaced whole. Installing with no choice made is refused, except that a person at a terminal is asked to choose. A project extends a gate with a file of its own beside it, such as a step of its own before a commit, never by editing the installed one.
 - **FR-98** — `dim doctor` changes nothing. Run in a project's checkout, it reports each thing the factory needs of the machine and of that project that does not hold, with what resolves it: no gates chosen, a chosen gate missing, behind the canonical set or changed in place, and a gate present but not chosen among them.
 - **FR-99** — A project's check is the declared task its settings name, or the task named `check` where they name none, and its format command likewise with `format`. Adopting a project records the names its own tasks already have rather than renaming them.
+- **FR-100** — A build hands over only once the project's check, run on its branch's head after its definition of done holds, passes without changing the workspace. A check that fails or changes the workspace is recorded with its output and keeps the build with its builder, and is not a missed return.
 
 ## 10. Acceptance criteria
 
@@ -167,7 +168,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-19** — A review of all shipped instructions finds no instruction stated in two of them and none that the record of orders using it shows adding nothing. (NF-1)
 - **AC-20** — After installing the factory, a project with no factory files runs an order to shipped, `dim-factory` is the only skill installed for the user, and dim-factory's own `.agents/skills` appear in no user skill directory. (FR-80, FR-81)
 - **AC-21** — Every `dim` command is one whole word, each with more than one action takes its action as a subcommand, and no command name joins two words with a hyphen or shortens a word. (NF-6)
-- **AC-22** — A slice with a comment, an unchanged test or an unusual subject line is kept when the project's check passes, while a slice whose check fails, whose check rewrote files, that changed the check's definition, or whose commit is not on the recorded head of the order's branch is refused. (FR-39)
+- **AC-22** — A slice with a comment, an unchanged test, an unusual subject line or a failing check is kept, while a slice that changed the check's definition, or whose commit is not on the recorded head of the order's branch, is refused. (FR-39)
 - **AC-23** — The planner's brief holds the description, the builder's the approved plan, and the reviewer's the approved Build artifact and the diff; no brief holds a sentence that every order's brief would repeat, and no brief or instruction asks a worker not to do what the factory already prevents. The builder's brief names the project's check as the gates run it. (FR-31, FR-32, FR-33)
 - **AC-24** — With a first operator session gone, the operator's next session in the project runs its orders and receives its station workers' replies as the same worker, and a second live operator session in one project is refused. (FR-50)
 - **AC-25** — A builder that returns an order to plan after two committed slices leaves both on the branch, and the revised plan's next build keeps, changes or removes them as the plan says. (FR-47)
@@ -176,7 +177,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-28** — A planner's attempt to write to the workspace or the record is refused, and its plan appears in the record only from what it returns. It still reads the record through its turn. (FR-36, FR-66)
 - **AC-29** — A plan with no slice, a slice commit with no subject line, and a review finding with no file each record nothing and go back to the same worker with what was wrong; a corrected return is accepted, and a second refused return fails the station for the operator. (FR-35, FR-41, FR-44, FR-48)
 - **AC-30** — One build of a plan with several slices commits each slice in order through the gates and returns once, with the Build artifact. (FR-37, FR-41)
-- **AC-31** — A slice whose check fails is refused with the order's branch left as it was, and the order's log holds the refusal with the check's output attached. (FR-37, FR-38, FR-86)
+- **AC-31** — A slice that changes the check's definition is refused with the order's branch left as it was, and the order's log holds the refusal naming the refused commit. (FR-37, FR-38, FR-86)
 - **AC-32** — Code more complex than its outcome needs comes back from review as a maintainability finding, and every Review artifact reports which areas it covered. (FR-40, FR-45)
 - **AC-33** — A reviewer's attempt to write to the workspace or the record is refused. Its findings put the order at build in the same run, where a turn that leaves a finding unanswered or answers one twice is refused, and its fixes pass the slice gates. (FR-44, FR-46)
 - **AC-34** — A worker that is not the operator is refused each operator action, and the order and its record are left unchanged. (FR-26, FR-49)
@@ -220,7 +221,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-72** — With the wall served in development mode, an edit to the wall's code shows on the open page without a manual reload. (FR-94)
 - **AC-73** — An order in a project whose check needs a dependency its lockfile pins ships, with that dependency installed in the workspace before the plan station works and none of the project's lifecycle scripts run. (FR-7, FR-9)
 - **AC-74** — An install that fails stops the run with a refusal naming the command, and no station works on the order. (FR-8)
-- **AC-75** — A slice whose check writes inside the workspace, in its temporary directory and outside both is kept, and only the write outside is refused. (FR-65)
+- **AC-75** — A build whose check writes inside the workspace, in its temporary directory and outside both hands over, and only the write outside is refused. (FR-65)
 - **AC-76** — In a project that pins a tool version the operator's environment does not find first, the check and a station's worker each run the pinned version, and the order ships. (FR-10)
 - **AC-77** — A toolchain that cannot be resolved stops the run with a refusal naming its cause, and no station works on the order. (FR-11)
 - **AC-78** — After an order's planner has worked and the record is synced, the planner's session and its tool calls are in the record, joined to the planner by name; a planner whose turn ran a subagent has that subagent's tool calls in the record too, reached through the subagent's parent to the planner. (FR-89)
@@ -228,6 +229,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-80** — Installing the gates again changes nothing; after a canonical gate changes, installing replaces only that gate; choosing fewer gates removes only the dropped one; a gate file the project added beside them is left as it is. (FR-97)
 - **AC-81** — `dim doctor` in a project's checkout with one chosen gate missing, one behind, one changed in place, one present but not chosen, and no shipping setting reports each with what resolves it, and leaves the checkout, its settings and the record unchanged. (FR-98)
 - **AC-82** — An order in a project whose settings name `verify` as its check, while it also declares a failing `check`, is built and judged by `verify`, and its builder's brief names `verify`. (FR-99)
+- **AC-83** — A build whose head fails the project's check, or whose check rewrites files, is refused at its return with the check's output in the log and stays at build without failing the station; once a further commit makes the check pass, the same return hands the build over with the passing check in the log. (FR-86, FR-100)
 
 ## 11. Constraints
 

@@ -95,7 +95,7 @@ function rebase(shipping: Shipping, head: string): Landing {
     });
   const moved = tipOf(workspace.dir, workspace.branch);
   const commits = movedCommits(before, commitsBetween(checkout, onto, moved));
-  record({ action: "branch_rebased", details: { head: moved, onto, commits }, evidence: [] });
+  record({ action: "branch_rebased", details: { head: moved, onto, commits } });
   return { head: moved, onto };
 }
 

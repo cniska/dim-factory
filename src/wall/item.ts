@@ -16,6 +16,8 @@ export const ACTION_LABELS: Record<Exclude<Action, Decided>, string> = {
   slice_accepted: "Slice accepted",
   slice_refused: "Slice refused",
   finding_answered: "Finding answered",
+  build_checked: "Build checked",
+  build_refused: "Build refused",
   build_returned: "Build submitted",
   review_returned: "Review submitted",
   message_sent: "Message",

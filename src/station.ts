@@ -266,7 +266,7 @@ function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later 
   };
 }
 
-function buildReturned(request: BuildReturn, { state, branch }: WorkContext): Later {
+export function requireBuildDone(request: BuildReturn, { state, branch }: WorkContext): void {
   const missed = buildMissing(state, branch, request.artifact);
   if (missed.length > 0) {
     throw refuseStation("not_done", {
@@ -275,6 +275,10 @@ function buildReturned(request: BuildReturn, { state, branch }: WorkContext): La
       command: WORKER_COMMAND.build_return,
     });
   }
+}
+
+function buildReturned(request: BuildReturn, context: WorkContext): Later {
+  requireBuildDone(request, context);
   return { action: "build_returned", details: { artifact: request.artifact } };
 }
 

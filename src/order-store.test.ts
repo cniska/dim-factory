@@ -46,10 +46,10 @@ const ENTRIES: readonly LogEntry[] = [
   {
     seq: 3,
     ts: "2026-09-30T10:00:02Z",
-    by: { kind: "worker", worker: "bolt-2", session: "s2" },
-    action: "slice_accepted",
-    details: { commit: "def456" },
-    evidence: [{ kind: "check", command: "bun run verify", exitCode: 0, output: "ok" }],
+    by: { kind: "factory", version: "0.1.0", cause: 1 },
+    action: "build_checked",
+    details: { head: "def456" },
+    evidence: [{ kind: "check", command: "bun run check", exitCode: 0, output: "ok" }],
   },
   {
     seq: 4,

@@ -68,7 +68,7 @@ The operator's instructions are the one installed skill, [`skills/dim-factory`](
 
 ## Slices
 
-The builder commits with plain `git commit` and hands the commit in with `dim slice submit`. The station keeps it only if it is one new commit on the recorded head, leaves the check's definition unchanged, and passes the check in a clean workspace ([`src/slice.ts`](../src/slice.ts)). A refused slice's files stay in the workspace.
+The builder commits with plain `git commit` and hands the commit in with `dim slice submit`. The station keeps it only if it is one new commit on the recorded head and leaves the check's definition unchanged ([`src/slice.ts`](../src/slice.ts)). A refused slice's files stay in the workspace. The check runs once, on the branch's head when the builder returns the build ([`src/build-check.ts`](../src/build-check.ts)); a failing check refuses the return and the builder fixes it with a further commit.
 
 A check runs in its own process group with a 10-minute limit ([`src/check.ts`](../src/check.ts)). A check that reaches the limit is stopped and fails, its output saying so, and nothing a check started outlives it.
 

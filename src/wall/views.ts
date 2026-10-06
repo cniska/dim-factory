@@ -74,6 +74,8 @@ function entryStation(entry: LogEntry): Station | null {
     case "slice_accepted":
     case "slice_refused":
     case "finding_answered":
+    case "build_checked":
+    case "build_refused":
     case "build_returned":
       return "build";
     case "review_returned":

@@ -170,7 +170,6 @@ export const Evidence = z.object({
 });
 export type Evidence = z.infer<typeof Evidence>;
 
-const evidence = z.array(Evidence).readonly();
 const checked = z.tuple([Evidence]).readonly();
 
 const Moved = z.object({ from: z.string(), to: z.string() });
@@ -220,17 +219,21 @@ export const Later = z.union([
   entry("order_returned", { station: Station, reason: text }),
   entry("plan_returned", Plan.shape),
   entry("slice_submitted", tip),
-  entry("slice_accepted", { commit: z.string() }).extend({ evidence }),
+  entry("slice_accepted", { commit: z.string() }),
   z.discriminatedUnion("code", [
     stop("slice_refused", "head_moved", { ...tip, head: z.string() }),
     stop("slice_refused", "check_changed", tip),
-    stop("slice_refused", "workspace_dirty", tip),
-    stop("slice_refused", "no_check", tip),
-    stop("slice_refused", "check_failed", { ...tip, ...exited }).extend({ evidence: checked }),
-    stop("slice_refused", "check_rewrote", { ...tip, command: z.string() }).extend({ evidence: checked }),
     stop("slice_refused", "not_rebased", { ...tip, onto: z.string(), commits: z.number().int() }),
   ]),
   entry("finding_answered", { finding: z.string(), answer: Answer, reason: text }),
+  entry("build_checked", { head: z.string() }).extend({ evidence: checked }),
+  z.discriminatedUnion("code", [
+    stop("build_refused", "no_check", { head: z.string() }),
+    stop("build_refused", "check_failed", { head: z.string(), ...exited }).extend({ evidence: checked }),
+    stop("build_refused", "check_rewrote", { head: z.string(), command: z.string() }).extend({
+      evidence: checked,
+    }),
+  ]),
   entry("build_returned", { artifact: text }),
   entry("review_returned", {
     returned: z.discriminatedUnion("kind", [
@@ -254,9 +257,7 @@ export const Later = z.union([
     stop("station_failed", "install_failed", { command: z.string(), output: z.string() }),
   ]),
   entry("ship_started", {}),
-  entry("branch_rebased", { head: z.string(), onto: z.string(), commits: z.array(Moved).readonly() }).extend({
-    evidence,
-  }),
+  entry("branch_rebased", { head: z.string(), onto: z.string(), commits: z.array(Moved).readonly() }),
   z.discriminatedUnion("code", [
     stop("ship_stopped", "ship_unset", {}),
     stop("ship_stopped", "checkout_dirty", { checkout: z.string(), reason: text }),

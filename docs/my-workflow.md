@@ -38,7 +38,7 @@ Types, schemas, states, errors and function layout are settled before code is wr
 One slice at a time, each verified and committed on its own. Features go in dependency order: the contract and data model, then schema and lifecycle, then the service path, then jobs or agents, then the consumer surface. Every slice runs the loop: edit, the repo's check, simplify, the check again, a read-only checking agent, an answer to every finding, commit. Simplifying is in the loop because agents overengineer, and maintainability is where agent-built code fails first.
 
 - **Check:** each slice is green on the repo's own check, and the model has exercised the change itself rather than handing me something only I can confirm. Every finding is fixed or refused with a reason.
-- **Factory:** the builder runs this loop ([`prompts/build.md`](../prompts/build.md)), and the slice gates keep each commit only once the project's check passes on it in the check sandbox. The model exercising the product itself is a gap.
+- **Factory:** the builder runs this loop ([`prompts/build.md`](../prompts/build.md)), running the tests each slice touches, and the factory hands the build over only once the project's check passes on its head in the check sandbox. The model exercising the product itself is a gap.
 
 ### 5. Review by dimension
 

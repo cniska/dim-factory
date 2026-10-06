@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { invariant, unreachable } from "./assert";
+import { checkBuild } from "./build-check-ops";
 import { install } from "./check-ops";
 import { isRefusal, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
@@ -38,6 +39,7 @@ import {
   policyOf,
   replyTo,
   requestOf,
+  requireBuildDone,
   stationPurpose,
   TURN_SOCKET_ENV,
   type Turn,
@@ -151,7 +153,7 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
     case "order_show":
       return showOrder(db, order);
     case "slice_submit":
-      return submitSlice(db, { trace, order, workspace, acting, env: turn.env });
+      return submitSlice(db, { trace, order, workspace, acting });
     case "message_send": {
       const { text, to } = request;
       const by = { kind: "worker", acting } as const;
@@ -174,6 +176,10 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
     }
     default: {
       const branch = branchFacts(workspace);
+      if (request.act === "build_return") {
+        requireBuildDone(request, { station, state: orderState(db, order), branch });
+        checkBuild(db, { trace, order, workspace, env: turn.env, cause: turn.cause });
+      }
       recordAt(trace, db, {
         order,
         station,
@@ -265,7 +271,7 @@ function settleLostSubmission(db: Database, turn: TurnOf): void {
   const { submitted, project } = orderState(db, turn.order);
   if (submitted === null) return;
   const workspace = workspaceOf(project, turn.order);
-  settleSubmission(db, { trace: turn.trace, order: turn.order, workspace, env: turn.env }, submitted);
+  settleSubmission(db, { trace: turn.trace, order: turn.order, workspace }, submitted);
 }
 
 async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {

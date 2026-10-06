@@ -428,8 +428,9 @@ describe("shipping", () => {
 
     const order = await showOrder(m.operator, id);
     expect(order.status).toBe("shipped");
-    const rebased = entriesOf(order, ACTION.branchRebased).filter((entry) => entry.by.kind === "factory");
-    expect(rebased.some((entry) => entry.evidence.some((proof) => proof.kind === "check"))).toBe(true);
+    const rebasedHeads = entriesOf(order, ACTION.branchRebased).map((entry) => entry.details.head);
+    const checkedHeads = entriesOf(order, ACTION.buildChecked).map((entry) => entry.details.head);
+    expect(checkedHeads.some((head) => rebasedHeads.includes(head))).toBe(true);
     expect(m.git(["show", "main:slice-1.txt"])).toBe("the owner's own line\nslice 1");
   });
 

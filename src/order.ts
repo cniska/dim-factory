@@ -293,6 +293,8 @@ function apply(state: OrderState, entry: Later): OrderState {
       };
     case "slice_submitted":
     case "slice_refused":
+    case "build_checked":
+    case "build_refused":
     case "message_sent":
     case "message_refused":
     case "session_started":

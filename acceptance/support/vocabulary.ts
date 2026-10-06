@@ -12,6 +12,8 @@ export const ACTION = {
   sliceAccepted: "slice_accepted",
   sliceRefused: "slice_refused",
   findingAnswered: "finding_answered",
+  buildChecked: "build_checked",
+  buildRefused: "build_refused",
   buildReturned: "build_returned",
   reviewReturned: "review_returned",
   orderReturned: "order_returned",

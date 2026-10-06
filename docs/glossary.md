@@ -34,7 +34,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Slash command | The `/name` a user types into a harness, such as `/clear` or `/dim-factory` |
 | Declared task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/declared-tasks.ts`](../src/declared-tasks.ts)) |
 | Ecosystem | A language and its tooling, found from the manifests and lockfiles a project tracks, such as `package.json` or `bun.lock` ([`src/ecosystems.ts`](../src/ecosystems.ts)). It decides how dependencies install and which per-language parts of a gate a project gets |
-| Check | The declared task that says a change is sound: the one the project's `tasks.check` setting names, or else the task named `check`. The `check` gate runs it before a commit, and the slice gate runs it on a slice's commit |
+| Check | The declared task that says a change is sound: the one the project's `tasks.check` setting names, or else the task named `check`. The `check` gate runs it before a commit, and the factory runs it on a returned build's head and before a ship |
 
 ## The record
 

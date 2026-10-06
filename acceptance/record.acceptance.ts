@@ -3,7 +3,7 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { parseDim, quote, refusal, resultOf } from "./support/dim-output";
-import { type Machine, machines } from "./support/machine";
+import { type Machine, machines, manifest } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -77,9 +77,9 @@ describe("attribution", () => {
         planner: [planTurn([{ title: "One", outcome: "One file." }])],
         builder: [
           [
-            { act: "write", path: "red.txt", content: "x\n" },
-            { act: "commit", subject: "feat: red" },
-            { act: "sh", command: "rm red.txt" },
+            { act: "write", path: "package.json", content: manifest({ check: "true" }) },
+            { act: "commit", subject: "feat: loosen the check" },
+            { act: "sh", command: "git checkout -q HEAD -- package.json" },
             { act: "write", path: "one.txt", content: "x\n" },
             { act: "die" },
           ],
@@ -230,12 +230,12 @@ describe("decisions", () => {
         planner: [planTurn([{ title: "One", outcome: "One file." }])],
         builder: [
           [
-            { act: "write", path: "red.txt", content: "x\n" },
-            { act: "commit", subject: "feat: red" },
+            { act: "write", path: "package.json", content: manifest({ check: "true" }) },
+            { act: "commit", subject: "feat: loosen the check" },
             { act: "say", text: "stopping" },
           ],
           [
-            { act: "sh", command: "rm red.txt" },
+            { act: "sh", command: "git checkout -q HEAD -- package.json" },
             ...sliceActs(1),
             { act: "build-return", artifact: BUILD_ARTIFACT },
           ],

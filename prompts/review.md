@@ -11,7 +11,7 @@ A reply naming what is missing records nothing: fix the return and send it again
 
 ## What the gates proved
 
-Each commit passed the project's check on its own code when the gates kept it, with the check's declaration unchanged. After a rebase only the branch's head was checked again. Read for what reading alone can show.
+The project's check passed on the branch's head when the build was returned, and no commit changed the check's declaration. A single commit was not checked on its own. Read for what reading alone can show.
 
 ## The passes
 

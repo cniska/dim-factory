@@ -69,7 +69,6 @@ const approve = (station: "plan" | "build" | "review"): Later => ({
 const committed = (commit: string): Later => ({
   action: "slice_accepted",
   details: { commit },
-  evidence: [],
 });
 const BUILT: Later = { action: "build_returned", details: { artifact: "Both slices." } };
 const REVIEWED: Later = {
@@ -97,7 +96,6 @@ const rebasedOnto = (onto: string): Later => ({
       { from: "c2", to: "r2" },
     ],
   },
-  evidence: [],
 });
 const fromBuildEntry: Later = {
   action: "order_returned",
@@ -258,7 +256,7 @@ describe("an order's state, folded from its log", () => {
   test("a refused slice leaves the recorded head where it was", () => {
     const order = state(...planned, approve("plan"), committed("c1"), {
       action: "slice_refused",
-      code: "workspace_dirty",
+      code: "check_changed",
       details: { tip: "t2" },
     });
     expect([order.head, order.commits]).toEqual(["c1", ["c1"]]);

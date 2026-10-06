@@ -15,8 +15,6 @@ const Evidence = z.strictObject({
   output: z.string(),
 });
 
-const evidence = { evidence: z.array(Evidence).readonly() };
-
 const checked = { evidence: z.tuple([Evidence]).readonly() };
 
 const shared = { seq: z.number(), ts: z.string(), by: Actor };
@@ -61,19 +59,19 @@ const LogEntry = z.union([
   entry("order_returned", { station: Station, reason: z.string() }),
   entry("plan_returned", { body: z.string(), slices: z.array(slice).readonly() }),
   entry("slice_submitted", tip),
-  entry("slice_accepted", { commit: z.string() }).extend(evidence),
+  entry("slice_accepted", { commit: z.string() }),
   stop("slice_refused", "head_moved", { ...tip, head: z.string() }),
   stop("slice_refused", "check_changed", tip),
-  stop("slice_refused", "workspace_dirty", tip),
-  stop("slice_refused", "no_check", tip),
-  stop("slice_refused", "check_failed", { ...tip, ...exited }).extend(checked),
-  stop("slice_refused", "check_rewrote", { ...tip, command: z.string() }).extend(checked),
   stop("slice_refused", "not_rebased", { ...tip, onto: z.string(), commits: z.number() }),
   entry("finding_answered", {
     finding: z.string(),
     answer: z.enum(["fixed", "refused"]),
     reason: z.string(),
   }),
+  entry("build_checked", { head: z.string() }).extend(checked),
+  stop("build_refused", "no_check", { head: z.string() }),
+  stop("build_refused", "check_failed", { head: z.string(), ...exited }).extend(checked),
+  stop("build_refused", "check_rewrote", { head: z.string(), command: z.string() }).extend(checked),
   entry("build_returned", { artifact: z.string() }),
   entry("review_returned", {
     returned: z.discriminatedUnion("kind", [
@@ -105,7 +103,7 @@ const LogEntry = z.union([
     head: z.string(),
     onto: z.string(),
     commits: z.array(z.strictObject({ from: z.string(), to: z.string() })).readonly(),
-  }).extend(evidence),
+  }),
   stop("ship_stopped", "ship_unset", {}),
   stop("ship_stopped", "checkout_dirty", { checkout: z.string(), reason: z.string() }),
   stop("ship_stopped", "ship_conflict", { onto: z.string(), paths: z.array(z.string()).readonly() }),

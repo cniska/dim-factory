@@ -246,16 +246,20 @@ describe("slice gates", () => {
     builder: [[...acts, { act: "build-return", artifact: BUILD_ARTIFACT }]],
   });
 
-  test("AC-22 a slice with a comment, an unchanged test and an unusual subject is kept when the check passes", async () => {
+  test("AC-22 a slice with a comment, an unchanged test, an unusual subject and a failing check is kept", async () => {
     const m = await start({
+      check: "[ ! -e red.txt ]",
       script: oneSlice([
         { act: "write", path: "greet.ts", content: "// says hello\nexport const greet = 'hello';\n" },
+        { act: "write", path: "red.txt", content: "x\n" },
         { act: "commit", subject: "wip!! greeting, see thread" },
+        { act: "sh", command: "git rm -q red.txt" },
+        { act: "commit", subject: "fix: drop red" },
       ]),
     });
     const order = await showOrder(m.operator, await built(m.operator));
 
-    expect(m.commitsOn(order.branch)).toEqual(["wip!! greeting, see thread"]);
+    expect(m.commitsOn(order.branch)).toEqual(["wip!! greeting, see thread", "fix: drop red"]);
     expect(order.next).toBe(NEXT.approve);
   });
 
@@ -267,16 +271,6 @@ describe("slice gates", () => {
   };
 
   const refusedCases: readonly RefusedCase[] = [
-    {
-      name: "whose check fails",
-      options: { check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]" },
-      acts: [{ act: "write", path: "red.txt", content: "x\n" }],
-    },
-    {
-      name: "whose check rewrote files",
-      options: { check: "[ ! -e rewrite-me.txt ] || echo rewritten >> rewrite-me.txt" },
-      acts: [{ act: "write", path: "rewrite-me.txt", content: "x\n" }],
-    },
     {
       name: "that changed the check's definition",
       options: { check: "[ ! -e red.txt ]" },
@@ -320,7 +314,7 @@ describe("slice gates", () => {
     });
   }
 
-  test("AC-75 a slice whose check writes in the workspace, its temp directory and outside both is kept, with only the write outside refused", async () => {
+  test("AC-75 a build whose check writes in the workspace, its temp directory and outside both hands over, with only the write outside refused", async () => {
     const m = await start({
       check: ({ root }) =>
         `mkdir -p node_modules && touch node_modules/inside && touch "$TMPDIR/tmp" && { touch "${root}/escaped" 2>/dev/null; true; }`,
@@ -362,12 +356,12 @@ describe("slice gates", () => {
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
   });
 
-  test("AC-31 a refused slice's log entry carries the check's output", async () => {
+  test("AC-31 a slice that changes the check's definition is refused, its log entry naming the refused commit", async () => {
     const m = await start({
-      check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]",
+      check: "[ ! -e red.txt ]",
       script: oneSlice([
-        { act: "write", path: "red.txt", content: "x\n" },
-        { act: "commit", subject: "feat: add red" },
+        { act: "write", path: "package.json", content: manifest({ check: "true" }) },
+        { act: "commit", subject: "feat: loosen the check" },
       ]),
     });
     const id = await planned(m.operator);
@@ -375,11 +369,57 @@ describe("slice gates", () => {
     const order = await showOrder(m.operator, id);
 
     const refused = entryOf(order, ACTION.sliceRefused);
-    if (refused.code !== "check_failed") throw new Error(`the slice was refused ${refused.code}`);
-    expect(JSON.stringify(refused.evidence)).toContain("RED-CHECK-OUTPUT");
-    expect(refused.details.command).toBe(refused.evidence[0].command);
-    expect(refused.details.exitCode).toBe(1);
+    if (refused.code !== "check_changed") throw new Error(`the slice was refused ${refused.code}`);
+    expect(entryOf(order, ACTION.sliceSubmitted).details.tip).toBe(refused.details.tip);
+    expect(m.git(["rev-parse", order.branch])).not.toBe(refused.details.tip);
+    expect(m.commitsOn(order.branch)).toEqual([]);
   });
+
+  const buildRefusedCases = [
+    {
+      code: "check_failed",
+      check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]",
+      fix: "git rm -q red.txt",
+    },
+    {
+      code: "check_rewrote",
+      check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ] || echo rewritten >> red.txt",
+      fix: "git checkout -q -- red.txt && git rm -q red.txt",
+    },
+  ] as const;
+
+  for (const { code, check, fix } of buildRefusedCases) {
+    test(`AC-83 a build refused as ${code} at its return stays at build and hands over once a further commit passes the check`, async () => {
+      const m = await start({
+        check,
+        script: {
+          planner: [planTurn([{ title: "One", outcome: "One file." }])],
+          builder: [
+            [
+              { act: "write", path: "red.txt", content: "x\n" },
+              { act: "commit", subject: "feat: add red" },
+              { act: "build-return", artifact: BUILD_ARTIFACT },
+              { act: "sh", command: fix },
+              { act: "commit", subject: "fix: drop red" },
+              { act: "build-return", artifact: BUILD_ARTIFACT },
+            ],
+          ],
+        },
+      });
+      const order = await showOrder(m.operator, await built(m.operator));
+
+      const refused = entryOf(order, ACTION.buildRefused);
+      if (refused.code !== code) throw new Error(`the build was refused ${refused.code}`);
+      expect(JSON.stringify(refused.evidence)).toContain("RED-CHECK-OUTPUT");
+      expect(refused.details.command).toBe(refused.evidence[0].command);
+      const passed = entryOf(order, ACTION.buildChecked);
+      expect(passed.evidence[0].exitCode).toBe(0);
+      expect(passed.details.head).toBe(m.git(["rev-parse", order.branch]));
+      expect(actions(order)).not.toContain(ACTION.stationFailed);
+      expect(actions(order).slice(-2)).toEqual([ACTION.buildChecked, ACTION.buildReturned]);
+      expect(order.next).toBe(NEXT.approve);
+    });
+  }
 
   test("AC-62 a plan larger than one socket write hands over whole", async () => {
     const body = `## Outcome\n\n${Array.from({ length: 60_000 }, () => "A long plan line.").join("\n")}`;
