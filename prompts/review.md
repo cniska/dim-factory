@@ -15,14 +15,20 @@ The project's check passed on the branch's head when the build was returned, and
 
 ## The passes
 
-Read the tests first, then the Build artifact for the intent. Then one agent per area, each with read-only tools, the diff, the intent, the project's rules and its own question, and not your own reading. The areas and their questions are in *Quality areas* below, with two more that only a change has:
+Read the tests first, then the Build artifact for the intent. Then three agents, each with read-only tools, the diff, the intent, the project's rules and the questions of its own group of areas, and not your own reading. The areas and their questions are in *Quality areas* below, with two more that only a change has:
 
 | Area | Reads against |
 |---|---|
 | Conformance | Whether the diff does what the Build artifact says, naming work that is missing, extra or misunderstood |
 | Style | Whether naming, structure and local patterns stay consistent, with no comment or abstraction noise |
 
-Architecture takes `dim query prior-art "<path fragment>"` as grounding. For a defect, *A bug* below, under Review.
+| Agent | Areas |
+|---|---|
+| Correctness | Correctness, Tests, Security |
+| Architecture | Architecture, Maintainability, Style |
+| Conformance | Conformance, Docs, Performance |
+
+The architecture agent takes `dim query prior-art "<path fragment>"` as grounding. For a defect, *A bug* below, under Review.
 
 ## Before returning
 
