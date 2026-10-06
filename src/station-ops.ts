@@ -292,9 +292,9 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     if (session.kind === "fork") {
       restoreSession(trace, copies, session.from, WORKER_HARNESS.transcript(opened.home, dir, session.from));
     }
-    const spawned = spawnFor(turn, session, dir, opened);
+    const usage = followUsage(db, WORKER_HARNESS.transcript(opened.home, dir, idOf(session)));
+    const spawned = spawnFor(turn, session, dir, opened, usage.heard);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
-    const stopFollowing = followUsage(db, WORKER_HARNESS.transcript(opened.home, dir, idOf(session)));
     let served: TurnServed;
     try {
       served = await serveTurn(
@@ -304,7 +304,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
         turn.purpose.prompt({ state, workspace: dir, diff: diffOf(turn, head), check: checkOf(turn, dir) }),
       );
     } finally {
-      stopFollowing();
+      usage.stop();
     }
     const { stop } = served;
     if (stop?.kind === "fault") throw stop.error;
@@ -336,7 +336,13 @@ function checkOf(turn: TurnOf, workspace: string): string | null {
   return checkTask(workspace)?.commandLine ?? null;
 }
 
-function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: Turn): Spawned {
+function spawnFor(
+  turn: TurnOf,
+  session: SessionOf,
+  workspace: string,
+  opened: Turn,
+  heard: () => void,
+): Spawned {
   const argv = WORKER_HARNESS.argv({
     session: startOf(session),
     model: turn.model,
@@ -345,7 +351,7 @@ function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: T
     socket: opened.socket,
   });
   const env = workerEnv(turn.env, opened, turn.identity, WORKER_HARNESS);
-  return startHarness(turn.trace, { argv, cwd: workspace, env, session: idOf(session) });
+  return startHarness(turn.trace, { argv, cwd: workspace, env, session: idOf(session), heard });
 }
 
 function settleTurn(db: Database, turn: TurnOf, closing: Closing): Ended {

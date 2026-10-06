@@ -64,6 +64,7 @@ export type Spawn = {
   readonly cwd: string;
   readonly env: Record<string, string>;
   readonly session: string;
+  readonly heard: (line: string) => void;
 };
 
 export type Spawned = {

@@ -5,10 +5,9 @@ import { OrderId } from "../order-contract";
 import { listOrders, showOrder } from "../order-ops";
 import { tokensOf } from "../worker-ops";
 import wallPage from "./index.html";
+import { recordChanges } from "./record-changes";
 import { itemViewOf, snapshotOf } from "./views";
 import type { BoardPush, OrderPush } from "./wall-contract";
-
-const RECORD_CHECK_MS = 1000;
 
 const FONT = new URL("./fonts/jetbrains-mono-latin.woff2", import.meta.url);
 
@@ -112,6 +111,6 @@ export async function serveWall(options: {
     fetch,
     websocket,
   });
-  setInterval(tick, RECORD_CHECK_MS).unref();
+  recordChanges(options.path, tick);
   return server;
 }

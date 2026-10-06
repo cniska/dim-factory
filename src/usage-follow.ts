@@ -1,10 +1,13 @@
 import type { Database } from "bun:sqlite";
-import { type FSWatcher, mkdirSync, watch } from "node:fs";
-import { dirname } from "node:path";
 import { createIngester } from "./ingest";
 import { liveSessionFiles } from "./ingest-claude-source";
 
-export function followUsage(db: Database, transcript: string): () => void {
+export type UsageFollow = {
+  readonly heard: () => void;
+  readonly stop: () => void;
+};
+
+export function followUsage(db: Database, transcript: string): UsageFollow {
   const ingester = createIngester(db);
   let failure: { readonly error: unknown } | null = null;
   let pending = false;
@@ -15,23 +18,17 @@ export function followUsage(db: Database, transcript: string): () => void {
       for (const file of liveSessionFiles(transcript)) ingester.ingestFile({ ...file, tool: "claude" });
     } catch (error) {
       failure = { error };
-      watcher.close();
     }
   };
-  const dir = dirname(transcript);
-  mkdirSync(dir, { recursive: true });
-  const watcher: FSWatcher = watch(dir, { recursive: true }, () => {
-    if (pending) return;
-    pending = true;
-    setImmediate(read);
-  });
-  watcher.on("error", (error) => {
-    failure = { error };
-    watcher.close();
-  });
-  return () => {
-    watcher.close();
-    read();
-    if (failure !== null) throw failure.error;
+  return {
+    heard() {
+      if (pending) return;
+      pending = true;
+      setImmediate(read);
+    },
+    stop() {
+      read();
+      if (failure !== null) throw failure.error;
+    },
   };
 }
