@@ -1,7 +1,11 @@
 import { refuseOrder } from "./order-contract";
 import type { Env } from "./paths";
-import { resolveToolchain } from "./toolchain-effects";
+import { pinnedBins, resolveToolchain, type Toolchain } from "./toolchain-effects";
 import type { Trace } from "./trace-contract";
+
+export function pinnedToolchain(checkout: string, env: Env): Toolchain {
+  return pinnedBins(checkout, env);
+}
 
 export function pinnedEnv(trace: Trace, order: string, checkout: string, env: Env): Env {
   const toolchain = resolveToolchain(trace, checkout, env);

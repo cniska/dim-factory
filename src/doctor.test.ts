@@ -269,6 +269,23 @@ describe("doctor in a project's checkout", () => {
     return dir;
   }
 
+  test("reports each project need that does not hold, with what resolves it", () => {
+    const env = seeded();
+    const dir = project();
+    rmSync(join(dir, "Makefile"));
+    writeFileSync(join(dir, "package.json"), "{}\n");
+    execFileSync("git", ["-C", dir, "add", "package.json"]);
+    const db = openReadOnly(dbPath(env));
+    try {
+      const rows = Object.fromEntries(diagnose(db, env, dir).map((row) => [row.name, row]));
+      for (const name of ["sign-in", "project", "ship", "identity", "check", "dependencies", "gates"]) {
+        expect(rows[name], name).toMatchObject({ state: "fail", fix: expect.any(String) });
+      }
+    } finally {
+      db.close();
+    }
+  });
+
   test("reports a project that has chosen no gates", () => {
     const env = seeded();
     expect(check(env, "gates", project())).toMatchObject({

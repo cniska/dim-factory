@@ -4,7 +4,7 @@ A project is adopted when the factory can run an order in it from added to shipp
 
 ## What the project needs
 
-Each line names the refusal an order meets without it.
+Each line names the refusal an order meets without it. `dim doctor`, run in the project's checkout, reports each one that does not hold.
 
 | Need | Refusal |
 |---|---|

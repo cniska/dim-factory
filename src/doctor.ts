@@ -2,26 +2,21 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { z } from "zod";
 import { invariant } from "./assert";
-import { type CodedError, isRefusal } from "./coded-error";
-import { readGateChoice, readProjectConfig } from "./config";
 import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
-import { type GatePlan, hooksWired, planGates, runsHooks } from "./gates";
-import { type GateName, refuseGates } from "./gates-contract";
+import type { Health } from "./doctor-contract";
+import { projectHealth } from "./doctor-project";
 import { checkoutRoot } from "./git-checkout";
 import { HARNESSES } from "./harness-contract";
-import { installedHarnesses } from "./harness-ops";
+import { installedHarnesses, WORKER_HARNESS } from "./harness-ops";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
-import { defaultBranch } from "./project";
 import { scalar } from "./query";
 import { planSkill, retiredLinks } from "./skill";
-
-export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
 
 const HOUR_MS = 3_600_000;
 const SYNC_STOPPED_AFTER_MS = 24 * HOUR_MS;
@@ -284,76 +279,16 @@ function outcomes(db: Database): Health {
     : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` };
 }
 
-function refused(error: CodedError, name = "gates"): Health {
-  return { name, state: "fail", detail: error.message, fix: error.resolve };
-}
-
-function shipping(root: string): Health {
-  const name = "ship";
-  const branch = defaultBranch(root);
-  if (branch === null) {
-    return {
-      name,
-      state: "fail",
-      detail: `${root} has no origin/HEAD, so no default branch to read the project's settings from or ship to`,
-      fix: "git remote set-head origin --auto",
-    };
-  }
-  let ship: string | undefined;
-  try {
-    ship = readProjectConfig(root, branch).ship;
-  } catch (error) {
-    if (!isRefusal(error)) throw error;
-    return refused(error, name);
-  }
-  return ship === undefined
-    ? {
-        name,
+function signIn(env: Env): Health {
+  const { name, signIn: names } = WORKER_HARNESS;
+  return names.some((variable) => env[variable])
+    ? { name: "sign-in", state: "ok", detail: `a ${name} worker signs in with ${names.join(" or ")}` }
+    : {
+        name: "sign-in",
         state: "fail",
-        detail: `${branch} commits no ship setting, so no order in ${root} can ship`,
-        fix: `dim config set ship default-branch --project, then commit .dim/config.json on ${branch}`,
-      }
-    : { name, state: "ok", detail: `orders ship by ${ship}` };
-}
-
-function gates(root: string): Health {
-  let chosen: readonly GateName[] | null;
-  let plans: GatePlan[];
-  try {
-    chosen = readGateChoice(root);
-    if (chosen === null) return refused(refuseGates("no_gates_chosen", { root }));
-    plans = planGates(root, chosen);
-  } catch (error) {
-    if (!isRefusal(error)) throw error;
-    return refused(error);
-  }
-  const unmet = plans.filter((plan) => plan.state !== "installed" && plan.state !== "ahead");
-  const ahead = plans.filter((plan) => plan.state === "ahead");
-  const unwired = runsHooks(chosen) && !hooksWired(root);
-  if (unmet.length > 0 || unwired) {
-    return {
-      name: "gates",
-      state: "fail",
-      detail: [
-        ...unmet.map((plan) => `${plan.target} ${plan.state}`),
-        ...(unwired ? ["git hooks do not run from .githooks"] : []),
-      ].join("; "),
-      fix: `dim gates install, from ${root}`,
-    };
-  }
-  if (ahead.length > 0) {
-    return {
-      name: "gates",
-      state: "warn",
-      detail: `${ahead.map((plan) => plan.target).join(", ")} ahead of this dim`,
-      fix: "run a dim at least as new as the one that installed them",
-    };
-  }
-  return {
-    name: "gates",
-    state: "ok",
-    detail: `${root} runs the gates it chose: ${chosen.join(", ") || "none"}`,
-  };
+        detail: `${names.join(" or ")} is not set, so no ${name} worker can sign in`,
+        fix: `set ${names.join(" or ")} in the environment dim runs from, made by claude setup-token`,
+      };
 }
 
 export function diagnose(db: Database, env: Env, cwd: string): Health[] {
@@ -372,6 +307,7 @@ export function diagnose(db: Database, env: Env, cwd: string): Health[] {
     retention(env),
     spool(env),
     readable ? outcomes(db) : notJudged("outcomes", version),
-    ...(project === null ? [] : [gates(project), shipping(project)]),
+    signIn(env),
+    ...(project === null ? [] : projectHealth(project, env)),
   ];
 }

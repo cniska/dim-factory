@@ -33,7 +33,7 @@ dim skills install
 - Each install writes at once and copies aside any file it replaces.
 - Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
 - Hooks and the skill link are for Claude Code, and are installed and checked only while `claude` is on `PATH`. The `dim-factory` skill links into `~/.claude/skills`. Other harnesses' sessions are read into the record without any hook.
-- `dim doctor` reports missing, stale or retired hooks, database drift and unloaded agents, each with its repair, and in a project's checkout also its gates and its ship setting.
+- `dim doctor` reports missing, stale or retired hooks, database drift and unloaded agents, each with its repair, and whether a worker can sign in. In a project's checkout it also reports each [adoption need](adopting.md#what-the-project-needs) and the project's gates.
 
 ## Install the canonical gates
 
