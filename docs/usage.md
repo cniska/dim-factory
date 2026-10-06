@@ -33,18 +33,19 @@ dim skills install
 - Each install writes at once and copies aside any file it replaces.
 - Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
 - Hooks and the skill link are for Claude Code, and are installed and checked only while `claude` is on `PATH`. The `dim-factory` skill links into `~/.claude/skills`. Other harnesses' sessions are read into the record without any hook.
-- `dim doctor` reports missing, stale or retired hooks, database drift and unloaded agents, each with its repair.
+- `dim doctor` reports missing, stale or retired hooks, database drift and unloaded agents, each with its repair, and in a project's checkout also its gates and its ship setting.
 
 ## Install the canonical gates
 
 ```sh
-dim gates install   # from the project's checkout
+dim gates install [<gate>...]   # from the project's checkout
 ```
 
-- Writes each canonical gate from [`gates/`](../gates) into the checkout, where the project commits it: the commit-subject hook in `.githooks/`, the `commits.yml` workflow that runs it on every pushed commit, and a pre-commit hook that runs the project's declared check. A project that declares no check is refused.
+- The gates are `commit-subject`, a `commit-msg` hook and a `commits.yml` workflow that runs it on every pushed commit, and `check`, a `pre-commit` hook that runs the project's [check](glossary.md). Their files are in [`gates/`](../gates).
+- Naming gates records them as the project's choice, `gates` in `.dim/config.json`, and installs exactly those, removing an installed gate no longer chosen. With none named it installs the recorded choice; with no choice recorded, a terminal shows a picker and anything else is refused `no_gates_chosen`. Choosing `check` in a project that declares no check is refused `no_check`. Each refusal writes nothing.
 - Points `core.hooksPath` at `.githooks`, and adds the same command as a `package.json` `prepare` script so a fresh clone runs the gates. A checkout whose hooks run from elsewhere, or whose `prepare` does something else, is refused before anything is written.
 - Each gate carries `dim-gate:<version>`. A gate at a lower version is replaced; one at the same version with other bytes was changed in place and is moved aside before it is replaced; one at a higher version is left. A project extends a gate with a file of its own beside it.
-- `dim doctor`, run in a checkout, reports each gate that is missing, behind or changed, and hooks that do not run from `.githooks`.
+- `dim doctor`, run in a checkout, reports no choice recorded, each chosen gate that is missing, behind or changed, a gate installed but not chosen, and hooks that do not run from `.githooks`.
 
 ### Comment purge
 

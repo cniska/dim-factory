@@ -2,12 +2,14 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { z } from "zod";
 import { invariant } from "./assert";
-import { isRefusal } from "./coded-error";
+import { type CodedError, isRefusal } from "./coded-error";
+import { readGateChoice, readProjectConfig } from "./config";
 import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
-import { type GatePlan, hooksWired, planGates } from "./gates";
+import { type GatePlan, hooksWired, planGates, runsHooks } from "./gates";
+import { type GateName, refuseGates } from "./gates-contract";
 import { checkoutRoot } from "./git-checkout";
 import { HARNESSES } from "./harness-contract";
 import { installedHarnesses } from "./harness-ops";
@@ -15,6 +17,7 @@ import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
+import { defaultBranch } from "./project";
 import { scalar } from "./query";
 import { planSkill, retiredLinks } from "./skill";
 
@@ -281,17 +284,52 @@ function outcomes(db: Database): Health {
     : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` };
 }
 
-function gates(root: string): Health {
-  let plans: GatePlan[];
+function refused(error: CodedError, name = "gates"): Health {
+  return { name, state: "fail", detail: error.message, fix: error.resolve };
+}
+
+function shipping(root: string): Health {
+  const name = "ship";
+  const branch = defaultBranch(root);
+  if (branch === null) {
+    return {
+      name,
+      state: "fail",
+      detail: `${root} has no origin/HEAD, so no default branch to read the project's settings from or ship to`,
+      fix: "git remote set-head origin --auto",
+    };
+  }
+  let ship: string | undefined;
   try {
-    plans = planGates(root);
+    ship = readProjectConfig(root, branch).ship;
   } catch (error) {
     if (!isRefusal(error)) throw error;
-    return { name: "gates", state: "fail", detail: error.message, fix: error.resolve };
+    return refused(error, name);
+  }
+  return ship === undefined
+    ? {
+        name,
+        state: "fail",
+        detail: `${branch} commits no ship setting, so no order in ${root} can ship`,
+        fix: `dim config set ship default-branch --project, then commit .dim/config.json on ${branch}`,
+      }
+    : { name, state: "ok", detail: `orders ship by ${ship}` };
+}
+
+function gates(root: string): Health {
+  let chosen: readonly GateName[] | null;
+  let plans: GatePlan[];
+  try {
+    chosen = readGateChoice(root);
+    if (chosen === null) return refused(refuseGates("no_gates_chosen", { root }));
+    plans = planGates(root, chosen);
+  } catch (error) {
+    if (!isRefusal(error)) throw error;
+    return refused(error);
   }
   const unmet = plans.filter((plan) => plan.state !== "installed" && plan.state !== "ahead");
   const ahead = plans.filter((plan) => plan.state === "ahead");
-  const unwired = !hooksWired(root);
+  const unwired = runsHooks(chosen) && !hooksWired(root);
   if (unmet.length > 0 || unwired) {
     return {
       name: "gates",
@@ -311,7 +349,11 @@ function gates(root: string): Health {
       fix: "run a dim at least as new as the one that installed them",
     };
   }
-  return { name: "gates", state: "ok", detail: `${root} runs every canonical gate` };
+  return {
+    name: "gates",
+    state: "ok",
+    detail: `${root} runs the gates it chose: ${chosen.join(", ") || "none"}`,
+  };
 }
 
 export function diagnose(db: Database, env: Env, cwd: string): Health[] {
@@ -330,6 +372,6 @@ export function diagnose(db: Database, env: Env, cwd: string): Health[] {
     retention(env),
     spool(env),
     readable ? outcomes(db) : notJudged("outcomes", version),
-    ...(project === null ? [] : [gates(project)]),
+    ...(project === null ? [] : [gates(project), shipping(project)]),
   ];
 }

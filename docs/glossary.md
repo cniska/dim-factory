@@ -32,7 +32,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
 | Slash command | The `/name` a user types into a harness, such as `/clear` or `/dim-factory` |
-| Declared task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/declared-tasks.ts`](../src/declared-tasks.ts)). The check is the task that says a change is sound |
+| Declared task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/declared-tasks.ts`](../src/declared-tasks.ts)) |
+| Check | The declared task that says a change is sound, whatever the project names it, such as `verify` or `test`. The `check` gate runs it before a commit, and the slice gate runs it on a slice's commit |
 
 ## The record
 
@@ -49,5 +50,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Answer | The builder's one reply to a finding: `fixed`, or `refused` with a reason |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |
+| Slice gate | A gate the factory runs on a slice's commit, for what reading the change cannot show |
+| Canonical gates | The gates dim-factory runs on itself, which a project chooses from and installs: `commit-subject` (the subject rule at commit and on push) and `check` (the declared check before a commit). A gate is named for its rule, never for a hook or file it installs |
 | Config | `dim`'s settings, from the user's and the project's JSON layers ([`usage.md`](usage.md#configuration)) |
 | Setting | One named entry of the config |

@@ -6,6 +6,7 @@ import { unreachable } from "./assert";
 import { type ConfigRefusal, refuseConfig } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
+import { GATE_NAMES, type GateName, isGateName } from "./gates-contract";
 import { committedTree } from "./git-committed";
 import { configDir, type Env } from "./paths";
 
@@ -74,12 +75,34 @@ function settingsOf(raw: Record<string, unknown>, file: string): Config {
   return config;
 }
 
+const GATES_KEY = "gates";
+
+type ProjectFile = { readonly config: Config; readonly gates: readonly GateName[] | null };
+
+function parseGates(value: unknown, file: string): readonly GateName[] {
+  const parsed = z.array(z.string()).safeParse(value);
+  const names = parsed.success ? parsed.data : [];
+  if (!parsed.success || !names.every(isGateName) || new Set(names).size !== names.length) {
+    throw refuseConfig("config_invalid", {
+      path: file,
+      at: GATES_KEY,
+      problem: `${GATES_KEY} lists each chosen gate once, from ${GATE_NAMES.join(", ")}`,
+    });
+  }
+  return names.filter(isGateName);
+}
+
+function parseProjectFile(text: string, file: string): ProjectFile {
+  if (text.trim() === "") return { config: {}, gates: null };
+  const { [GATES_KEY]: gates, ...settings } = parseSetting(text, file, {
+    isKey: (key) => isSetting(key) || key === GATES_KEY,
+    refuse: (defect) => refusal(file, defect),
+  });
+  return { config: settingsOf(settings, file), gates: gates === undefined ? null : parseGates(gates, file) };
+}
+
 function parseConfig(text: string, file: string): Config {
-  if (text.trim() === "") return {};
-  return settingsOf(
-    parseSetting(text, file, { isKey: isSetting, refuse: (defect) => refusal(file, defect) }),
-    file,
-  );
+  return parseProjectFile(text, file).config;
 }
 
 function parseModels(value: unknown, file: string): Models {
@@ -124,11 +147,24 @@ export function readConfig(options: { env?: Env; root?: string; at?: string } = 
   return options.root === undefined ? user : { ...user, ...readProjectConfig(options.root, options.at) };
 }
 
+export function readGateChoice(root: string): readonly GateName[] | null {
+  const path = projectConfigPath(root);
+  return parseProjectFile(readJsoncText(path), path).gates;
+}
+
+export function writeGateChoice(root: string, gates: readonly GateName[]): void {
+  writeJsonValue(projectConfigPath(root), GATES_KEY, gates);
+}
+
 export function writeConfigValue(path: string, name: Setting, value: string | undefined): void {
   if (value !== undefined) allowedValue(path, name, value);
+  if (value === undefined && !existsSync(path)) return;
+  writeJsonValue(path, name, value);
+}
+
+function writeJsonValue(path: string, name: string, value: unknown): void {
   const before = readJsoncText(path);
   parseConfig(before, path);
-  if (value === undefined && !existsSync(path)) return;
   const text = before.trim() === "" ? "{}\n" : before;
   const edited = applyEdits(
     text,

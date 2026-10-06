@@ -1,11 +1,22 @@
 import { refuser } from "./coded-error";
 
+export const GATE_NAMES = ["commit-subject", "check"] as const;
+
+export type GateName = (typeof GATE_NAMES)[number];
+
+export function isGateName(name: string): name is GateName {
+  return GATE_NAMES.some((gate) => gate === name);
+}
+
 export const HOOKS_DIR = ".githooks";
 
 export const PREPARE = `git config core.hooksPath ${HOOKS_DIR}`;
 
+const INSTALL = `dim gates install <gate>..., choosing from ${GATE_NAMES.join(", ")}`;
+
 export const refuseGates = refuser<{
   readonly not_a_checkout: { readonly cwd: string };
+  readonly no_gates_chosen: { readonly root: string };
   readonly no_check: { readonly root: string };
   readonly prepare_occupied: { readonly path: string; readonly prepare: string };
   readonly hooks_path_occupied: { readonly root: string; readonly hooksPath: string };
@@ -15,10 +26,14 @@ export const refuseGates = refuser<{
       `${cwd} is not inside a git checkout, so there is no project to install the gates into`,
     resolve: () => "cd into the project's checkout, then dim gates install",
   },
+  no_gates_chosen: {
+    message: ({ root }) => `${root} has chosen no gates, so there is nothing to install or judge`,
+    resolve: () => `stop and ask the owner which gates the project runs, then ${INSTALL}`,
+  },
   no_check: {
-    message: ({ root }) => `${root} declares no check, so no gate can run it before a commit`,
+    message: ({ root }) => `${root} declares no check, so the check gate has nothing to run before a commit`,
     resolve: () =>
-      "stop and hand this error to the owner: the project must declare a verify, check, ci, validate or test task in package.json, mise.toml or a Makefile",
+      "stop and hand this error to the owner: the project must declare a verify, check, ci, validate or test task in package.json, mise.toml or a Makefile, or not choose the check gate",
   },
   prepare_occupied: {
     message: ({ path, prepare }) =>

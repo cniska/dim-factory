@@ -1,6 +1,6 @@
 # Adopting a project
 
-A project is adopted when the factory can run an order in it from added to shipped. Adoption writes nothing into the project beyond one settings file; the project's gates stay its own. The machine is set up once, through [`dim-setup`](../.agents/skills/dim-setup/SKILL.md).
+A project is adopted when the factory can run an order in it from added to shipped. Adoption writes into the project only its settings file and the canonical gates it chooses, which the project commits and owns ([usage](usage.md#install-the-canonical-gates)). The machine is set up once, through [`dim-setup`](../.agents/skills/dim-setup/SKILL.md).
 
 ## What the project needs
 

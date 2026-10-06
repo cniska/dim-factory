@@ -50,7 +50,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-36** — The planner changes nothing. The plan is recorded from what it returns.
 - **FR-37** — The builder reads the approved plan, then writes, verifies and commits each slice in order until every slice is done. A slice's commit is kept on the order's branch only when it passes the gates.
 - **FR-38** — A slice that is not kept leaves the order's branch as it was.
-- **FR-39** — A gate exists only for what reading the change cannot show: that the project's check passed on exactly the committed code, that nothing judging the work was changed, and that the commit sits on the order's branch where the record expects it. A commit that fails a gate is taken off the branch. Everything reading the change can show is left to review.
+- **FR-39** — A slice gate exists only for what reading the change cannot show: that the project's check passed on exactly the committed code, that nothing judging the work was changed, and that the commit sits on the order's branch where the record expects it. A commit that fails a slice gate is taken off the branch. Everything reading the change can show is left to review.
 - **FR-40** — The builder simplifies each slice before committing it, so the code it ships works without known bugs and stays easy to maintain.
 - **FR-41** — Each slice's commit carries its subject line. The finished build returns an answer to each review finding it was given, and the Build artifact, which explains what was built so the owner can read it instead of the diff.
 - **FR-42** — Every commit a worker or the factory makes carries the owner's git identity as its author and committer. A worker's commits are not signed.
@@ -99,7 +99,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-77** — The builder's instructions hold the git rules the builder follows, such as commit subjects and who owns a workspace.
 - **FR-78** — `dim-factory` holds, in a reference it reads when the owner asks for an audit, a read-only sweep of a project's code whose findings become orders.
 - **FR-79** — `dim-factory` holds, in a reference it reads when the owner asks for it, how the standing instructions agents load are added, sharpened or removed.
-- **FR-80** — `dim-factory` is installed for the user, linked to the checkout `dim` runs from, so the factory runs in any project without adding a file to it.
+- **FR-80** — `dim-factory` is installed for the user, linked to the checkout `dim` runs from, so the factory runs in any project; what the factory adds to a project is its gates, what wires them in, and its settings, nothing else.
 - **FR-81** — A project's own skills live in its `.agents/skills` and serve work on that project; the factory never installs them for the user.
 - **NF-1** — Each set of instructions holds only what its job needs and states each instruction once across all of them, sharing one reference where several need the same instruction, and is kept only while the orders that use it show it improves their results.
 
@@ -136,7 +136,14 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **NF-11** — No hook runs a command from a station worker's workspace outside that worker's sandbox.
 - **NF-12** — A station's worker that changes the hooks or the config git uses in the project's checkout fails its station, with the change undone. The planner and reviewer write no git data.
 
-## 9. Acceptance criteria
+## 9. Adopted projects
+
+- **FR-95** — The factory keeps one canonical set of gates, the ones dim-factory runs on itself: the commit-subject rule on every commit and on every pushed commit, the project's check before a commit, and the comment ban. Each runs in the project without `dim`.
+- **FR-96** — Adopting a project chooses which canonical gates it installs and commits the choice as a project setting. Installing writes each chosen gate into the checkout, where the project commits and owns it, and removes a gate no longer chosen. A gate the project cannot run, such as the comment ban in a project with no code it reads, is refused when chosen.
+- **FR-97** — Installing the gates is idempotent: a gate that matches the canonical one is left as it is, and one that has fallen behind is replaced whole. Installing with no choice made is refused, except that a person at a terminal is asked to choose. A project extends a gate with a file of its own beside it, never by editing the installed one.
+- **FR-98** — `dim doctor` changes nothing. Run in a project's checkout, it reports each thing the factory needs of the machine and of that project that does not hold, with what resolves it: no gates chosen, a chosen gate missing, behind the canonical set or changed in place, and a gate present but not chosen among them.
+
+## 10. Acceptance criteria
 
 - **AC-1** — An order added, run, planned, built, reviewed and approved at each station lands on the default branch and is recorded as shipped. (FR-2, FR-12, FR-13, FR-14, FR-19)
 - **AC-2** — An order runs from its first station to shipped with the operator's only actions being running it once and approving or returning artifacts, including when review findings send it back to build. (FR-1, FR-46)
@@ -216,15 +223,18 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-76** — In a project that pins a tool version the operator's environment does not find first, the check and a station's worker each run the pinned version, and the order ships. (FR-10)
 - **AC-77** — A toolchain that cannot be resolved stops the run with a refusal naming its cause, and no station works on the order. (FR-11)
 - **AC-78** — After an order's planner has worked and the record is synced, the planner's session and its tool calls are in the record, joined to the planner by name; a planner whose turn ran a subagent has that subagent's tool calls in the record too, reached through the subagent's parent to the planner. (FR-89)
+- **AC-79** — Adopting a TypeScript project with no gates and choosing every canonical gate installs each, after which a commit with a long subject, a commit whose check fails, and a commented line each fail with no `dim` on the path; choosing the comment ban in a project with no code it reads is refused and nothing is written; installing with no choice made outside a terminal is refused. (FR-80, FR-95, FR-96, FR-97)
+- **AC-80** — Installing the gates again changes nothing; after a canonical gate changes, installing replaces only that gate; choosing fewer gates removes only the dropped one; a gate file the project added beside them is left as it is. (FR-97)
+- **AC-81** — `dim doctor` in a project's checkout with one chosen gate missing, one behind, one changed in place, one present but not chosen, and no shipping setting reports each with what resolves it, and leaves the checkout, its settings and the record unchanged. (FR-98)
 
-## 10. Constraints
+## 11. Constraints
 
 - **C-1** — Shipping lands on the local default branch. Nothing is pushed.
 - **C-2** — The record stays on the owner's machine and works under any harness.
 - **C-3** — Station workers run under Claude Code.
 - **C-4** — The wall's server pushes each change to the open page over a WebSocket; the page never polls.
 
-## 11. Open decisions
+## 12. Open decisions
 
 - How the admitted actions are worked out from the record, within FR-25.
 - How a kept workspace or branch is reported, within FR-24.

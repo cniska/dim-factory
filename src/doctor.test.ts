@@ -269,13 +269,22 @@ describe("doctor in a project's checkout", () => {
     return dir;
   }
 
-  test("reports a project that declares no check", () => {
+  test("reports a project that has chosen no gates", () => {
+    const env = seeded();
+    expect(check(env, "gates", project())).toMatchObject({
+      state: "fail",
+      detail: expect.stringContaining("has chosen no gates"),
+    });
+  });
+
+  test("reports a project that chose the check gate but declares no check", () => {
     const env = seeded();
     const dir = project();
+    installGates(dir, ["check"]);
     rmSync(join(dir, "Makefile"));
     expect(check(env, "gates", dir)).toMatchObject({
       state: "fail",
-      detail: `${dir} declares no check, so no gate can run it before a commit`,
+      detail: `${dir} declares no check, so the check gate has nothing to run before a commit`,
     });
   });
 
@@ -289,25 +298,28 @@ describe("doctor in a project's checkout", () => {
     expect(check(env, "gates", project())).toBeDefined();
   });
 
-  test("reports each gate missing, behind or changed, with the command that installs them", () => {
+  test("reports each chosen gate missing, behind or changed, and one present but not chosen, changing nothing", () => {
     const env = seeded();
     const dir = project();
-    mkdirSync(join(dir, ".githooks"), { recursive: true });
+    installGates(dir, ["commit-subject", "check"]);
+    writeFileSync(join(dir, ".dim", "config.json"), '{ "gates": ["commit-subject"] }\n');
     writeFileSync(join(dir, ".githooks", "commit-msg"), "#!/bin/sh\n# dim-gate:0\nexit 0\n");
+    rmSync(join(dir, ".github"), { recursive: true });
+    execFileSync("git", ["-C", dir, "config", "--unset", "core.hooksPath"]);
     const before = status(dir);
 
     const found = check(env, "gates", join(dir, ".githooks"));
     expect(found).toMatchObject({ state: "fail", fix: `dim gates install, from ${dir}` });
     expect(found?.detail).toBe(
-      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit missing; git hooks do not run from .githooks",
+      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit unchosen; git hooks do not run from .githooks",
     );
     expect(status(dir)).toBe(before);
   });
 
-  test("passes a project that runs every canonical gate", () => {
+  test("passes a project that runs the gates it chose", () => {
     const env = seeded();
     const dir = project();
-    installGates(dir);
-    expect(check(env, "gates", dir)?.state).toBe("ok");
+    installGates(dir, ["commit-subject"]);
+    expect(check(env, "gates", dir)).toMatchObject({ state: "ok" });
   });
 });
