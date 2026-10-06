@@ -42,6 +42,7 @@ export const GATES: Readonly<Record<GateName, readonly GateFile[]>> = {
       mode: 0o644,
       ecosystem: "javascript",
     },
+    { source: "no-comments/.gitattributes", target: `${SCANNER_DIR}/.gitattributes`, mode: 0o644 },
     { source: "no-comments.yml", target: ".github/workflows/no-comments.yml", mode: 0o644 },
   ],
 };

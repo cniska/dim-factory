@@ -50,6 +50,7 @@ function every(state: string): Record<string, string> {
       ".githooks/pre-commit.d/no-comments",
       ".githooks/no-comments/scan.cjs",
       ".githooks/no-comments/javascript.cjs",
+      ".githooks/no-comments/.gitattributes",
       ".github/workflows/no-comments.yml",
     ].map((target) => [target, state]),
   );
@@ -127,6 +128,10 @@ describe("canonical gates", () => {
         version: 2,
         sha256: "cf285be5e9a12d636586771818ff20a5f805c57ed59d3442f3a7fb33f152ce6d",
       },
+      "no-comments/.gitattributes": {
+        version: 1,
+        sha256: "b7338f3d8226562718dad2d9899d48cf2c8167ff9a4c492a69f6352bc9078e22",
+      },
       "check.yml": { version: 1, sha256: "1ceaedac6bf370dcc7782bbae1099d85562d6ab5795fac12fb9939a1a8d570b1" },
       "no-comments.yml": {
         version: 1,
@@ -153,6 +158,25 @@ describe("canonical gates", () => {
     expect(ran.status).toBe(0);
   });
 
+  test("marks the installed scanner bundles as generated, so a forge leaves them out of the project's languages", () => {
+    const dir = repo();
+    installGates(dir, ["no-comments"]);
+    spawnSync("git", ["add", "-A"], { cwd: dir });
+    const attr = spawnSync(
+      "git",
+      [
+        "check-attr",
+        "linguist-generated",
+        ".githooks/no-comments/scan.cjs",
+        ".githooks/no-comments/javascript.cjs",
+      ],
+      { cwd: dir, encoding: "utf8" },
+    );
+    expect(attr.stdout).toBe(
+      ".githooks/no-comments/scan.cjs: linguist-generated: set\n.githooks/no-comments/javascript.cjs: linguist-generated: set\n",
+    );
+  });
+
   test("names each gate for its rule, installing the files it runs from", () => {
     expect(GATE_NAMES).toEqual(["commit-subject", "check", "no-comments"]);
     expect(
@@ -165,6 +189,7 @@ describe("canonical gates", () => {
         ".githooks/pre-commit.d/no-comments",
         ".githooks/no-comments/scan.cjs",
         ".githooks/no-comments/javascript.cjs",
+        ".githooks/no-comments/.gitattributes",
         ".github/workflows/no-comments.yml",
       ],
     });
@@ -221,6 +246,7 @@ describe("gate install", () => {
       ".githooks/pre-commit.d/no-comments",
       ".githooks/no-comments/scan.cjs",
       ".githooks/no-comments/javascript.cjs",
+      ".githooks/no-comments/.gitattributes",
       ".github/workflows/no-comments.yml",
     ]);
     expect(existsSync(join(dir, ".githooks/pre-commit"))).toBe(true);
