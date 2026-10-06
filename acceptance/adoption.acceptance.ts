@@ -12,6 +12,14 @@ const Installed = z.strictObject({
   written: z.array(z.string()),
   removed: z.array(z.string()),
   backups: z.array(z.string()),
+  format: z
+    .strictObject({
+      command: z.string(),
+      exitCode: z.number().nullable(),
+      signal: z.string().nullable(),
+      output: z.string(),
+    })
+    .nullable(),
 });
 
 const Health = z.strictObject({
@@ -96,6 +104,7 @@ describe("adopting a project", () => {
       written: [],
       removed: [],
       backups: [],
+      format: null,
     });
 
     writeFileSync(join(m.repo, ".githooks", "commit-msg"), BEHIND);
