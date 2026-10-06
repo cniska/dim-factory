@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runGroup } from "./process-group";
+import { killProcessGroup, runGroup } from "./process-group";
 
 const dirs: string[] = [];
 
@@ -35,6 +35,23 @@ describe("a process group run", () => {
     expect(ran.timedOut).toBe(true);
     expect(ran.exitCode).toBeNull();
     expect(existsSync(join(dir, "late"))).toBe(false);
+  });
+
+  test("treats a group that is gone, or that macOS refuses because only zombies are left, as nothing to kill", () => {
+    const failWith = (code: string) =>
+      spyOn(process, "kill").mockImplementation(() => {
+        throw Object.assign(new Error(code), { code });
+      });
+    try {
+      failWith("ESRCH");
+      expect(() => killProcessGroup(1)).not.toThrow();
+      failWith("EPERM");
+      expect(() => killProcessGroup(1)).not.toThrow();
+      failWith("EINVAL");
+      expect(() => killProcessGroup(1)).toThrow("EINVAL");
+    } finally {
+      mock.restore();
+    }
   });
 
   test("that ends leaves nothing it started running", async () => {

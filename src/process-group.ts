@@ -6,11 +6,16 @@ export type GroupRun = {
   readonly timedOut: boolean;
 };
 
+function groupGoneOrOnlyZombiesOnMacos(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === "ESRCH" || code === "EPERM";
+}
+
 export function killProcessGroup(leader: number): void {
   try {
     process.kill(-leader, "SIGKILL");
   } catch (error) {
-    if (errorCode(error) !== "ESRCH") throw error;
+    if (!groupGoneOrOnlyZombiesOnMacos(error)) throw error;
   }
 }
 
