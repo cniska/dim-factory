@@ -25,7 +25,7 @@ Opening a card shows that order alone, as a dialog over the board:
 - the order's identity and facts, on screen before the record loads, showing the worker as a card does and the tokens its station workers used, with the status last
 - the **Plan**, **Build** and **Review** artifacts, each a document the owner can read in place of the transcript and diff, its header carrying the tokens that station's worker used, with the approval last
 
-Tokens read `↑ 233k ↓ 4.0k (85% cached)`: everything the model read, cached reads included, then what it wrote, and the share of the reading served from cache. A worker's count covers its subagents, and the operator's own session is left out. They come from the record, so they move only as `dim sync` reads the transcripts.
+Tokens read `↑ 233k ↓ 4.0k (85% cached)`: everything the model read, cached reads included, then what it wrote, and the share of the reading served from cache. A worker's count covers its subagents, and the operator's own session is left out. They come from the record, which takes each message's tokens as a running worker writes its transcript.
 - the order's log in order, each entry its action, station, time and the worker that recorded it, or a faint "factory" for the factory's own entries, with no details
 
 It reads the same record as `dim order show`, which also carries the order's evidence, and follows it as new entries arrive.
@@ -40,4 +40,4 @@ Artifact Markdown renders tables with equal-width columns and alternating row sh
 
 ## Look
 
-Dark, calm and monospace (JetBrains Mono, served from the wall's own port, so no web font is fetched). It never follows a system theme. Grayscale surfaces with accents reserved for roles and states; color never carries meaning alone. A card waiting on approval sits on its own ground, so a column reads as moving or not before its text does. Role colors are bright enough to tell from the body grey at card size and stay clear of the warning amber; the operator, who runs the line rather than working it, is white. No decorative motion. Works fullscreen across a room and in a narrow window. Text too long for its space ends in an ellipsis, never a spill or a wrap the layout did not plan.
+Dark, calm and monospace (JetBrains Mono, served from the wall's own port, so no web font is fetched). It never follows a system theme. Grayscale surfaces with accents reserved for roles and states; color never carries meaning alone. A card waiting on approval sits on its own ground, so a column reads as moving or not before its text does. Role colors are bright enough to tell from the body grey at card size and stay clear of the warning amber; the operator, who runs the line rather than working it, is white. Motion only where a value changes: its digits roll in. Works fullscreen across a room and in a narrow window. Text too long for its space ends in an ellipsis, never a spill or a wrap the layout did not plan.

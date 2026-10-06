@@ -80,6 +80,15 @@ function subagentsUnder(root: string, pattern: string, env: Env): SourceFile[] {
   return specs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+export function liveSessionFiles(transcript: string, env: Env = process.env): SourceFile[] {
+  const dir = dirname(transcript);
+  const session = basename(transcript, ".jsonl");
+  return [
+    ...transcriptsUnder(dir, basename(transcript), env),
+    ...subagentsUnder(dir, `${session}/subagents/*.jsonl`, env),
+  ];
+}
+
 function listClaudeSubagents(env: Env = process.env): SourceFile[] {
   return subagentsUnder(claudeProjectsDir(env), "*/*/subagents/*.jsonl", env);
 }

@@ -63,6 +63,7 @@ import { stationInstructions } from "./station-instructions";
 import { pinnedEnv } from "./toolchain-ops";
 import type { Trace } from "./trace-contract";
 import { traceOf } from "./trace-ops";
+import { followUsage } from "./usage-follow";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
 import type { Workspace } from "./workspace";
@@ -293,12 +294,18 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     }
     const spawned = spawnFor(turn, session, dir, opened);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
-    const served = await serveTurn(
-      { db, turn, workspace, acting, config: guardFile(trace, turn.gitConfig) },
-      spawned,
-      opened.socket,
-      turn.purpose.prompt({ state, workspace: dir, diff: diffOf(turn, head), check: checkOf(turn, dir) }),
-    );
+    const stopFollowing = followUsage(db, WORKER_HARNESS.transcript(opened.home, dir, idOf(session)));
+    let served: TurnServed;
+    try {
+      served = await serveTurn(
+        { db, turn, workspace, acting, config: guardFile(trace, turn.gitConfig) },
+        spawned,
+        opened.socket,
+        turn.purpose.prompt({ state, workspace: dir, diff: diffOf(turn, head), check: checkOf(turn, dir) }),
+      );
+    } finally {
+      stopFollowing();
+    }
     const { stop } = served;
     if (stop?.kind === "fault") throw stop.error;
     const id = idOf(session);
