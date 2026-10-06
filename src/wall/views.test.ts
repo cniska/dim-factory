@@ -209,21 +209,18 @@ describe("an opened order", () => {
 
   test("shows a live station run's worker with its tokens and the revision it is working on", () => {
     expect(itemViewOf(viewOf({ station: "plan", log }), tokensOf, "station").working).toEqual({
-      kind: "station",
       station: "plan",
       worker: { name: "bolt-2", role: "planner", tokens: { input: 300, output: 20, cachedRead: 200 } },
       revision: 3,
     });
   });
 
-  test("shows a live station run with no worker yet as unassigned, and a live ship as shipping", () => {
-    const unassigned = viewOf({ station: "review", log });
-    expect(itemViewOf(unassigned, tokensOf, "station").working).toEqual({
-      kind: "station",
+  test("shows a live station run with no worker yet as unassigned, and nothing for a live ship", () => {
+    expect(itemViewOf(viewOf({ station: "review", log }), tokensOf, "station").working).toEqual({
       station: "review",
       worker: null,
       revision: 1,
     });
-    expect(itemViewOf(viewOf({ log }), tokensOf, "ship").working).toEqual({ kind: "ship" });
+    expect(itemViewOf(viewOf({ log }), tokensOf, "ship").working).toBeNull();
   });
 });

@@ -38,7 +38,6 @@ import {
   type WallSnapshot,
   type WallTokens,
   type WallWorker,
-  type WallWorking,
 } from "./wall-contract";
 import "./styles.css";
 
@@ -58,41 +57,121 @@ function isStopped(order: Pick<WallOrder, "next">): boolean {
   return order.next === "approve";
 }
 
-const WORKING_LABELS: Record<Station | "ship", string> = {
-  plan: "Order is being planned",
-  build: "Order is being built",
-  review: "Order is being reviewed",
-  ship: "Order is being shipped",
+const STATION_VERBS: Record<Station, string> = {
+  plan: "planned",
+  build: "built",
+  review: "reviewed",
 };
 
-function workingLabel(working: WallWorking): string {
-  return WORKING_LABELS[working.kind === "ship" ? "ship" : working.station];
+const REWORK_VERBS: Record<Station, string> = {
+  plan: "replanned",
+  build: "rebuilt",
+  review: "reviewed again",
+};
+
+const ARTIFACT_PROSE = cn(
+  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
+  "[&_a]:text-quiet [&_a]:underline",
+  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
+  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
+);
+
+function Dot() {
+  return (
+    <span className="text-quiet" aria-hidden="true">
+      ·
+    </span>
+  );
 }
 
-function WorkingRow({ working }: { working: Extract<WallWorking, { kind: "station" }> }) {
+function ArtifactFacts({
+  worker,
+  revision,
+  tokens,
+  approved,
+}: {
+  worker: WallWorker | null;
+  revision: number;
+  tokens: WallTokens | null;
+  approved: boolean;
+}) {
   return (
-    <dl className="flex flex-wrap items-center gap-y-[var(--space-xs)] text-quiet [&>div+div]:before:mx-[var(--space-sm)] [&>div+div]:before:text-quiet/60 [&>div+div]:before:content-['·']">
-      <div className="flex min-w-0 max-w-full items-center">
-        <dt className="sr-only">working</dt>
-        <dd className="flex min-w-0 items-center gap-[var(--space-xs)] text-muted-foreground">
-          {working.worker ? <WorkerLabel worker={working.worker} /> : <NoWorkerLabel />}
-        </dd>
-      </div>
-      <div className="flex items-center">
-        <dt className="sr-only">revision</dt>
-        <dd className="text-muted-foreground">
-          {STATION_LABELS[working.station]} revision <Digits value={String(working.revision)} />
-        </dd>
-      </div>
-      {working.worker && hasTokens(working.worker.tokens) ? (
-        <div className="flex items-center">
-          <dt className="sr-only">tokens</dt>
-          <dd>
-            <TokensLabel tokens={working.worker.tokens} />
-          </dd>
-        </div>
+    <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
+      {worker ? <WorkerLabel worker={worker} /> : <NoWorkerLabel />}
+      <Dot />
+      <span>
+        <span className="text-quiet">revision</span> <Digits value={String(revision)} />
+      </span>
+      {tokens && hasTokens(tokens) ? (
+        <>
+          <Dot />
+          <TokensLabel tokens={tokens} />
+        </>
       ) : null}
-    </dl>
+      {approved ? (
+        <>
+          <Dot />
+          <span className="text-good">approved</span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function StationSection({ station, view }: { station: Station; view: WallItemView | null }) {
+  const artifact = view?.[station] ?? null;
+  const working = view?.working?.station === station ? view.working : null;
+  const heading = `item-${station}`;
+  return (
+    <section
+      aria-labelledby={heading}
+      className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+    >
+      <div className="space-y-[var(--space-xs)]">
+        <h3 id={heading} className="text-xl font-medium text-foreground leading-7">
+          {STATION_LABELS[station]}
+        </h3>
+        {working ? (
+          <ArtifactFacts
+            worker={working.worker}
+            revision={working.revision}
+            tokens={working.worker?.tokens ?? null}
+            approved={false}
+          />
+        ) : artifact ? (
+          <ArtifactFacts
+            worker={artifact.worker}
+            revision={artifact.revision}
+            tokens={artifact.tokens}
+            approved={artifact.approved}
+          />
+        ) : null}
+      </div>
+      {working ? (
+        <p aria-live="polite">
+          <span className="shimmering">
+            Order is being {(artifact ? REWORK_VERBS : STATION_VERBS)[station]}.
+          </span>
+        </p>
+      ) : null}
+      {artifact ? (
+        <div className="space-y-[var(--space-lg)]">
+          {working ? (
+            <ArtifactFacts
+              worker={artifact.worker}
+              revision={artifact.revision}
+              tokens={artifact.tokens}
+              approved={artifact.approved}
+            />
+          ) : null}
+          <div className={ARTIFACT_PROSE}>
+            <WallMarkdown>{artifact.body}</WallMarkdown>
+          </div>
+        </div>
+      ) : view && !working ? (
+        <p className="text-quiet">Order has not been {STATION_VERBS[station]}.</p>
+      ) : null}
+    </section>
   );
 }
 
@@ -376,178 +455,21 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                 )}
               >
                 <StatusIcon size={12} strokeWidth={1.8} aria-hidden="true" />
-                <span>{stateLabel(order)}</span>
+                <span className={read.view?.working ? "shimmering" : undefined}>{stateLabel(order)}</span>
               </dd>
             </div>
           </dl>
-          {read.view?.working?.kind === "station" ? <WorkingRow working={read.view.working} /> : null}
         </header>
-
-        {read.view?.working ? (
-          <p className="border-b px-[var(--space-lg)] py-[var(--space-sm)]" aria-live="polite">
-            <span className="shimmering">{workingLabel(read.view.working)}</span>
-          </p>
-        ) : null}
 
         <div className="flex min-h-0 flex-col overflow-y-auto">
           <p className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5">
             {order.description}
           </p>
-          <section
-            aria-labelledby="item-plan"
-            className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
-          >
-            <div className="space-y-[var(--space-xs)]">
-              <h3 id="item-plan" className="text-xl font-medium text-foreground leading-7">
-                Plan
-              </h3>
-              {read.view?.plan ? (
-                <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                  <WorkerLabel worker={read.view.plan.worker} />
-                  <span className="text-quiet" aria-hidden="true">
-                    ·
-                  </span>
-                  <span>
-                    <span className="text-quiet">revision</span> {read.view.plan.revision}
-                  </span>
-                  {hasTokens(read.view.plan.tokens) ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <TokensLabel tokens={read.view.plan.tokens} />
-                    </>
-                  ) : null}
-                  {read.view.plan.approved ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-good">approved</span>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {read.view?.plan ? (
-              <div
-                className={cn(
-                  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
-                  "[&_a]:text-quiet [&_a]:underline",
-                  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
-                )}
-              >
-                <WallMarkdown>{read.view.plan.body}</WallMarkdown>
-              </div>
-            ) : read.view ? (
-              <p className="text-quiet">The order has not been planned.</p>
-            ) : null}
-          </section>
+          <StationSection station="plan" view={read.view} />
           <div className="border-t" aria-hidden="true" />
-          <section
-            aria-labelledby="item-build"
-            className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
-          >
-            <div className="space-y-[var(--space-xs)]">
-              <h3 id="item-build" className="text-xl font-medium text-foreground leading-7">
-                Build
-              </h3>
-              {read.view?.build ? (
-                <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                  <WorkerLabel worker={read.view.build.worker} />
-                  <span className="text-quiet" aria-hidden="true">
-                    ·
-                  </span>
-                  <span>
-                    <span className="text-quiet">revision</span> {read.view.build.revision}
-                  </span>
-                  {hasTokens(read.view.build.tokens) ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <TokensLabel tokens={read.view.build.tokens} />
-                    </>
-                  ) : null}
-                  {read.view.build.approved ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-good">approved</span>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {read.view?.build ? (
-              <div
-                className={cn(
-                  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
-                  "[&_a]:text-quiet [&_a]:underline",
-                  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
-                )}
-              >
-                <WallMarkdown>{read.view.build.body}</WallMarkdown>
-              </div>
-            ) : read.view ? (
-              <p className="text-quiet">The order has not been built.</p>
-            ) : null}
-          </section>
+          <StationSection station="build" view={read.view} />
           <div className="border-t" aria-hidden="true" />
-          <section
-            aria-labelledby="item-review"
-            className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
-          >
-            <div className="space-y-[var(--space-xs)]">
-              <h3 id="item-review" className="text-xl font-medium text-foreground leading-7">
-                Review
-              </h3>
-              {read.view?.review ? (
-                <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                  <WorkerLabel worker={read.view.review.worker} />
-                  <span className="text-quiet" aria-hidden="true">
-                    ·
-                  </span>
-                  <span>
-                    <span className="text-quiet">revision</span> {read.view.review.revision}
-                  </span>
-                  {hasTokens(read.view.review.tokens) ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <TokensLabel tokens={read.view.review.tokens} />
-                    </>
-                  ) : null}
-                  {read.view.review.approved ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-good">approved</span>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {read.view?.review ? (
-              <div
-                className={cn(
-                  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
-                  "[&_a]:text-quiet [&_a]:underline",
-                  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
-                )}
-              >
-                <WallMarkdown>{read.view.review.body}</WallMarkdown>
-              </div>
-            ) : read.view ? (
-              <p className="text-quiet">The order has not been reviewed.</p>
-            ) : null}
-          </section>
+          <StationSection station="review" view={read.view} />
           <div className="border-t" aria-hidden="true" />
           <section
             aria-labelledby="item-log"

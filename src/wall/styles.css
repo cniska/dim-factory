@@ -43,24 +43,28 @@
 
 @keyframes shimmer {
   from {
-    background-position: 100% 0;
+    background-position:
+      -12ch 0,
+      0 0;
   }
   to {
-    background-position: -100% 0;
+    background-position:
+      36ch 0,
+      0 0;
   }
 }
 
 .shimmering {
-  background: linear-gradient(
-      90deg,
-      var(--color-muted-foreground) 40%,
-      var(--color-foreground) 50%,
-      var(--color-muted-foreground) 60%
-    )
-    0 0 / 200% 100%;
+  background-image:
+    linear-gradient(90deg, transparent, var(--color-foreground), transparent),
+    linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground));
+  background-size:
+    12ch 100%,
+    100% 100%;
+  background-repeat: no-repeat;
   background-clip: text;
   color: transparent;
-  animation: shimmer 2s linear infinite;
+  animation: shimmer 960ms linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

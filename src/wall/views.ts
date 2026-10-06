@@ -171,26 +171,15 @@ function returnsOf(log: readonly LogEntry[], station: Station): readonly Returne
 }
 
 function workingOf(view: OrderView, run: RunKind | null, tokensOf: TokensOf): WallWorking | null {
-  switch (run) {
-    case null:
-      return null;
-    case "ship":
-      return { kind: "ship" };
-    case "station": {
-      if (view.next !== "run") return null;
-      const { station } = view;
-      invariant(station !== null, `order ${view.id}'s station run is at a station`);
-      const worker = stationWorker(view, station);
-      return {
-        kind: "station",
-        station,
-        worker: worker === null ? null : { ...worker, tokens: tokensOf(worker.name) },
-        revision: returnsOf(view.log, station).length + 1,
-      };
-    }
-    default:
-      return unreachable(run);
-  }
+  if (run !== "station" || view.next !== "run") return null;
+  const { station } = view;
+  invariant(station !== null, `order ${view.id}'s station run is at a station`);
+  const worker = stationWorker(view, station);
+  return {
+    station,
+    worker: worker === null ? null : { ...worker, tokens: tokensOf(worker.name) },
+    revision: returnsOf(view.log, station).length + 1,
+  };
 }
 
 export function itemViewOf(view: OrderView, tokensOf: TokensOf, run: RunKind | null): WallItemView {

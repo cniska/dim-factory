@@ -64,15 +64,11 @@ export const WallArtifact = z.object({
 });
 export type WallArtifact = z.infer<typeof WallArtifact>;
 
-export const WallWorking = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("station"),
-    station: Station,
-    worker: WallWorker.extend({ tokens: WallTokens }).nullable(),
-    revision: z.number(),
-  }),
-  z.object({ kind: z.literal("ship") }),
-]);
+export const WallWorking = z.object({
+  station: Station,
+  worker: WallWorker.extend({ tokens: WallTokens }).nullable(),
+  revision: z.number(),
+});
 export type WallWorking = z.infer<typeof WallWorking>;
 
 export const WallItemView = z.object({
