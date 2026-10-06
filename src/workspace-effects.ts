@@ -38,6 +38,13 @@ export function resetTo(trace: Trace, dir: string, head: string): void {
   trace.step("workspace_reset", { dir, head }, () => ran(dir, ["reset", "-q", "--hard", head]));
 }
 
+export function restoreTo(trace: Trace, dir: string, branch: string, head: string): void {
+  trace.step("workspace_restore", { dir, head }, () => {
+    ran(dir, [...NO_HOOKS, "checkout", "-q", "-f", "-B", branch, head]);
+    ran(dir, ["clean", "-q", "-f", "-d"]);
+  });
+}
+
 export function rebasing(dir: string): boolean {
   return ["rebase-merge", "rebase-apply"].some((state) =>
     existsSync(ran(dir, ["rev-parse", "--path-format=absolute", "--git-path", state])),

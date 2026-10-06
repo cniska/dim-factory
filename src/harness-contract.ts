@@ -30,9 +30,9 @@ export const HARNESSES: Readonly<Record<HarnessName, Harness>> = {
 };
 
 export type Policy = {
-  readonly kind: "read" | "edit";
   readonly writable: readonly string[];
   readonly denied: readonly string[];
+  readonly unedited: readonly string[];
 };
 
 export type SessionStart =

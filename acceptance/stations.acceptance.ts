@@ -184,23 +184,14 @@ describe("a builder's commits", () => {
 });
 
 describe("what a station worker may change", () => {
-  test("AC-28 a planner's writes to the workspace and the record are refused and its plan comes only from its return", async () => {
+  test("AC-28 a planner's write to the record is refused and its plan comes only from its return", async () => {
     const m = await start({
       script: {
-        planner: [
-          [
-            { act: "write", path: "planted-by-write.txt", content: "x\n" },
-            { act: "sh", command: "echo x > planted-by-shell.txt" },
-            { act: "sh", command: `touch "${RECORD_PROBE}"` },
-            ...planTurn(),
-          ],
-        ],
+        planner: [[{ act: "sh", command: `touch "${RECORD_PROBE}"` }, ...planTurn()]],
       },
     });
     const order = await showOrder(m.operator, await planned(m.operator));
 
-    expect(existsSync(join(order.workspace, "planted-by-write.txt"))).toBe(false);
-    expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
     expect(existsSync(join(m.record, "planted"))).toBe(false);
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
   });
@@ -217,26 +208,73 @@ describe("what a station worker may change", () => {
     expect(results[0]).toContain('"command":"query","ok":true');
   });
 
-  test("AC-33 a reviewer's writes to the workspace and the record are refused", async () => {
+  test("AC-33 a reviewer's write to the record is refused", async () => {
     const m = await start({
       script: {
         ...happyPath(),
-        reviewer: [
-          [
-            { act: "write", path: "planted.txt", content: "x\n" },
-            { act: "sh", command: `echo x > planted-by-shell.txt; touch "${RECORD_PROBE}"` },
-            ...reviewTurn(),
-          ],
-        ],
+        reviewer: [[{ act: "sh", command: `touch "${RECORD_PROBE}"` }, ...reviewTurn()]],
       },
     });
     const id = await built(m.operator);
     await approve(m.operator, id);
 
-    const order = await showOrder(m.operator, id);
-    expect(existsSync(join(order.workspace, "planted.txt"))).toBe(false);
-    expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
     expect(existsSync(join(m.record, "planted"))).toBe(false);
+  });
+
+  const program = (paths: readonly string[], text: string) =>
+    `bun -e ${JSON.stringify(
+      `const fs = require("node:fs"); fs.mkdirSync("node_modules", { recursive: true }); for (const path of ${JSON.stringify(paths)}) fs.appendFileSync(path, ${JSON.stringify(text)});`,
+    )}`;
+
+  const leaveTraces = (who: string): HarnessTurn => [
+    { act: "write", path: `${who}-edited.txt`, content: "by hand\n" },
+    {
+      act: "sh",
+      command: [
+        program(["README.md", `${who}-committed.txt`, `node_modules/${who}-ignored.txt`], `${who}\n`),
+        `git add -A && git commit -qm "chore: ${who} commits"`,
+        program(["README.md", `${who}-untracked.txt`], `${who}\n`),
+      ].join(" && "),
+    },
+  ];
+
+  const toolResults = async (m: Machine, session: string) =>
+    (await transcriptOf(m.operator, session)).flatMap((entry) =>
+      entry.type === "tool_result" ? [entry.output] : [],
+    );
+
+  test("AC-84 a planner's and a reviewer's own edit is refused while the programs they run write and commit, and the next station starts at the recorded head with only ignored files kept", async () => {
+    const m = await start({
+      script: {
+        planner: [[...leaveTraces("planner"), ...planTurn()]],
+        builder: [
+          [
+            {
+              act: "sh",
+              command: 'git status --porcelain > "$TMPDIR/status" && mv "$TMPDIR/status" status.txt',
+            },
+            ...buildTurn(),
+          ],
+        ],
+        reviewer: [[...leaveTraces("reviewer"), ...reviewTurn()]],
+      },
+    });
+    const id = await built(m.operator);
+    const head = m.git(["rev-parse", (await showOrder(m.operator, id)).branch]);
+    await approve(m.operator, id);
+    const order = await showOrder(m.operator, id);
+
+    expect(m.git(["show", `${order.branch}:status.txt`])).toBe("");
+    expect(m.git(["rev-parse", order.branch])).toBe(head);
+    expect(m.commitsOn(order.branch)).not.toContain("chore: planner commits");
+    expect(m.git(["status", "--porcelain"], order.workspace)).toBe("");
+    expect(existsSync(join(order.workspace, "reviewer-untracked.txt"))).toBe(false);
+    expect(existsSync(join(order.workspace, "node_modules", "planner-ignored.txt"))).toBe(true);
+    expect(existsSync(join(order.workspace, "node_modules", "reviewer-ignored.txt"))).toBe(true);
+    for (const role of ["planner", "reviewer"] as const) {
+      const [edited] = await toolResults(m, sessionOf(workerOf(order, role), 0).id);
+      expect(edited).toContain("has been denied");
+    }
   });
 });
 
@@ -447,7 +485,7 @@ describe("slice gates", () => {
     expect(entryOf(order, ACTION.buildReturned).details.artifact).toBe(BUILD_ARTIFACT);
   });
 
-  test("AC-62 a reviewer, which may not edit the workspace, returns a Review artifact it wrote in its temp directory", async () => {
+  test("AC-62 a reviewer returns a Review artifact it wrote in its temp directory", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],

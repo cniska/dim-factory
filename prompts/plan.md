@@ -1,6 +1,6 @@
 # Plan
 
-The brief carries the `order` (its id, title, project and description), the `workspace` to read, `returned` (why the order is back at plan, when it is) and `committed` (the commits already on the order's branch).
+The brief carries the `order` (its id, title, project and description), the `workspace`, where you may run anything and which is put back when your turn ends, `returned` (why the order is back at plan, when it is) and `committed` (the commits already on the order's branch).
 ## Returns
 
 Write the plan as JSON, `{"body": "<the plan>", "slices": [{"title": "…", "outcome": "…"}]}`, to a file under `$TMPDIR` and run `dim plan return <file>`. A reply naming what is missing records nothing: fix the plan and return it again. A second miss fails the station.

@@ -6,7 +6,7 @@ const START: Start = {
   session: { kind: "new", id: "s1" },
   model: "opus",
   instructions: "# Build",
-  policy: { kind: "read", writable: ["/t"], denied: ["/w"] },
+  policy: { writable: ["/t"], denied: ["/w"], unedited: [] },
   socket: "/t/s",
 };
 
@@ -42,31 +42,34 @@ describe("starting Claude Code", () => {
     expect(argv).not.toContain("--plugin-dir");
   });
 
-  test("turns a read policy into default mode and Claude's sandbox, with edits allowed only in the writable directories, only the turn's socket reachable, and local ports bindable for a project's own test servers", () => {
-    const settings = settingsOf(claude.argv(START));
-    expect(settings.sandbox).toEqual({
+  test("runs every worker in acceptEdits under Claude's sandbox, with only the turn's socket reachable and local ports bindable for a project's own test servers", () => {
+    const argv = claude.argv(START);
+    expect(argvMode(argv)).toBe("acceptEdits");
+    expect(settingsOf(argv).sandbox).toEqual({
       enabled: true,
       autoAllowBashIfSandboxed: true,
       filesystem: { allowWrite: ["/t"], denyWrite: ["/w"] },
       network: { allowUnixSockets: ["/t/s"], allowLocalBinding: true },
     });
-    expect(settings.permissions).toEqual({ allow: ["Edit(//t/**)"], deny: ["Edit(//w/**)"] });
-    expect(argvMode(claude.argv(START))).toBe("default");
   });
 
-  test("turns an edit policy into acceptEdits, with the edit tool allowed the writable directories, and Bash and the edit tool both denied the policy's directories", () => {
-    const edit: Start = {
+  test("allows the edit tool the writable directories, and denies Bash and the edit tool both the policy's directories", () => {
+    const argv = claude.argv({
       ...START,
-      policy: { kind: "edit", writable: ["/t"], denied: ["/w/.git/hooks", "/c/.git"] },
-    };
-    const argv = claude.argv(edit);
-    expect(argvMode(argv)).toBe("acceptEdits");
+      policy: { writable: ["/t"], denied: ["/w/.git/hooks", "/c/.git"], unedited: [] },
+    });
     expect(settingsOf(argv).permissions.allow).toEqual(["Edit(//t/**)"]);
     expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/.git/hooks/**)", "Edit(//c/.git/**)"]);
     expect(settingsOf(argv).sandbox.filesystem).toEqual({
       allowWrite: ["/t"],
       denyWrite: ["/w/.git/hooks", "/c/.git"],
     });
+  });
+
+  test("denies the edit tool a directory it may not edit while Bash may still write there", () => {
+    const argv = claude.argv({ ...START, policy: { writable: ["/t"], denied: [], unedited: ["/w"] } });
+    expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/**)"]);
+    expect(settingsOf(argv).sandbox.filesystem).toEqual({ allowWrite: ["/t"], denyWrite: [] });
   });
 });
 

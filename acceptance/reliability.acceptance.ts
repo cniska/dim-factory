@@ -333,18 +333,11 @@ describe("hooks", () => {
     expect(existsSync(join(workspace, "project-hook.marker"))).toBe(false);
   });
 
-  test("AC-61 a planner writes no git data, and a builder's write to the checkout's git hooks is refused", async () => {
+  test("AC-61 a builder's write to the checkout's git hooks is refused", async () => {
     const checkoutGit = (m: Machine) => join(m.repo, ".git");
     const m = await start({ script: {} });
     m.script({
-      planner: [
-        [
-          { act: "sh", command: `touch "${checkoutGit(m)}/probe-$$"` },
-          { act: "sh", command: `git -C "${m.repo}" branch probe-$$` },
-          { act: "sh", command: `git -C "${m.repo}" config probe.planner yes` },
-          ...planTurn([{ title: "One", outcome: "One file." }]),
-        ],
-      ],
+      planner: [planTurn([{ title: "One", outcome: "One file." }])],
       builder: [
         [
           { act: "sh", command: `touch "${checkoutGit(m)}/hooks/probe-$$"` },
@@ -353,17 +346,15 @@ describe("hooks", () => {
         ],
       ],
     });
-    const config = readFileSync(join(checkoutGit(m), "config"), "utf8");
     await built(m.operator);
 
-    const probes = (dir: string) =>
-      Bun.spawnSync(["sh", "-c", `ls "${dir}" | grep -c '^probe-' || true`], { stdout: "pipe" })
-        .stdout.toString()
-        .trim();
-    expect(probes(checkoutGit(m))).toBe("0");
-    expect(probes(join(checkoutGit(m), "hooks"))).toBe("0");
-    expect(m.git(["branch", "--list", "probe-*"])).toBe("");
-    expect(readFileSync(join(checkoutGit(m), "config"), "utf8")).toBe(config);
+    const probes = Bun.spawnSync(
+      ["sh", "-c", `ls "${join(checkoutGit(m), "hooks")}" | grep -c '^probe-' || true`],
+      { stdout: "pipe" },
+    )
+      .stdout.toString()
+      .trim();
+    expect(probes).toBe("0");
   });
 
   test("AC-61 a builder that changes the checkout's git config fails its station, with the config put back", async () => {

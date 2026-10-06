@@ -24,6 +24,11 @@ export function settleWorkspace(trace: Trace, { dir }: Workspace, head: string):
   effects.resetTo(trace, dir, head);
 }
 
+export function restoreWorkspace(trace: Trace, { dir, branch }: Workspace, head: string): void {
+  if (effects.rebasing(dir)) effects.abortRebase(trace, dir);
+  effects.restoreTo(trace, dir, branch, head);
+}
+
 export function rebasing({ dir }: Workspace): boolean {
   return effects.rebasing(dir);
 }

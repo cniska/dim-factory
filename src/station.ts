@@ -59,16 +59,29 @@ export function workerEnv(
   };
 }
 
-type Places = { readonly workspace: string; readonly checkoutGit: string; readonly turn: Turn };
+export type WorkspaceAccess = "edit" | "run" | "read";
 
-export function policyOf(kind: Policy["kind"], { workspace, checkoutGit, turn }: Places): Policy {
-  switch (kind) {
-    case "read":
-      return { kind, writable: [turn.tmp], denied: [workspace, checkoutGit] };
+export function policyOf({
+  access,
+  workspace,
+  checkoutGit,
+  turn,
+}: {
+  readonly access: WorkspaceAccess;
+  readonly workspace: string;
+  readonly checkoutGit: string;
+  readonly turn: Turn;
+}): Policy {
+  const hooks = join(checkoutGit, "hooks");
+  switch (access) {
     case "edit":
-      return { kind, writable: [turn.tmp], denied: [join(checkoutGit, "hooks")] };
+      return { writable: [turn.tmp], denied: [hooks], unedited: [] };
+    case "run":
+      return { writable: [turn.tmp], denied: [hooks], unedited: [workspace] };
+    case "read":
+      return { writable: [turn.tmp], denied: [workspace, checkoutGit], unedited: [] };
     default:
-      return unreachable(kind);
+      return unreachable(access);
   }
 }
 
@@ -87,7 +100,6 @@ type BriefFacts = {
 };
 
 type StationTurn = {
-  readonly policy: Policy["kind"];
   readonly briefsDiff: boolean;
   readonly briefsCheck: boolean;
   readonly brief: (facts: BriefFacts) => Readonly<Record<string, unknown>>;
@@ -95,7 +107,6 @@ type StationTurn = {
 
 const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
   plan: {
-    policy: "read",
     briefsDiff: false,
     briefsCheck: false,
     brief: ({ state, workspace }) => ({
@@ -106,7 +117,6 @@ const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
     }),
   },
   build: {
-    policy: "edit",
     briefsDiff: false,
     briefsCheck: true,
     brief: ({ state, workspace, check }) => ({
@@ -128,7 +138,6 @@ const STATION_TURNS: Readonly<Record<Station, StationTurn>> = {
     }),
   },
   review: {
-    policy: "read",
     briefsDiff: true,
     briefsCheck: false,
     brief: ({ state, workspace, diff }) => {
@@ -162,7 +171,7 @@ export type Answering = "return" | "reply";
 
 export type Purpose = {
   readonly answers: Answering;
-  readonly policy: Policy["kind"];
+  readonly access: WorkspaceAccess;
   readonly briefsDiff: boolean;
   readonly briefsCheck: boolean;
   readonly prompt: (facts: BriefFacts) => string;
@@ -170,10 +179,10 @@ export type Purpose = {
 };
 
 export function stationPurpose(station: Station): Purpose {
-  const { policy, briefsDiff, briefsCheck, brief } = STATION_TURNS[station];
+  const { briefsDiff, briefsCheck, brief } = STATION_TURNS[station];
   return {
     answers: "return",
-    policy,
+    access: station === "build" ? "edit" : "run",
     briefsDiff,
     briefsCheck,
     prompt: (facts) => JSON.stringify(brief(facts)),
@@ -185,7 +194,7 @@ export function stationPurpose(station: Station): Purpose {
 export function messagePurpose(text: string): Purpose {
   return {
     answers: "reply",
-    policy: "read",
+    access: "read",
     briefsDiff: false,
     briefsCheck: false,
     prompt: () => text,

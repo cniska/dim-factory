@@ -45,12 +45,10 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
 
 const editRule = (path: string) => `Edit(${absoluteRule(path)}/**)`;
 
-const permissions = ({ writable, denied }: Policy) => ({
+const permissions = ({ writable, denied, unedited }: Policy) => ({
   allow: writable.map(editRule),
-  deny: denied.map(editRule),
+  deny: [...denied, ...unedited].map(editRule),
 });
-
-const PERMISSION_MODE: Readonly<Record<Policy["kind"], string>> = { read: "default", edit: "acceptEdits" };
 
 function settings({ policy, socket }: Start): string {
   return JSON.stringify({
@@ -77,7 +75,7 @@ export const claude: Adapter = {
     "--model",
     start.model,
     "--permission-mode",
-    PERMISSION_MODE[start.policy.kind],
+    "acceptEdits",
     "--settings",
     settings(start),
     "--setting-sources",

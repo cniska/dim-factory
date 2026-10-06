@@ -24,6 +24,7 @@ export type Steps = {
   readonly branch_delete: Step<{ readonly branch: string }, { readonly kept: boolean }>;
   readonly branch_move: Step<{ readonly repo: string; readonly branch: string; readonly to: string }>;
   readonly workspace_reset: Step<{ readonly dir: string; readonly head: string }>;
+  readonly workspace_restore: Step<{ readonly dir: string; readonly head: string }>;
   readonly rebase_abort: Step<{ readonly dir: string }>;
   readonly rebase: Step<
     { readonly dir: string; readonly onto: string },

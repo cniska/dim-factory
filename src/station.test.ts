@@ -1,7 +1,42 @@
 import { describe, expect, test } from "bun:test";
 import { fold, type OrderState } from "./order";
 import type { Later, LaterEntry } from "./order-contract";
-import { closedTurn, modelOf, type TurnClose } from "./station";
+import { closedTurn, messagePurpose, modelOf, policyOf, stationPurpose, type TurnClose } from "./station";
+
+describe("a station worker's sandbox", () => {
+  const places = {
+    workspace: "/w",
+    checkoutGit: "/c/.git",
+    turn: { dir: "/t", home: "/t/home", tmp: "/t/tmp", socket: "/t/s" },
+  };
+
+  test("lets a building turn edit and write the workspace, with the checkout's git hooks out of reach", () => {
+    expect(policyOf({ access: "edit", ...places })).toEqual({
+      writable: ["/t/tmp"],
+      denied: ["/c/.git/hooks"],
+      unedited: [],
+    });
+  });
+
+  test("lets a planning or reviewing turn's commands write the workspace, but not its edit tool", () => {
+    expect(policyOf({ access: "run", ...places })).toEqual({
+      writable: ["/t/tmp"],
+      denied: ["/c/.git/hooks"],
+      unedited: ["/w"],
+    });
+  });
+
+  test("keeps a message turn from writing the workspace or the checkout's git data", () => {
+    expect(policyOf({ access: "read", ...places }).denied).toEqual(["/w", "/c/.git"]);
+  });
+
+  test("gives the building station edit access, the other stations run access and every message read access", () => {
+    expect(stationPurpose("build").access).toBe("edit");
+    expect(stationPurpose("plan").access).toBe("run");
+    expect(stationPurpose("review").access).toBe("run");
+    expect(messagePurpose("hi").access).toBe("read");
+  });
+});
 
 describe("a station worker's model", () => {
   test("is the one named for its role, else the default, else none", () => {

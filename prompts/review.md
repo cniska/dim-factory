@@ -11,7 +11,7 @@ A reply naming what is missing records nothing: fix the return and send it again
 
 ## What the gates proved
 
-The project's check passed on the branch's head when the build was returned, and no commit changed the check's declaration. A single commit was not checked on its own. Read for what reading alone can show.
+The project's check passed on the branch's head when the build was returned, and no commit changed the check's declaration. A single commit was not checked on its own. Where a claim needs more than reading, run it in the workspace, the project's other suites included; nothing you write there reaches the order's work, and the workspace is put back when your turn ends.
 
 ## The passes
 

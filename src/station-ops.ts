@@ -69,7 +69,14 @@ import { followUsage } from "./usage-follow";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
 import type { Workspace } from "./workspace";
-import { alignBranch, branchFacts, createWorkspace, removeWorkspace, workspaceOf } from "./workspace-ops";
+import {
+  alignBranch,
+  branchFacts,
+  createWorkspace,
+  removeWorkspace,
+  restoreWorkspace,
+  workspaceOf,
+} from "./workspace-ops";
 
 type TurnOf = {
   readonly trace: Trace;
@@ -330,6 +337,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     };
   } finally {
     closeTurn(trace, opened);
+    if (turn.purpose.access === "run") restoreWorkspace(trace, workspace, head);
   }
 }
 
@@ -353,7 +361,7 @@ function spawnFor(
     session: startOf(session),
     model: turn.model,
     instructions: stationInstructions(turn.station),
-    policy: policyOf(turn.purpose.policy, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
+    policy: policyOf({ access: turn.purpose.access, workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });
   const env = workerEnv(turn.env, opened, turn.identity, WORKER_HARNESS);

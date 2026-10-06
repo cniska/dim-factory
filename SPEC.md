@@ -47,7 +47,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-33** — What differs from one order or turn to the next goes in the brief; what is the same for every order goes in the station's instructions; what a worker may or may not do is enforced by how the factory starts it, never asked of it in words.
 - **FR-34** — The factory ships every instruction its workers and its operator follow and depends on no skill of the owner's own.
 - **FR-35** — The planner returns the plan: prose the owner can read, and the slices the builder builds in order. Each slice has a title and its outcome.
-- **FR-36** — The planner changes nothing. The plan is recorded from what it returns.
+- **FR-36** — Nothing the planner writes becomes the order's work. The plan is recorded from what it returns.
 - **FR-37** — The builder reads the approved plan, then writes, verifies and commits each slice in order until every slice is done. A slice's commit is kept on the order's branch only when it passes the gates.
 - **FR-38** — A slice that is not kept leaves the order's branch as it was.
 - **FR-39** — A slice gate exists only for what reading the change cannot show: that nothing judging the work was changed, and that the commit sits on the order's branch where the record expects it. A commit that fails a slice gate is taken off the branch. Everything reading the change can show is left to review.
@@ -55,7 +55,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-41** — Each slice's commit carries its subject line. The finished build returns an answer to each review finding it was given, and the Build artifact, which explains what was built so the owner can read it instead of the diff.
 - **FR-42** — Every commit a worker or the factory makes carries the owner's git identity as its author and committer. A worker's commits are not signed.
 - **FR-43** — A builder's commit runs the project's own git hooks, as a commit in a worktree of the project's checkout would, inside the builder's sandbox.
-- **FR-44** — The reviewer reads the Build artifact and the order's whole diff, and changes nothing. It returns either its findings, each naming its area, file and line, what is wrong, the fix and how serious it is, or the Review artifact, which says whether the diff does what the Build artifact says, which areas it covered, and what it set aside or could not verify.
+- **FR-44** — The reviewer reads the Build artifact and the order's whole diff, and nothing it writes becomes the order's work. It returns either its findings, each naming its area, file and line, what is wrong, the fix and how serious it is, or the Review artifact, which says whether the diff does what the Build artifact says, which areas it covered, and what it set aside or could not verify.
 - **FR-45** — Review covers whether the diff does what the Build artifact says, correctness, tests, architecture, maintainability, docs, security, performance and style.
 - **FR-46** — Review findings send the order back to build. There the builder answers each finding once, `fixed` or `refused`, and commits its fixes through the same gates as a slice. The next review is briefed with those answers. A Review artifact waits for the owner's approval.
 - **FR-47** — When the builder returns an order to plan, slices already committed stay on the order's branch, and the revised plan says which of them stay, change or go.
@@ -134,7 +134,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **NF-9** — Reading the record cannot change it: a query, `dim sql` and the wall fail on any write instead of making it.
 - **NF-10** — A reader refuses a record written by another version of the factory before reading anything from it. `dim doctor` is the exception: it reports the mismatch and how to fix it.
 - **NF-11** — No hook runs a command from a station worker's workspace outside that worker's sandbox.
-- **NF-12** — A station's worker that changes the hooks or the config git uses in the project's checkout fails its station, with the change undone. The planner and reviewer write no git data.
+- **NF-12** — A station's worker that changes the hooks or the config git uses in the project's checkout fails its station, with the change undone.
 
 ## 9. Adopted projects
 
@@ -144,6 +144,8 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-98** — `dim doctor` changes nothing. Run in a project's checkout, it reports each thing the factory needs of the machine and of that project that does not hold, with what resolves it: no gates chosen, a chosen gate missing, behind the canonical set or changed in place, and a gate present but not chosen among them.
 - **FR-99** — A project's check is the declared task its settings name, or the task named `check` where they name none, and its format command likewise with `format`. Adopting a project records the names its own tasks already have rather than renaming them.
 - **FR-100** — A build hands over only once the project's check, run on its branch's head after its definition of done holds, passes without changing the workspace. A check that fails or changes the workspace is recorded with its output and keeps the build with its builder, and is not a missed return.
+- **FR-101** — Every station's worker can run whatever verifies a claim, and the programs it runs may write in its workspace and its temporary directory. Only the builder edits the project's files itself.
+- **FR-102** — Only the builder's commits taken through the gates become the order's work. Every other turn ends with the workspace back at the order's recorded head, keeping only the files the project's git ignores.
 
 ## 10. Acceptance criteria
 
@@ -174,12 +176,12 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-25** — A builder that returns an order to plan after two committed slices leaves both on the branch, and the revised plan's next build keeps, changes or removes them as the plan says. (FR-47)
 - **AC-26** — A planner's return saying the order cannot be planned lets the operator update the order and run it again, and the next plan is briefed with the updated description. An update to a queued order or to a plan awaiting approval is accepted and the next run plans again; an update after the plan is approved is refused, except once the planner has returned the order. (FR-15, FR-16, FR-49)
 - **AC-27** — Every instruction a station worker or the operator follows ships with the factory, and a machine with no personal skills installed runs an order to shipped. (FR-31, FR-34)
-- **AC-28** — A planner's attempt to write to the workspace or the record is refused, and its plan appears in the record only from what it returns. It still reads the record through its turn. (FR-36, FR-66)
+- **AC-28** — A planner's attempt to write to the record is refused, and its plan appears in the record only from what it returns. It still reads the record through its turn. (FR-36, FR-66)
 - **AC-29** — A plan with no slice, a slice commit with no subject line, and a review finding with no file each record nothing and go back to the same worker with what was wrong; a corrected return is accepted, and a second refused return fails the station for the operator. (FR-35, FR-41, FR-44, FR-48)
 - **AC-30** — One build of a plan with several slices commits each slice in order through the gates and returns once, with the Build artifact. (FR-37, FR-41)
 - **AC-31** — A slice that changes the check's definition is refused with the order's branch left as it was, and the order's log holds the refusal naming the refused commit. (FR-37, FR-38, FR-86)
 - **AC-32** — Code more complex than its outcome needs comes back from review as a maintainability finding, and every Review artifact reports which areas it covered. (FR-40, FR-45)
-- **AC-33** — A reviewer's attempt to write to the workspace or the record is refused. Its findings put the order at build in the same run, where a turn that leaves a finding unanswered or answers one twice is refused, and its fixes pass the slice gates. (FR-44, FR-46)
+- **AC-33** — A reviewer's attempt to write to the record is refused. Its findings put the order at build in the same run, where a turn that leaves a finding unanswered or answers one twice is refused, and its fixes pass the slice gates. (FR-44, FR-46)
 - **AC-34** — A worker that is not the operator is refused each operator action, and the order and its record are left unchanged. (FR-26, FR-49)
 - **AC-35** — The operator's attempt to record a plan, a commit or a finding itself is refused. (FR-51)
 - **AC-36** — An owner's `dim order` action from a session that is not the operator's is refused. (FR-52)
@@ -207,8 +209,8 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-58** — A write sent through a reader's connection fails and leaves the database unchanged. (NF-9)
 - **AC-59** — A query, `dim sql`, `dim trace` and the wall, given a record written by an older or newer version of the factory, each refuse it with the same error the writer raises, and leave it unchanged. (NF-9, NF-10)
 - **AC-60** — An edit in a station worker's session, in a workspace that declares a format command, runs nothing, and a Claude worker whose workspace holds a settings file with a hook runs none of it. (NF-11)
-- **AC-61** — A station's worker that may not edit files is denied every write to git data. A builder's write to the checkout's git hooks is refused, and a builder that changes the checkout's git config fails its station with the config put back as it was. (NF-12)
-- **AC-62** — A plan, a build and a review each hand over exactly when their definition of done holds: a build with an uncommitted slice or an unanswered finding does not hand over, and each handed-over artifact waits for approval. A station whose worker may not edit the workspace still hands over its artifact. (FR-48)
+- **AC-61** — A builder's write to the checkout's git hooks is refused, and a builder that changes the checkout's git config fails its station with the config put back as it was. (NF-12)
+- **AC-62** — A plan, a build and a review each hand over exactly when their definition of done holds: a build with an uncommitted slice or an unanswered finding does not hand over, and each handed-over artifact waits for approval. (FR-48)
 - **AC-63** — Every action on a finished order names the session that took it as recorded at that moment; an action sent from a process the factory cannot tie to a session is refused, and no command sets or changes who took an action. (FR-84)
 - **AC-64** — A factory action in an order's log names the factory, the factory version that ran it and the action that caused it: a landing its approval, a refused slice its commit, a replaced session the session that died. (FR-82)
 - **AC-65** — Deleting the trace leaves every order's log and next step unchanged, and `dim trace` follows one order's factory steps while it runs. (FR-87)
@@ -230,6 +232,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-81** — `dim doctor` in a project's checkout with one chosen gate missing, one behind, one changed in place, one present but not chosen, and no shipping setting reports each with what resolves it, and leaves the checkout, its settings and the record unchanged. (FR-98)
 - **AC-82** — An order in a project whose settings name `verify` as its check, while it also declares a failing `check`, is built and judged by `verify`, and its builder's brief names `verify`. (FR-99)
 - **AC-83** — A build whose head fails the project's check, or whose check rewrites files, is refused at its return with the check's output in the log and stays at build without failing the station; once a further commit makes the check pass, the same return hands the build over with the passing check in the log. (FR-86, FR-100)
+- **AC-84** — A planner's and a reviewer's own edit to a project file is refused, while each runs a program that writes tracked, untracked and ignored files in the workspace and commits on the order's branch; the next station starts at the order's recorded head with only the ignored files kept, and neither turn's commit reaches the order's work. (FR-36, FR-44, FR-101, FR-102)
 
 ## 11. Constraints
 
