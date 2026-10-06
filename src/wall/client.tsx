@@ -155,12 +155,14 @@ function OrderCard({
 function TokensLabel({ tokens }: { tokens: WallTokens }) {
   const cached = tokens.input === 0 ? 0 : Math.round((tokens.cachedRead / tokens.input) * 100);
   return (
-    <span className="flex items-center gap-[var(--space-xs)] text-muted-foreground">
+    <span className="flex items-center gap-[var(--space-xs)] tabular-nums text-muted-foreground">
       <ArrowUp size={12} strokeWidth={1.8} aria-label="in" />
-      <span>{formatCompactNumber(tokens.input)}</span>
+      <Digits value={formatCompactNumber(tokens.input)} />
       <ArrowDown size={12} strokeWidth={1.8} aria-label="out" className="ml-[var(--space-xs)]" />
-      <span>{formatCompactNumber(tokens.output)}</span>
-      <span className="text-quiet">({cached}% cached)</span>
+      <Digits value={formatCompactNumber(tokens.output)} />
+      <span className="text-quiet">
+        (<Digits value={String(cached)} />% cached)
+      </span>
     </span>
   );
 }
