@@ -80,6 +80,10 @@ export function setJsoncValue(text: string, path: JSONPath, value: unknown, file
   if (!root || !findNodeAtLocation(root, path)) {
     throw refuseConfig("config_absent", { path: file, at: label });
   }
+  return insertJsoncValue(text, path, value);
+}
+
+export function insertJsoncValue(text: string, path: JSONPath, value: unknown): string {
   return applyEdits(text, modify(text, path, value, { formattingOptions: indentOf(text) }));
 }
 

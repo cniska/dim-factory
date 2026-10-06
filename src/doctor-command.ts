@@ -12,7 +12,7 @@ export const doctorCommand: Command = {
     parseArgs(args, { positionals: [0, 0], flags: [] }, "dim doctor");
     const db = openReadOnly(dbPath(), { forDiagnosis: true });
     try {
-      const checks = diagnose(db, process.env);
+      const checks = diagnose(db, process.env, process.cwd());
       const failing = checks.filter((check) => check.state === "fail").length;
       return new Ran({ checks, failing }, failing === 0 ? 0 : 1);
     } finally {

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const HOOK = resolve(import.meta.dir, "..", ".githooks", "commit-msg");
+const HOOK = resolve(import.meta.dir, "..", "gates", "commit-msg");
 const repo = mkdtempSync(join(tmpdir(), "dim-commit-msg-"));
 Bun.spawnSync(["git", "init", "-q", repo]);
 

@@ -35,7 +35,16 @@ dim skills install
 - Hooks and the skill link are for Claude Code, and are installed and checked only while `claude` is on `PATH`. The `dim-factory` skill links into `~/.claude/skills`. Other harnesses' sessions are read into the record without any hook.
 - `dim doctor` reports missing, stale or retired hooks, database drift and unloaded agents, each with its repair.
 
-A project's gates are its own: its hooks, its tests and its CI, which the factory runs as any contributor does.
+## Install the canonical gates
+
+```sh
+dim gates install   # from the project's checkout
+```
+
+- Writes each canonical gate from [`gates/`](../gates) into the checkout, where the project commits it: the commit-subject hook in `.githooks/` and the `commits.yml` workflow that runs it on every pushed commit.
+- Points `core.hooksPath` at `.githooks`, and adds the same command as a `package.json` `prepare` script so a fresh clone runs the gates. A checkout whose hooks run from elsewhere, or whose `prepare` does something else, is refused before anything is written.
+- Each gate carries `dim-gate:<version>`. A gate at a lower version is replaced; one at the same version with other bytes was changed in place and is moved aside before it is replaced; one at a higher version is left. A project extends a gate with a file of its own beside it.
+- `dim doctor`, run in a checkout, reports each gate that is missing, behind or changed, and hooks that do not run from `.githooks`.
 
 ### Comment purge
 

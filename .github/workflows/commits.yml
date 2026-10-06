@@ -1,0 +1,45 @@
+# dim-gate:1
+name: Commits
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  commits:
+    name: Commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      # A branch's first push reports an all-zero base, which names no commit. Falling
+      # back to the head's parent judges the one commit that certainly arrived, rather
+      # than reporting a clean run over an empty range.
+      - name: Resolve the pushed range
+        id: range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          base="$BASE_SHA"
+          git cat-file -e "$base^{commit}" 2>/dev/null || base="$HEAD_SHA^"
+          echo "range=$base..$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Judge each subject
+        env:
+          RANGE: ${{ steps.range.outputs.range }}
+        run: |
+          for sha in $(git rev-list --no-merges "$RANGE"); do
+            git log -1 --format=%B "$sha" > "$RUNNER_TEMP/message"
+            case "$(head -n 1 "$RUNNER_TEMP/message")" in
+              "fixup! "*) echo "$sha is a fixup left in the range; squash it into the commit it names." >&2; exit 1 ;;
+            esac
+            sh .githooks/commit-msg "$RUNNER_TEMP/message"
+          done

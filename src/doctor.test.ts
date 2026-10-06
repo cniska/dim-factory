@@ -13,6 +13,7 @@ import { SCHEMA_VERSION } from "./db-schema";
 import { diagnose } from "./doctor";
 import { doctorCommand } from "./doctor-command";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
+import { installGates } from "./gates";
 import { wantedHooks } from "./hook-commands";
 import { installHooks } from "./hooks";
 import { agentPlistPath } from "./ingest-launchd";
@@ -43,10 +44,10 @@ function seeded(): Env {
   return env;
 }
 
-function check(env: Env, name: string) {
+function check(env: Env, name: string, cwd = resolveHomeDir(env)) {
   const db = openReadOnly(dbPath(env));
   try {
-    return diagnose(db, env).find((c) => c.name === name);
+    return diagnose(db, env, cwd).find((c) => c.name === name);
   } finally {
     db.close();
   }
@@ -87,7 +88,7 @@ describe("doctor", () => {
 
     const db = openReadOnly(dbPath(env), { forDiagnosis: true });
     try {
-      const checks = diagnose(db, env);
+      const checks = diagnose(db, env, resolveHomeDir(env));
       const named = (name: string) => checks.find((c) => c.name === name);
       expect(named("schema")).toMatchObject({ state: "fail", fix: "dim rebuild" });
       for (const name of ["freshness", "end reasons", "outcomes"]) {
@@ -234,7 +235,7 @@ describe("doctor", () => {
 
     const db = openReadOnly(dbPath(env));
     try {
-      const checks = diagnose(db, env);
+      const checks = diagnose(db, env, resolveHomeDir(env));
       const by = (name: string) => checks.find((c) => c.name === name);
       expect(by("hooks")?.state).toBe("fail");
       expect(by("end reasons")?.detail).toContain("not judged");
@@ -248,7 +249,7 @@ describe("doctor", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const checks = diagnose(db, env);
+      const checks = diagnose(db, env, resolveHomeDir(env));
       expect(checks.length).toBeGreaterThan(5);
       for (const c of checks) {
         expect(c.detail.length, `${c.name} has no detail`).toBeGreaterThan(0);
@@ -257,5 +258,45 @@ describe("doctor", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("doctor in a project's checkout", () => {
+  function project(): string {
+    const dir = newRoot();
+    execFileSync("git", ["init", "-q", dir]);
+    return dir;
+  }
+
+  function status(dir: string): string {
+    return execFileSync("git", ["-C", dir, "status", "--porcelain", "--untracked-files=all"]).toString();
+  }
+
+  test("judges the project's gates only when run inside a checkout", () => {
+    const env = seeded();
+    expect(check(env, "gates")).toBeUndefined();
+    expect(check(env, "gates", project())).toBeDefined();
+  });
+
+  test("reports each gate missing, behind or changed, with the command that installs them", () => {
+    const env = seeded();
+    const dir = project();
+    mkdirSync(join(dir, ".githooks"), { recursive: true });
+    writeFileSync(join(dir, ".githooks", "commit-msg"), "#!/bin/sh\n# dim-gate:0\nexit 0\n");
+    const before = status(dir);
+
+    const found = check(env, "gates", join(dir, ".githooks"));
+    expect(found).toMatchObject({ state: "fail", fix: `dim gates install, from ${dir}` });
+    expect(found?.detail).toBe(
+      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; git hooks do not run from .githooks",
+    );
+    expect(status(dir)).toBe(before);
+  });
+
+  test("passes a project that runs every canonical gate", () => {
+    const env = seeded();
+    const dir = project();
+    installGates(dir);
+    expect(check(env, "gates", dir)?.state).toBe("ok");
   });
 });

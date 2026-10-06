@@ -10,6 +10,7 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   comments: () => import("./comments-command").then((m) => m.commentsCommand),
   hooks: () => import("./hooks-command").then((m) => m.hooksCommand),
   skills: () => import("./skills-command").then((m) => m.skillsCommand),
+  gates: () => import("./gates-command").then((m) => m.gatesCommand),
   agent: () => import("./agent-command").then((m) => m.agentCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
   order: () => import("./order-command").then((m) => m.orderCommand),

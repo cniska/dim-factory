@@ -6,6 +6,8 @@ import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
+import { hooksWired, planGates } from "./gates";
+import { checkoutRoot } from "./git-checkout";
 import { HARNESSES } from "./harness-contract";
 import { installedHarnesses } from "./harness-ops";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
@@ -278,10 +280,38 @@ function outcomes(db: Database): Health {
     : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` };
 }
 
-export function diagnose(db: Database, env: Env): Health[] {
+function gates(root: string): Health {
+  const plans = planGates(root);
+  const unmet = plans.filter((plan) => plan.state !== "installed" && plan.state !== "ahead");
+  const ahead = plans.filter((plan) => plan.state === "ahead");
+  const unwired = !hooksWired(root);
+  if (unmet.length > 0 || unwired) {
+    return {
+      name: "gates",
+      state: "fail",
+      detail: [
+        ...unmet.map((plan) => `${plan.target} ${plan.state}`),
+        ...(unwired ? ["git hooks do not run from .githooks"] : []),
+      ].join("; "),
+      fix: `dim gates install, from ${root}`,
+    };
+  }
+  if (ahead.length > 0) {
+    return {
+      name: "gates",
+      state: "warn",
+      detail: `${ahead.map((plan) => plan.target).join(", ")} ahead of this dim`,
+      fix: "run a dim at least as new as the one that installed them",
+    };
+  }
+  return { name: "gates", state: "ok", detail: `${root} runs every canonical gate` };
+}
+
+export function diagnose(db: Database, env: Env, cwd: string): Health[] {
   const hooks = readHooks(env);
   const version = recordVersion(db);
   const readable = version === SCHEMA_VERSION;
+  const project = checkoutRoot(cwd);
   return [
     dimOnPath(),
     schema(version),
@@ -293,5 +323,6 @@ export function diagnose(db: Database, env: Env): Health[] {
     retention(env),
     spool(env),
     readable ? outcomes(db) : notJudged("outcomes", version),
+    ...(project === null ? [] : [gates(project)]),
   ];
 }
