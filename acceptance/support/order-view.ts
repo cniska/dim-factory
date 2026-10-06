@@ -32,7 +32,6 @@ const stop = <A extends string, C extends string, D extends z.ZodRawShape>(actio
 
 const decision = { station: Station, reason: z.string(), decidedBy: z.enum(["owner", "operator"]) };
 const session = { session: z.string() };
-const dying = { ...session, copied: z.boolean() };
 const tip = { tip: z.string() };
 const exited = { command: z.string(), exitCode: z.number().nullable() };
 const message = { to: z.string(), text: z.string() };
@@ -90,9 +89,9 @@ const LogEntry = z.union([
   entry("message_sent", message),
   stop("message_refused", "not_to_operator", message),
   entry("session_started", { worker: z.string(), session: z.string(), harness: z.literal("claude") }),
-  stop("session_died", "usage_limit", { ...dying, resetsAt: z.string().nullable() }),
-  stop("session_died", "killed", dying),
-  stop("session_died", "resume_failed", dying),
+  stop("session_died", "usage_limit", { ...session, resetsAt: z.string().nullable() }),
+  stop("session_died", "killed", session),
+  stop("session_died", "resume_failed", session),
   stop("station_failed", "no_return", session),
   stop("station_failed", "return_missed", { ...session, missed: z.string() }),
   stop("station_failed", "session_died", session),

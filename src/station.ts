@@ -362,7 +362,6 @@ export type TurnClose = {
   readonly session: string;
   readonly stop: TurnStop | null;
   readonly outcome: Outcome;
-  readonly copied: boolean;
   readonly resumed: boolean;
 };
 
@@ -379,14 +378,10 @@ export type Ended =
 
 type Closed = { readonly ended: Ended; readonly record: readonly Later[] };
 
-function deathOf(
-  session: string,
-  copied: boolean,
-  outcome: Extract<Outcome, { readonly kind: "died" }>,
-): Later {
+function deathOf(session: string, outcome: Extract<Outcome, { readonly kind: "died" }>): Later {
   return outcome.code === "usage_limit"
-    ? { action: "session_died", code: outcome.code, details: { session, copied, resetsAt: outcome.resetsAt } }
-    : { action: "session_died", code: outcome.code, details: { session, copied } };
+    ? { action: "session_died", code: outcome.code, details: { session, resetsAt: outcome.resetsAt } }
+    : { action: "session_died", code: outcome.code, details: { session } };
 }
 
 const failed = (code: "git_config_changed" | "no_return" | "session_died", session: string): Later => ({
@@ -401,7 +396,7 @@ export function closedTurn(
   answers: Answering,
   close: TurnClose,
 ): Closed {
-  const { session, stop, outcome, copied, resumed } = close;
+  const { session, stop, outcome, resumed } = close;
   if (state.status !== "running") return { ended: { end: "closed" }, record: [] };
   if (stop?.kind === "config_changed") {
     const record = answers === "return" ? [failed("git_config_changed", session)] : [];
@@ -416,7 +411,7 @@ export function closedTurn(
   }
   const returned = answers === "return" && !atStation(state, station);
   if (outcome.kind === "died") {
-    const death = deathOf(session, copied, outcome);
+    const death = deathOf(session, outcome);
     if (returned) return { ended: { end: "returned" }, record: [death] };
     if (outcome.code === "resume_failed" && resumed)
       return { ended: { end: "lost", session }, record: [death] };

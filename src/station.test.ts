@@ -91,7 +91,6 @@ const close = (over: Partial<TurnClose> = {}): TurnClose => ({
   session: "s1",
   stop: null,
   outcome: { kind: "finished", result: "done" },
-  copied: true,
   resumed: false,
   ...over,
 });
@@ -125,7 +124,7 @@ describe("how a turn ends", () => {
     });
     expect(closedTurn(planReturned, "plan", "return", close({ outcome: died("killed") }))).toEqual({
       ended: { end: "returned" },
-      record: [{ action: "session_died", code: "killed", details: { session: "s1", copied: true } }],
+      record: [{ action: "session_died", code: "killed", details: { session: "s1" } }],
     });
   });
 
@@ -142,13 +141,13 @@ describe("how a turn ends", () => {
         closedTurn(atPlan, "plan", answers, close({ outcome: died("resume_failed"), resumed: true })),
       ).toEqual({
         ended: { end: "lost", session: "s1" },
-        record: [{ action: "session_died", code: "resume_failed", details: { session: "s1", copied: true } }],
+        record: [{ action: "session_died", code: "resume_failed", details: { session: "s1" } }],
       });
     }
   });
 
   test("a session that dies fails a station turn, and only ends a message turn", () => {
-    const death: Later = { action: "session_died", code: "killed", details: { session: "s1", copied: true } };
+    const death: Later = { action: "session_died", code: "killed", details: { session: "s1" } };
     expect(closedTurn(atPlan, "plan", "return", close({ outcome: died("killed") })).record).toEqual([
       death,
       { action: "station_failed", code: "session_died", details: { session: "s1" } },

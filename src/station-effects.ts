@@ -8,9 +8,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { Glob } from "bun";
-import { invariant } from "./assert";
 import type { Turn } from "./station";
 import type { Trace } from "./trace-contract";
 
@@ -147,17 +146,4 @@ export function copySession(
 
 export function sessionWritten(transcript: string): boolean {
   return existsSync(transcript);
-}
-
-export function sessionHeld(sessions: string, session: string): boolean {
-  return existsSync(copyOf(sessions, session));
-}
-
-export function restoreSession(trace: Trace, sessions: string, session: string, transcript: string): void {
-  if (existsSync(transcript)) return;
-  invariant(sessionHeld(sessions, session), `the factory holds the copy of session ${session} it recorded`);
-  trace.step("session_restore", { session }, () => {
-    mkdirSync(dirname(transcript), { recursive: true });
-    copyFileSync(copyOf(sessions, session), transcript);
-  });
 }

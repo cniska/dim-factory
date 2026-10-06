@@ -330,9 +330,9 @@ describe("an order's state, folded from its log", () => {
     const died = state(...planned, approve("plan"), {
       action: "session_died",
       code: "usage_limit",
-      details: { session: "s-builder", copied: true, resetsAt: "2026-10-01T00:00:00Z" },
+      details: { session: "s-builder", resetsAt: "2026-10-01T00:00:00Z" },
     });
-    expect(died.died).toEqual([{ session: "s-builder", code: "usage_limit", copied: true }]);
+    expect(died.died).toEqual([{ session: "s-builder", code: "usage_limit" }]);
     expect(at(died)).toEqual(["build", "run"]);
   });
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type ClaudeHooks, fireHooksSync, mergeHooks, settingsHooks } from "./claude-hooks";
@@ -31,7 +31,6 @@ import { type Dim, isWorkerAct, workerCommand } from "./worker-acts";
 
 type Flags = {
   readonly resume: string | null;
-  readonly fork: boolean;
   readonly sessionId: string | null;
   readonly model: string | null;
   readonly instructions: string | null;
@@ -44,7 +43,6 @@ type Flags = {
 
 const NO_FLAGS: Flags = {
   resume: null,
-  fork: false,
   sessionId: null,
   model: null,
   instructions: null,
@@ -68,12 +66,11 @@ function permissionMode(value: string): PermissionMode {
   return mode;
 }
 
-type Switch = "-p" | "--verbose" | "--fork-session";
+type Switch = "-p" | "--verbose";
 
 const SWITCHES: Readonly<Record<Switch, (flags: Flags) => Flags>> = {
   "-p": (flags) => flags,
   "--verbose": (flags) => flags,
-  "--fork-session": (flags) => ({ ...flags, fork: true }),
 };
 
 type Valued =
@@ -162,11 +159,9 @@ if (flags.resume !== null && !existsSync(transcriptPath(home, cwd, flags.resume)
   refuse(`No conversation found with session ID: ${flags.resume}`);
 }
 
-const sessionId =
-  flags.resume !== null && !flags.fork ? flags.resume : (flags.sessionId ?? crypto.randomUUID());
+const sessionId = flags.resume ?? flags.sessionId ?? crypto.randomUUID();
 const transcript = transcriptPath(home, cwd, sessionId);
 mkdirSync(dirname(transcript), { recursive: true });
-if (flags.resume !== null && flags.fork) copyFileSync(transcriptPath(home, cwd, flags.resume), transcript);
 const history = readTranscript(transcript);
 
 const role =
@@ -202,7 +197,6 @@ const invocation: Invocation = {
   turn,
   sessionId,
   resumed: flags.resume,
-  forked: flags.fork,
   model: flags.model,
   instructions: flags.instructions,
   prompt: flags.prompt,

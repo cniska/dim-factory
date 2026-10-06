@@ -15,8 +15,6 @@ function sessionFlags(session: SessionStart): readonly string[] {
       return ["--session-id", session.id];
     case "resume":
       return ["--resume", session.id];
-    case "fork":
-      return ["--resume", session.from, "--fork-session", "--session-id", session.id];
   }
 }
 

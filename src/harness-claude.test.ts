@@ -26,16 +26,6 @@ describe("starting Claude Code", () => {
     ]);
   });
 
-  test("replaces a dead session by forking its transcript under the new session's id", () => {
-    expect(claude.argv({ ...START, session: { kind: "fork", id: "s2", from: "s1" } }).slice(-5)).toEqual([
-      "--resume",
-      "s1",
-      "--fork-session",
-      "--session-id",
-      "s2",
-    ]);
-  });
-
   test("gives the worker its station's instructions in the system prompt and loads no plugin", () => {
     const argv = claude.argv(START);
     expect(argv[argv.indexOf("--append-system-prompt") + 1]).toBe("# Build");
@@ -120,12 +110,8 @@ describe("how a Claude Code session ended", () => {
     expect(claude.outcome(ended([INIT], null), NEW)).toEqual({ kind: "died", code: "killed" });
   });
 
-  test("a resume or fork that never started its session failed", () => {
+  test("a resume that never started its session failed", () => {
     expect(claude.outcome(ended([], 1), RESUME)).toEqual({ kind: "died", code: "resume_failed" });
-    expect(claude.outcome(ended([], 1), { kind: "fork", id: "s2", from: "s1" })).toEqual({
-      kind: "died",
-      code: "resume_failed",
-    });
     expect(claude.outcome(ended([], 1), NEW)).toEqual({ kind: "died", code: "killed" });
   });
 });

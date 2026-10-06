@@ -16,7 +16,6 @@ import {
   runOrder,
   shipThrough,
   showOrder,
-  transcriptOf,
   updateOrder,
 } from "./support/operator-acts";
 import { actions, entriesOf, entryOf, OrderView, sessionOf, workerOf } from "./support/order-view";
@@ -143,7 +142,7 @@ describe("station workers", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("AC-38 a message to a worker whose session file is lost is answered by a new session holding its context", async () => {
+  test("AC-38 a message to a worker whose session file is lost is answered by a new session", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -305,7 +304,7 @@ describe("station workers", () => {
 });
 
 describe("a session that dies", () => {
-  test("AC-38 a builder whose session hit a usage limit carries on in a new session holding the dead one's context", async () => {
+  test("AC-38 a builder whose session hit a usage limit carries on in a new session that starts from the brief", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -323,14 +322,14 @@ describe("a session that dies", () => {
     const id = await planned(m.operator);
     expect(refusal(await approve(m.operator, id)).code).toBeString();
     const dead = m.invocation("builder", 0);
-    const heldWhenItDied = await transcriptOf(m.operator, dead.sessionId);
 
     resultOf(await runOrder(m.operator, id));
 
     expect(m.invocations("builder")).toHaveLength(2);
     const successor = m.invocation("builder", 1);
     expect(successor.sessionId).not.toBe(dead.sessionId);
-    expect(successor.history.slice(0, heldWhenItDied.length)).toEqual([...heldWhenItDied]);
+    expect(successor.resumed).toBeNull();
+    expect(successor.history).toEqual([]);
     const order = await showOrder(m.operator, id);
     const builder = workerOf(order, "builder");
     expect(builder.sessions).toHaveLength(2);
@@ -341,7 +340,7 @@ describe("a session that dies", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("AC-38 a builder whose session file is lost carries on in a new session holding the lost one's context", async () => {
+  test("AC-38 a builder whose session file is lost carries on in a new session that starts from the brief", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -355,7 +354,6 @@ describe("a session that dies", () => {
     const id = await planned(m.operator);
     expect(refusal(await approve(m.operator, id)).code).toBeString();
     const first = m.invocation("builder", 0);
-    const heldBeforeItWasLost = await transcriptOf(m.operator, first.sessionId);
     rmSync(transcriptPath(first.home, first.cwd, first.sessionId));
 
     resultOf(await runOrder(m.operator, id));
@@ -363,7 +361,8 @@ describe("a session that dies", () => {
     const builders = m.invocations("builder");
     const successor = m.invocation("builder", builders.length - 1);
     expect(successor.sessionId).not.toBe(first.sessionId);
-    expect(successor.history.slice(0, heldBeforeItWasLost.length)).toEqual([...heldBeforeItWasLost]);
+    expect(successor.resumed).toBeNull();
+    expect(successor.history).toEqual([]);
     const builder = workerOf(await showOrder(m.operator, id), "builder");
     expect(builder.sessions).toHaveLength(2);
     expect(sessionOf(builder, 0).died?.code).toBeString();

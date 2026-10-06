@@ -50,7 +50,6 @@ export type Steps = {
   readonly harness_wait: Step<{ readonly harness: number }, { readonly exitCode: number | null }>;
   readonly harness_kill: Step<{ readonly harness: number }>;
   readonly session_copy: Step<{ readonly session: string }>;
-  readonly session_restore: Step<{ readonly session: string }>;
   readonly config_check: Step<{ readonly path: string }, { readonly restored: boolean }>;
 };
 

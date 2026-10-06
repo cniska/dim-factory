@@ -38,8 +38,7 @@ export type Policy = {
 
 export type SessionStart =
   | { readonly kind: "new"; readonly id: string }
-  | { readonly kind: "resume"; readonly id: string }
-  | { readonly kind: "fork"; readonly id: string; readonly from: string };
+  | { readonly kind: "resume"; readonly id: string };
 
 export type Outcome =
   | { readonly kind: "finished"; readonly result: string | null }

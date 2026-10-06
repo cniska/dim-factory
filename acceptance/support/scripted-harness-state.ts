@@ -12,7 +12,6 @@ const Invocation = z.strictObject({
   turn: z.number(),
   sessionId: z.string(),
   resumed: z.string().nullable(),
-  forked: z.boolean(),
   model: z.string().nullable(),
   instructions: z.string().nullable(),
   prompt: z.string(),

@@ -57,9 +57,7 @@ import {
   guardFile,
   listen,
   openTurn,
-  restoreSession,
   send,
-  sessionHeld,
   sessionWritten,
 } from "./station-effects";
 import { stationInstructions } from "./station-instructions";
@@ -97,29 +95,20 @@ type TurnOf = {
 
 type SessionOf =
   | { readonly kind: "new"; readonly id: string }
-  | { readonly kind: "fork"; readonly id: string; readonly from: string }
   | { readonly kind: "resume"; readonly record: WorkerSession };
 
 function sessionOf(sessions: readonly WorkerSession[], died: readonly Death[]): SessionOf {
   const current = sessions.at(-1);
-  const fresh = { kind: "new", id: crypto.randomUUID() } as const;
-  if (current === undefined) return fresh;
-  const death = died.find((one) => one.session === current.id);
-  if (death === undefined) return { kind: "resume", record: current };
-  return death.copied ? { kind: "fork", id: crypto.randomUUID(), from: current.id } : fresh;
+  if (current === undefined || died.some((one) => one.session === current.id)) {
+    return { kind: "new", id: crypto.randomUUID() };
+  }
+  return { kind: "resume", record: current };
 }
 
 const idOf = (session: SessionOf) => (session.kind === "resume" ? session.record.id : session.id);
 
 function startOf(session: SessionOf): SessionStart {
-  switch (session.kind) {
-    case "new":
-      return { kind: "new", id: session.id };
-    case "fork":
-      return { kind: "fork", id: session.id, from: session.from };
-    case "resume":
-      return { kind: "resume", id: session.record.id };
-  }
+  return session.kind === "resume" ? { kind: "resume", id: session.record.id } : session;
 }
 
 const byFactory = (turn: TurnOf): WorkBy => ({ kind: "factory", cause: turn.cause });
@@ -303,9 +292,6 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   installDependencies(db, turn, dir);
   const opened = openTurn(trace, workerHomeDir(worker.name));
   try {
-    if (session.kind === "fork") {
-      restoreSession(trace, copies, session.from, WORKER_HARNESS.transcript(opened.home, dir, session.from));
-    }
     const usage = followUsage(db, WORKER_HARNESS.transcript(opened.home, dir, idOf(session)));
     const spawned = spawnFor(turn, session, dir, opened, usage.heard);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
@@ -333,7 +319,6 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
       session: id,
       stop,
       outcome,
-      copied: sessionHeld(copies, id),
       resumed: session.kind === "resume",
     };
   } finally {
@@ -412,7 +397,7 @@ async function turnAt(db: Database, turn: TurnOf): Promise<string | null> {
   const first = settleTurn(db, turn, await runTurn(db, turn));
   const ended = first.end === "lost" ? settleTurn(db, turn, await runTurn(db, turn)) : first;
   const { order, station } = turn;
-  invariant(ended.end !== "lost", `order ${order}'s replacement session is a fork, never a resume`);
+  invariant(ended.end !== "lost", `order ${order}'s replacement session is new, never a resume`);
   switch (ended.end) {
     case "returned":
       return null;

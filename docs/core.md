@@ -48,7 +48,7 @@ A turn resumes or replaces the worker's session, spawns the harness with a brief
 
 - **A station turn** starts from the station's brief: JSON with fixed keys holding facts and naming the station's skill ([`src/station.ts`](../src/station.ts) `briefAt`). It ends when the worker's return meets the station's definition of done; a return that misses it twice fails the station.
 - **A message turn** starts from the operator's message, may only read, and its final text is the reply.
-- **A dead session** is replaced by forking the factory's copy of its transcript, so the new session holds everything the old one did.
+- **A dead session** is replaced by a new one that starts from the station's brief, since its conversation would be re-read on every call while the record already holds what it did.
 
 ## Starting a worker
 

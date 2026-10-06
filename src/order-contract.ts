@@ -181,7 +181,6 @@ const stop = <A extends string, C extends string, D extends z.ZodRawShape>(actio
   z.object({ action: z.literal(action), code: z.literal(code), details: z.object(details) });
 
 const session = { session: z.string() };
-const dying = { ...session, copied: z.boolean() };
 const tip = { tip: z.string() };
 const exited = { command: z.string(), exitCode: z.number().int().nullable() };
 const decision = { station: Station, reason: text, decidedBy: Decider };
@@ -245,9 +244,9 @@ export const Later = z.union([
   stop("message_refused", "not_to_operator", message),
   entry("session_started", { worker: z.string(), session: z.string(), harness: HarnessName }),
   z.discriminatedUnion("code", [
-    stop("session_died", "usage_limit", { ...dying, resetsAt: z.string().nullable() }),
-    stop("session_died", "killed", dying),
-    stop("session_died", "resume_failed", dying),
+    stop("session_died", "usage_limit", { ...session, resetsAt: z.string().nullable() }),
+    stop("session_died", "killed", session),
+    stop("session_died", "resume_failed", session),
   ]),
   z.discriminatedUnion("code", [
     stop("station_failed", "no_return", session),
