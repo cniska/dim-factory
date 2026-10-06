@@ -58,7 +58,7 @@ function settings({ policy, socket }: Start): string {
       enabled: true,
       autoAllowBashIfSandboxed: true,
       filesystem: { allowWrite: policy.writable, denyWrite: policy.denied },
-      network: { allowUnixSockets: [socket] },
+      network: { allowUnixSockets: [socket], allowLocalBinding: true },
     },
     permissions: permissions(policy),
   });

@@ -42,13 +42,13 @@ describe("starting Claude Code", () => {
     expect(argv).not.toContain("--plugin-dir");
   });
 
-  test("turns a read policy into default mode and Claude's sandbox, with edits allowed only in the writable directories and only the turn's socket reachable", () => {
+  test("turns a read policy into default mode and Claude's sandbox, with edits allowed only in the writable directories, only the turn's socket reachable, and local ports bindable for a project's own test servers", () => {
     const settings = settingsOf(claude.argv(START));
     expect(settings.sandbox).toEqual({
       enabled: true,
       autoAllowBashIfSandboxed: true,
       filesystem: { allowWrite: ["/t"], denyWrite: ["/w"] },
-      network: { allowUnixSockets: ["/t/s"] },
+      network: { allowUnixSockets: ["/t/s"], allowLocalBinding: true },
     });
     expect(settings.permissions).toEqual({ allow: ["Edit(//t/**)"], deny: ["Edit(//w/**)"] });
     expect(argvMode(claude.argv(START))).toBe("default");

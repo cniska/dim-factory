@@ -57,7 +57,7 @@ A turn resumes or replaces the worker's session, spawns the harness with a brief
 - **Its own `HOME`**, so nothing of the owner's home or settings reaches it.
 - **Its station's instructions** in its system prompt, through `--append-system-prompt`.
 - **A listed environment** ([`src/station.ts`](../src/station.ts) `workerEnv`): the owner's git identity, its own turn's temp directory (passed as `CLAUDE_CODE_TMPDIR` too, since Claude's sandboxed Bash takes `$TMPDIR` from it), and only the sign-in its harness needs.
-- **A sandbox**: the builder writes its workspace and turn directory; the planner and reviewer write only the turn directory. The record, the factory and every harness config are out of reach. The checkout's git hooks are denied, and a changed git config is put back and fails the station.
+- **A sandbox**: the builder writes its workspace and turn directory; the planner and reviewer write only the turn directory. The record, the factory and every harness config are out of reach. The network is closed apart from the turn's socket, and a worker may bind local ports so a project's own test servers run. The checkout's git hooks are denied, and a changed git config is put back and fails the station.
 - **The model** its role's entry in the user's `models` setting names.
 
 ## Instructions
