@@ -322,6 +322,14 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                 </dd>
               </div>
             ) : null}
+            {read.view && hasTokens(read.view.tokens) ? (
+              <div className="flex items-center">
+                <dt className="sr-only">tokens</dt>
+                <dd>
+                  <TokensLabel tokens={read.view.tokens} />
+                </dd>
+              </div>
+            ) : null}
             <div className="flex items-center">
               <dt className="sr-only">status</dt>
               <dd
@@ -339,14 +347,6 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                 <span className={isWorking(order) ? "breathing" : undefined}>{stateLabel(order)}</span>
               </dd>
             </div>
-            {read.view && hasTokens(read.view.tokens) ? (
-              <div className="flex items-center">
-                <dt className="sr-only">tokens</dt>
-                <dd>
-                  <TokensLabel tokens={read.view.tokens} />
-                </dd>
-              </div>
-            ) : null}
           </dl>
         </header>
 
@@ -371,20 +371,20 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                   <span>
                     <span className="text-quiet">revision</span> {read.view.plan.revision}
                   </span>
-                  {read.view.plan.approved ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-good">approved</span>
-                    </>
-                  ) : null}
                   {hasTokens(read.view.plan.tokens) ? (
                     <>
                       <span className="text-quiet" aria-hidden="true">
                         ·
                       </span>
                       <TokensLabel tokens={read.view.plan.tokens} />
+                    </>
+                  ) : null}
+                  {read.view.plan.approved ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-good">approved</span>
                     </>
                   ) : null}
                 </div>
@@ -423,20 +423,20 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                   <span>
                     <span className="text-quiet">revision</span> {read.view.build.revision}
                   </span>
-                  {read.view.build.approved ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-good">approved</span>
-                    </>
-                  ) : null}
                   {hasTokens(read.view.build.tokens) ? (
                     <>
                       <span className="text-quiet" aria-hidden="true">
                         ·
                       </span>
                       <TokensLabel tokens={read.view.build.tokens} />
+                    </>
+                  ) : null}
+                  {read.view.build.approved ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-good">approved</span>
                     </>
                   ) : null}
                 </div>
@@ -475,20 +475,20 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                   <span>
                     <span className="text-quiet">revision</span> {read.view.review.revision}
                   </span>
-                  {read.view.review.approved ? (
-                    <>
-                      <span className="text-quiet" aria-hidden="true">
-                        ·
-                      </span>
-                      <span className="text-good">approved</span>
-                    </>
-                  ) : null}
                   {hasTokens(read.view.review.tokens) ? (
                     <>
                       <span className="text-quiet" aria-hidden="true">
                         ·
                       </span>
                       <TokensLabel tokens={read.view.review.tokens} />
+                    </>
+                  ) : null}
+                  {read.view.review.approved ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-good">approved</span>
                     </>
                   ) : null}
                 </div>

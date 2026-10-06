@@ -22,8 +22,8 @@ Three columns — **Queued**, **Running**, **Shipped** — answer where each ord
 
 Opening a card shows that order alone, as a dialog over the board:
 
-- the order's identity and facts, on screen before the record loads, showing the worker as a card does, and last the tokens its station workers used
-- the **Plan**, **Build** and **Review** artifacts, each a document the owner can read in place of the transcript and diff, its header ending in the tokens that station's worker used
+- the order's identity and facts, on screen before the record loads, showing the worker as a card does and the tokens its station workers used, with the status last
+- the **Plan**, **Build** and **Review** artifacts, each a document the owner can read in place of the transcript and diff, its header carrying the tokens that station's worker used, with the approval last
 
 Tokens read `↑ 233k ↓ 4.0k (85% cached)`: everything the model read, cached reads included, then what it wrote, and the share of the reading served from cache. A worker's count covers its subagents, and the operator's own session is left out. They come from the record, so they move only as `dim sync` reads the transcripts.
 - the order's log in order, each entry its action, station, time and the worker that recorded it, or a faint "factory" for the factory's own entries, with no details
