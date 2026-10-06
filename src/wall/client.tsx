@@ -160,7 +160,6 @@ function TokensLabel({ tokens }: { tokens: WallTokens }) {
       <span>{formatCompactNumber(tokens.input)}</span>
       <ArrowDown size={12} strokeWidth={1.8} aria-label="out" className="ml-[var(--space-xs)]" />
       <span>{formatCompactNumber(tokens.output)}</span>
-      <span className="text-quiet">tokens</span>
       <span className="text-quiet">({cached}% cached)</span>
     </span>
   );
