@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { applyEdits, modify } from "jsonc-parser";
+import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { z } from "zod";
 import { unreachable } from "./assert";
 import {
@@ -132,8 +132,8 @@ export function readGateChoice(root: string): readonly GateName[] | null {
   return gates === undefined ? null : parseGates(gates, path);
 }
 
-export function writeGateChoice(root: string, gates: readonly GateName[]): void {
-  writeJsonValue(projectConfigPath(root), "project", [GATES_KEY], gates);
+export function writeGateChoice(root: string, gates: readonly GateName[]): boolean {
+  return writeJsonValue(projectConfigPath(root), "project", [GATES_KEY], gates);
 }
 
 function sectionOf(path: string, layer: Layer, section: string): object {
@@ -141,7 +141,12 @@ function sectionOf(path: string, layer: Layer, section: string): object {
   return typeof value === "object" && value !== null ? value : {};
 }
 
-export function writeConfigValue(path: string, layer: Layer, key: string, value: string | undefined): void {
+export function writeConfigValue(
+  path: string,
+  layer: Layer,
+  key: string,
+  value: string | undefined,
+): boolean {
   const setting = SETTING_KEYS[key];
   if (setting === undefined) {
     throw refuseConfig("config_invalid", {
@@ -174,20 +179,27 @@ export function writeConfigValue(path: string, layer: Layer, key: string, value:
     section !== undefined &&
     entry !== undefined &&
     Object.keys(sectionOf(path, layer, section)).every((name) => name === entry);
-  writeJsonValue(path, layer, emptied ? [section] : keys, value);
+  return writeJsonValue(path, layer, emptied ? [section] : keys, value);
 }
 
-function writeJsonValue(path: string, layer: Layer, keys: readonly string[], value: unknown): void {
+function valueAt(text: string, keys: readonly string[]): unknown {
+  const root = parseTree(text, [], { allowTrailingComma: true });
+  const node = root && findNodeAtLocation(root, [...keys]);
+  return node === undefined ? undefined : getNodeValue(node);
+}
+
+function writeJsonValue(path: string, layer: Layer, keys: readonly string[], value: unknown): boolean {
   const before = readJsoncText(path);
   parseLayer(before, path, layer);
+  if (JSON.stringify(valueAt(before, keys)) === JSON.stringify(value)) return false;
   const text = before.trim() === "" ? "{}\n" : before;
   const edited = applyEdits(
     text,
     modify(text, [...keys], value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
   );
   const written = edited.endsWith("\n") ? edited : `${edited}\n`;
-  if (written === text) return;
   parseLayer(written, path, layer);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, written);
+  return true;
 }

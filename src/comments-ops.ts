@@ -5,19 +5,7 @@ import { type PurgedFile, purgeCheckout } from "./comments-purge";
 import { checkTask, formatTask } from "./declared-tasks";
 import { SCANNER_DIR } from "./gates-contract";
 import { checkoutRoot } from "./git-checkout";
-
-type Formatted = { command: string; exitCode: number | null; signal: string | null; output: string };
-
-function formatted(root: string, command: string): Formatted {
-  const run = Bun.spawnSync(["sh", "-c", command], { cwd: root, stdout: "pipe", stderr: "pipe" });
-  const failed = run.exitCode !== 0;
-  return {
-    command,
-    exitCode: run.exitCode,
-    signal: run.signalCode ?? null,
-    output: failed ? `${run.stdout.toString()}${run.stderr.toString()}`.trim() : "",
-  };
-}
+import { type Formatted, formatProject } from "./project-format";
 
 type Counted = { files: PurgedFile[]; unparsed: string[]; comments: number };
 
@@ -57,7 +45,7 @@ export function purgeComments(
       },
     };
   }
-  const ran = format ? formatted(root, format) : null;
+  const ran = formatProject(root);
   const failed = ran !== null && ran.exitCode !== 0;
   return {
     written: true,

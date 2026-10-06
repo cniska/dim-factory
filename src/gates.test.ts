@@ -120,12 +120,12 @@ describe("canonical gates", () => {
         sha256: "0b60b0b3b902a635beecb80294ff4c0c603c9a0a2306e780c6859462238b5039",
       },
       "no-comments/scan.cjs": {
-        version: 1,
-        sha256: "0757c8020616988b78da81fca605f438e9fa9463a4a45319f12bba1f126add00",
+        version: 2,
+        sha256: "5913ef9ce1cb519c8d4a700ddd84ecbab04f87c4caada53dab7cfc4432622d39",
       },
       "no-comments/javascript.cjs": {
-        version: 1,
-        sha256: "7aafdeaef6391bcba71aafd527da2b8883eecab13bf76ee97523ca28b2826d4d",
+        version: 2,
+        sha256: "cf285be5e9a12d636586771818ff20a5f805c57ed59d3442f3a7fb33f152ce6d",
       },
       "check.yml": { version: 1, sha256: "1ceaedac6bf370dcc7782bbae1099d85562d6ab5795fac12fb9939a1a8d570b1" },
       "no-comments.yml": {
@@ -142,6 +142,15 @@ describe("canonical gates", () => {
         readFileSync(join(GATE_BUNDLES_DIR, file), "utf8"),
       );
     }
+  });
+
+  test("a project's own linter and formatter leave the installed scanner alone", () => {
+    const dir = repo({ ...PROJECT, "biome.json": "{}\n" });
+    installGates(dir, ["no-comments"]);
+    const biome = resolve(import.meta.dir, "..", "node_modules", ".bin", "biome");
+    const ran = spawnSync(biome, ["check", ".githooks/no-comments"], { cwd: dir, encoding: "utf8" });
+    expect(`${ran.stdout}${ran.stderr}`).toContain("Checked 2 files");
+    expect(ran.status).toBe(0);
   });
 
   test("names each gate for its rule, installing the files it runs from", () => {
@@ -306,7 +315,28 @@ describe("gate install", () => {
   test("installing again changes nothing", () => {
     const dir = repo();
     installGates(dir, EVERY);
-    expect(installGates(dir, null)).toEqual({ gates: EVERY, written: [], removed: [], backups: [] });
+    expect(installGates(dir, null)).toEqual({
+      gates: EVERY,
+      written: [],
+      removed: [],
+      backups: [],
+      format: null,
+    });
+  });
+
+  test("naming the same gates again leaves the project's own formatting of its settings alone", () => {
+    const dir = repo();
+    installGates(dir, EVERY);
+    const formatted = `{ "gates": ${JSON.stringify(EVERY)} }\n`;
+    writeFileSync(join(dir, ".dim/config.json"), formatted);
+    expect(installGates(dir, EVERY).format).toBeNull();
+    expect(read(dir, ".dim/config.json")).toBe(formatted);
+  });
+
+  test("runs the project's format task after writing its settings", () => {
+    const dir = repo({ ...PROJECT, Makefile: "check:\n\ttrue\nformat:\n\ttouch formatted\n" });
+    expect(installGates(dir, EVERY).format).toMatchObject({ command: "make format", exitCode: 0 });
+    expect(existsSync(join(dir, "formatted"))).toBe(true);
   });
 
   test("replaces a gate behind the canonical one, keeping no copy", () => {

@@ -9,6 +9,7 @@ import {
 import { type Layer, SETTING_KEYS } from "./config-contract";
 import { checkoutRoot } from "./git-checkout";
 import type { Env } from "./paths";
+import { formatProject } from "./project-format";
 
 const SETTINGS_LISTED = Object.fromEntries(
   Object.entries(SETTING_KEYS).map(([key, { layers }]) => [key, layers]),
@@ -46,6 +47,7 @@ export function changeSetting(cwd: string, env: Env, change: SettingChange) {
     throw new UsageError(`${cwd} is not inside a git checkout, so it has no project config`);
   }
   const path = root === null ? userConfigPath(env) : projectConfigPath(root);
-  writeConfigValue(path, change.layer, change.key, change.value);
-  return configLayers(cwd, env);
+  const written = writeConfigValue(path, change.layer, change.key, change.value);
+  const format = root !== null && written ? formatProject(root) : null;
+  return { ...configLayers(cwd, env), format };
 }

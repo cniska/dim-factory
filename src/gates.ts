@@ -9,6 +9,7 @@ import { type Ecosystem, ecosystemsOf } from "./ecosystems";
 import { nextBackupPath } from "./file-backup";
 import { GATE_NAMES, type GateName, HOOKS_DIR, PREPARE, refuseGates, SCANNER_DIR } from "./gates-contract";
 import { configValue, ran } from "./git";
+import { type Formatted, formatProject } from "./project-format";
 
 const CANONICAL_DIR = resolve(import.meta.dir, "..", "gates");
 
@@ -54,6 +55,7 @@ export type GatesInstalled = {
   readonly written: readonly string[];
   readonly removed: readonly string[];
   readonly backups: readonly string[];
+  readonly format: Formatted | null;
 };
 
 const MARKER = /dim-gate:(\d+)/;
@@ -194,7 +196,7 @@ export function installGates(root: string, choice: readonly GateName[] | null): 
   if (hooks) checkHooksPath(root);
   const packageJson = hooks ? prepareWiring(root) : null;
   const plans = planned(root, chosen);
-  if (choice !== null) writeGateChoice(root, choice);
+  const choiceWritten = choice !== null && writeGateChoice(root, choice);
   const written: string[] = [];
   const removed: string[] = [];
   const backups: string[] = [];
@@ -217,5 +219,6 @@ export function installGates(root: string, choice: readonly GateName[] | null): 
   }
   if (packageJson !== null) writeFileSync(join(root, "package.json"), packageJson);
   if (hooks) ran(root, ["config", "core.hooksPath", HOOKS_DIR]);
-  return { gates: chosen, written, removed, backups };
+  const format = choiceWritten || packageJson !== null ? formatProject(root) : null;
+  return { gates: chosen, written, removed, backups, format };
 }
