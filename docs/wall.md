@@ -28,7 +28,7 @@ Opening a card shows that order alone, as a dialog over the board:
 Tokens read `↑ 233k ↓ 4.0k (85% cached)`: everything the model read, cached reads included, then what it wrote, and the share of the reading served from cache. A worker's count covers its subagents, and the operator's own session is left out. They come from the record, which takes each message's tokens as a running worker writes its transcript.
 - the order's log in order, each entry its action, station, time and the worker that recorded it, or a faint "factory" for the factory's own entries, with no details
 
-It reads the same record as `dim order show`, which also carries the order's evidence, and follows it as new entries arrive.
+It reads the same record as `dim order show`, which also carries the order's evidence, and follows it as new entries arrive: every `dim` write tells the wall it committed ([`src/wall-notify.ts`](../src/wall-notify.ts)), and the wall reads the record again.
 Artifact Markdown renders tables with equal-width columns and alternating row shading in a horizontally scrollable container. Inline code stays on one line; fenced code keeps its indentation and scrolls horizontally.
 
 ## Rules

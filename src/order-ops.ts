@@ -231,7 +231,7 @@ export function markHarness(db: Database, order: string, harness: ProcessId): vo
 }
 
 export function endRun(db: Database, order: string): void {
-  deleteRun(db, order);
+  writeTransaction(db, () => deleteRun(db, order));
 }
 
 const actorBy = (by: WorkBy): Actor =>

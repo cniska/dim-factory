@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { invariant } from "./assert";
 import { refuseRecord } from "./db-contract";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
+import { notifyWall } from "./wall-notify";
 
 export function recordVersion(db: Database): number {
   const row = db.query<{ user_version: number }, []>("PRAGMA user_version").get();
@@ -52,7 +53,9 @@ export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs
 }
 
 export function writeTransaction<T>(db: Database, fn: () => T): T {
-  return db.transaction(fn).immediate();
+  const result = db.transaction(fn).immediate();
+  if (!db.inTransaction) notifyWall(db.filename);
+  return result;
 }
 
 export function closeDb(db: Database): void {

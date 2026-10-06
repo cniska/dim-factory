@@ -399,7 +399,7 @@ export function createIngester(db: Database) {
 
     const existing = selectCursor.get(spec.sessionId, spec.kind);
     if (existing && existing.path !== spec.path) {
-      movePath.run(spec.path, spec.sessionId, spec.kind);
+      writeTransaction(db, () => movePath.run(spec.path, spec.sessionId, spec.kind));
     }
 
     let cursor = existing?.bytes_ingested ?? 0;

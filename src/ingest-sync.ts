@@ -75,12 +75,12 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
       }
       run({ ...file, tool });
       const title = titles?.get(file.sessionId);
-      if (title) setTitle.run(title, file.sessionId);
+      if (title) writeTransaction(db, () => setTitle.run(title, file.sessionId));
     }
     report.sources.push({ tool, files: files.length });
   }
 
-  applyHookEvents(db);
+  writeTransaction(db, () => applyHookEvents(db));
   const failRefused = (path: string, error: unknown): void => {
     if (!isRefusal(error)) throw error;
     fail(path, error);
@@ -123,6 +123,6 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("PRAGMA foreign_keys = ON");
   }
   const report = sync(db, env);
-  db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  writeTransaction(db, () => db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`));
   return report;
 }

@@ -1,11 +1,12 @@
 import type { Database } from "bun:sqlite";
+import { invariant } from "../assert";
 import { isRefusal, recordOf } from "../coded-error";
 import { openReadOnly } from "../db-read";
 import { OrderId } from "../order-contract";
 import { listOrders, showOrder } from "../order-ops";
 import { tokensOf } from "../worker-ops";
 import wallPage from "./index.html";
-import { recordChanges } from "./record-changes";
+import { hearRecordWrites } from "./record-notices";
 import { itemViewOf, snapshotOf } from "./views";
 import type { BoardPush, OrderPush } from "./wall-contract";
 
@@ -111,6 +112,8 @@ export async function serveWall(options: {
     fetch,
     websocket,
   });
-  recordChanges(options.path, tick);
+  const port = server.port;
+  invariant(port !== undefined, "a wall served on a port knows its port");
+  await hearRecordWrites(options.path, port, tick);
   return server;
 }
