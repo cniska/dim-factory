@@ -53,7 +53,7 @@ function loadOrder(db: Database, order: string): LoadedOrder {
   return { state: fold(order, first, later), log };
 }
 
-function liveRun(db: Database, order: string, running: readonly ProcessId[]): RunKind | null {
+export function liveRun(db: Database, order: string, running: readonly ProcessId[]): RunKind | null {
   const run = runOf(db, order);
   return run !== null && isRunning(run.process, running) ? run.kind : null;
 }

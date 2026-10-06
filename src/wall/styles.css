@@ -41,21 +41,32 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-@keyframes breath {
+@keyframes shimmer {
   from {
-    color: var(--color-muted-foreground);
+    background-position: 100% 0;
   }
   to {
-    color: var(--color-foreground);
+    background-position: -100% 0;
   }
 }
 
-.breathing {
-  animation: breath 450ms ease-in-out infinite alternate;
+.shimmering {
+  background: linear-gradient(
+      90deg,
+      var(--color-muted-foreground) 40%,
+      var(--color-foreground) 50%,
+      var(--color-muted-foreground) 60%
+    )
+    0 0 / 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .breathing {
+  .shimmering {
+    background: none;
+    color: var(--color-muted-foreground);
     animation: none;
   }
 }

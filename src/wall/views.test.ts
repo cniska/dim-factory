@@ -148,7 +148,7 @@ describe("an opened order", () => {
   const tokensOf = (worker: string): WallTokens => TOKENS[worker] ?? { input: 0, output: 0, cachedRead: 0 };
 
   test("shows the latest revision of each artifact, who returned it, whether it was approved after, and its worker's tokens", () => {
-    const item = itemViewOf(viewOf({ log }), tokensOf);
+    const item = itemViewOf(viewOf({ log }), tokensOf, null);
 
     expect(item.plan).toEqual({
       revision: 2,
@@ -168,7 +168,7 @@ describe("an opened order", () => {
   });
 
   test("totals the tokens of the order's station workers, leaving out the operator's session", () => {
-    expect(itemViewOf(viewOf({ log }), tokensOf).tokens).toEqual({
+    expect(itemViewOf(viewOf({ log }), tokensOf, null).tokens).toEqual({
       input: 1000,
       output: 100,
       cachedRead: 800,
@@ -176,7 +176,7 @@ describe("an opened order", () => {
   });
 
   test("lists every log entry in order, with its station and the worker that recorded it, and no stop code", () => {
-    const entries = itemViewOf(viewOf({ log }), tokensOf).entries;
+    const entries = itemViewOf(viewOf({ log }), tokensOf, null).entries;
 
     expect(entries.map((entry) => entry.action)).toEqual(log.map((entry) => entry.action));
     expect(entries[2]).toStrictEqual({
@@ -194,8 +194,36 @@ describe("an opened order", () => {
   });
 
   test("keeps a cancelled order's status, so an open dialog says so", () => {
-    expect(itemViewOf(viewOf({ status: "cancelled", log: [ADDED] }), tokensOf).order.status).toBe(
+    expect(itemViewOf(viewOf({ status: "cancelled", log: [ADDED] }), tokensOf, null).order.status).toBe(
       "cancelled",
     );
+  });
+
+  test("shows no work in progress while no run of the order is alive", () => {
+    expect(itemViewOf(viewOf({ log }), tokensOf, null).working).toBeNull();
+  });
+
+  test("shows no work in progress once the station has returned, while its run is still ending", () => {
+    expect(itemViewOf(viewOf({ next: "approve", log }), tokensOf, "station").working).toBeNull();
+  });
+
+  test("shows a live station run's worker with its tokens and the revision it is working on", () => {
+    expect(itemViewOf(viewOf({ station: "plan", log }), tokensOf, "station").working).toEqual({
+      kind: "station",
+      station: "plan",
+      worker: { name: "bolt-2", role: "planner", tokens: { input: 300, output: 20, cachedRead: 200 } },
+      revision: 3,
+    });
+  });
+
+  test("shows a live station run with no worker yet as unassigned, and a live ship as shipping", () => {
+    const unassigned = viewOf({ station: "review", log });
+    expect(itemViewOf(unassigned, tokensOf, "station").working).toEqual({
+      kind: "station",
+      station: "review",
+      worker: null,
+      revision: 1,
+    });
+    expect(itemViewOf(viewOf({ log }), tokensOf, "ship").working).toEqual({ kind: "ship" });
   });
 });

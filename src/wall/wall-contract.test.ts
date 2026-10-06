@@ -58,13 +58,29 @@ describe("parsePush", () => {
   });
 
   test("reads an order view whose entries name an action the record holds", () => {
-    const view = { order: ORDER, tokens: NO_TOKENS, plan: null, build: null, review: null, entries: [ENTRY] };
+    const view = {
+      order: ORDER,
+      tokens: NO_TOKENS,
+      working: null,
+      plan: null,
+      build: null,
+      review: null,
+      entries: [ENTRY],
+    };
     expect(parsePush(OrderPush, JSON.stringify({ kind: "order", view }))).toMatchObject({ kind: "order" });
   });
 
   test("ignores an order view whose entry names an action the record never holds", () => {
     const entries = [{ ...ENTRY, action: "order_teleported" }];
-    const view = { order: ORDER, tokens: NO_TOKENS, plan: null, build: null, review: null, entries };
+    const view = {
+      order: ORDER,
+      tokens: NO_TOKENS,
+      working: null,
+      plan: null,
+      build: null,
+      review: null,
+      entries,
+    };
     expect(parsePush(OrderPush, JSON.stringify({ kind: "order", view }))).toBeNull();
   });
 
@@ -73,7 +89,15 @@ describe("parsePush", () => {
       ...ENTRY,
       action,
     }));
-    const view = { order: ORDER, tokens: NO_TOKENS, plan: null, build: null, review: null, entries };
+    const view = {
+      order: ORDER,
+      tokens: NO_TOKENS,
+      working: null,
+      plan: null,
+      build: null,
+      review: null,
+      entries,
+    };
     expect(parsePush(OrderPush, JSON.stringify({ kind: "order", view }))).toMatchObject({ kind: "order" });
   });
 });

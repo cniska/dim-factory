@@ -1,6 +1,6 @@
 import { invariant, unreachable } from "../assert";
 import { roleAt } from "../order";
-import type { LogEntry, OrderView, Station } from "../order-contract";
+import type { LogEntry, OrderView, RunKind, Station } from "../order-contract";
 import type {
   BoardOrder,
   BoardStatus,
@@ -11,6 +11,7 @@ import type {
   WallSnapshot,
   WallTokens,
   WallWorker,
+  WallWorking,
 } from "./wall-contract";
 
 export const MAX_COLUMN_CARDS = 12;
@@ -167,10 +168,34 @@ function returnsOf(log: readonly LogEntry[], station: Station): readonly Returne
   });
 }
 
-export function itemViewOf(view: OrderView, tokensOf: TokensOf): WallItemView {
+function workingOf(view: OrderView, run: RunKind | null, tokensOf: TokensOf): WallWorking | null {
+  switch (run) {
+    case null:
+      return null;
+    case "ship":
+      return { kind: "ship" };
+    case "station": {
+      if (view.next !== "run") return null;
+      const { station } = view;
+      invariant(station !== null, `order ${view.id}'s station run is at a station`);
+      const worker = stationWorker(view, station);
+      return {
+        kind: "station",
+        station,
+        worker: worker === null ? null : { ...worker, tokens: tokensOf(worker.name) },
+        revision: returnsOf(view.log, station).length + 1,
+      };
+    }
+    default:
+      return unreachable(run);
+  }
+}
+
+export function itemViewOf(view: OrderView, tokensOf: TokensOf, run: RunKind | null): WallItemView {
   return {
     order: cardOf(view),
     tokens: stationTokens(view, tokensOf),
+    working: workingOf(view, run, tokensOf),
     plan: artifactOf(view, "plan", returnsOf(view.log, "plan"), tokensOf),
     build: artifactOf(view, "build", returnsOf(view.log, "build"), tokensOf),
     review: artifactOf(view, "review", returnsOf(view.log, "review"), tokensOf),

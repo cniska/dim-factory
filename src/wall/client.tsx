@@ -14,7 +14,7 @@ import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { z } from "zod";
 import { invariant, unreachable } from "../assert";
-import type { Status } from "../order-contract";
+import type { Station, Status } from "../order-contract";
 import type { Role } from "../worker-contract";
 import { age } from "./age";
 import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./board";
@@ -38,6 +38,7 @@ import {
   type WallSnapshot,
   type WallTokens,
   type WallWorker,
+  type WallWorking,
 } from "./wall-contract";
 import "./styles.css";
 
@@ -57,8 +58,42 @@ function isStopped(order: Pick<WallOrder, "next">): boolean {
   return order.next === "approve";
 }
 
-function isWorking(order: Pick<WallOrder, "status" | "next">): boolean {
-  return order.status === "running" && !isStopped(order);
+const WORKING_LABELS: Record<Station | "ship", string> = {
+  plan: "Order is being planned",
+  build: "Order is being built",
+  review: "Order is being reviewed",
+  ship: "Order is being shipped",
+};
+
+function workingLabel(working: WallWorking): string {
+  return WORKING_LABELS[working.kind === "ship" ? "ship" : working.station];
+}
+
+function WorkingRow({ working }: { working: Extract<WallWorking, { kind: "station" }> }) {
+  return (
+    <dl className="flex flex-wrap items-center gap-y-[var(--space-xs)] text-quiet [&>div+div]:before:mx-[var(--space-sm)] [&>div+div]:before:text-quiet/60 [&>div+div]:before:content-['·']">
+      <div className="flex min-w-0 max-w-full items-center">
+        <dt className="sr-only">working</dt>
+        <dd className="flex min-w-0 items-center gap-[var(--space-xs)] text-muted-foreground">
+          {working.worker ? <WorkerLabel worker={working.worker} /> : <NoWorkerLabel />}
+        </dd>
+      </div>
+      <div className="flex items-center">
+        <dt className="sr-only">revision</dt>
+        <dd className="text-muted-foreground">
+          {STATION_LABELS[working.station]} revision <Digits value={String(working.revision)} />
+        </dd>
+      </div>
+      {working.worker && hasTokens(working.worker.tokens) ? (
+        <div className="flex items-center">
+          <dt className="sr-only">tokens</dt>
+          <dd>
+            <TokensLabel tokens={working.worker.tokens} />
+          </dd>
+        </div>
+      ) : null}
+    </dl>
+  );
 }
 
 function stateLabel(order: WallOrder): string {
@@ -340,17 +375,19 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                   isStopped(order) ? "text-warn-foreground" : "text-muted-foreground",
                 )}
               >
-                <StatusIcon
-                  size={12}
-                  strokeWidth={1.8}
-                  aria-hidden="true"
-                  className={isWorking(order) ? "breathing" : undefined}
-                />
-                <span className={isWorking(order) ? "breathing" : undefined}>{stateLabel(order)}</span>
+                <StatusIcon size={12} strokeWidth={1.8} aria-hidden="true" />
+                <span>{stateLabel(order)}</span>
               </dd>
             </div>
           </dl>
+          {read.view?.working?.kind === "station" ? <WorkingRow working={read.view.working} /> : null}
         </header>
+
+        {read.view?.working ? (
+          <p className="border-b px-[var(--space-lg)] py-[var(--space-sm)]" aria-live="polite">
+            <span className="shimmering">{workingLabel(read.view.working)}</span>
+          </p>
+        ) : null}
 
         <div className="flex min-h-0 flex-col overflow-y-auto">
           <p className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5">
