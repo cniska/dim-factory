@@ -18,10 +18,11 @@ const TOTALS = { queued: 0, running: 1, shipped: 0 };
 const ENTRY = {
   at: "2026-10-02T10:00:00.000Z",
   action: "order_added",
-  code: null,
   station: null,
   worker: null,
 };
+
+const NO_TOKENS = { input: 0, output: 0, cachedRead: 0 };
 
 describe("parsePush", () => {
   test("reads a board snapshot", () => {
@@ -57,13 +58,13 @@ describe("parsePush", () => {
   });
 
   test("reads an order view whose entries name an action the record holds", () => {
-    const view = { order: ORDER, plan: null, build: null, review: null, entries: [ENTRY] };
+    const view = { order: ORDER, tokens: NO_TOKENS, plan: null, build: null, review: null, entries: [ENTRY] };
     expect(parsePush(OrderPush, JSON.stringify({ kind: "order", view }))).toMatchObject({ kind: "order" });
   });
 
   test("ignores an order view whose entry names an action the record never holds", () => {
     const entries = [{ ...ENTRY, action: "order_teleported" }];
-    const view = { order: ORDER, plan: null, build: null, review: null, entries };
+    const view = { order: ORDER, tokens: NO_TOKENS, plan: null, build: null, review: null, entries };
     expect(parsePush(OrderPush, JSON.stringify({ kind: "order", view }))).toBeNull();
   });
 
@@ -71,9 +72,8 @@ describe("parsePush", () => {
     const entries = ["slice_refused", "session_died", "station_failed", "ship_stopped"].map((action) => ({
       ...ENTRY,
       action,
-      code: "killed",
     }));
-    const view = { order: ORDER, plan: null, build: null, review: null, entries };
+    const view = { order: ORDER, tokens: NO_TOKENS, plan: null, build: null, review: null, entries };
     expect(parsePush(OrderPush, JSON.stringify({ kind: "order", view }))).toMatchObject({ kind: "order" });
   });
 });

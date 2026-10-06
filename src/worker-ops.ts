@@ -15,6 +15,7 @@ import {
   type ProcessRow,
   refuseWorker,
   type StationRole,
+  type Tokens,
   type Worker,
   type WorkerRecord,
   type WorkerSession,
@@ -30,6 +31,7 @@ import {
   stationWorkerOf,
   workerNamed,
   workerNames,
+  workerTokens,
 } from "./worker-store";
 
 type StationWorker = {
@@ -114,6 +116,10 @@ export function workersNamed(db: Database, names: readonly string[]): readonly W
     invariant(worker !== null, `worker ${name}, named in an order's log, is on record`);
     return { worker, sessions: sessionsOf(db, name) };
   });
+}
+
+export function tokensOf(db: Database, worker: string): Tokens {
+  return workerTokens(db, worker);
 }
 
 function mintedName(db: Database): string {

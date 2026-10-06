@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
 import { HarnessName } from "./harness-contract";
-import { ROLES, type Role, type Worker, type WorkerSession } from "./worker-contract";
+import { ROLES, type Role, type Tokens, type Worker, type WorkerSession } from "./worker-contract";
 
 type WorkerRow = {
   readonly name: string;
@@ -99,6 +99,21 @@ export function sessionsOf(db: Database, worker: string): readonly WorkerSession
 
 export function sessions(db: Database): readonly WorkerSession[] {
   return db.query<SessionRow, []>(`${SESSION} ORDER BY rowid`).all().map(sessionOf);
+}
+
+export function workerTokens(db: Database, worker: string): Tokens {
+  const row = db
+    .query<Tokens, [string, string]>(
+      `SELECT coalesce(sum(u.input_tokens + u.cache_read_tokens + u.cache_write_tokens), 0) AS input,
+              coalesce(sum(u.output_tokens), 0) AS output,
+              coalesce(sum(u.cache_read_tokens), 0) AS cachedRead
+       FROM usage u JOIN session s ON s.id = u.session_id
+       WHERE s.id IN (SELECT id FROM worker_session WHERE worker = ?)
+          OR s.parent_id IN (SELECT id FROM worker_session WHERE worker = ?)`,
+    )
+    .get(worker, worker);
+  invariant(row !== null, "an aggregate returns one row");
+  return row;
 }
 
 export function operatorOf(db: Database, project: string): Worker | null {

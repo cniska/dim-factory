@@ -9,6 +9,7 @@ import type {
   WallItemView,
   WallOrder,
   WallSnapshot,
+  WallTokens,
   WallWorker,
 } from "./wall-contract";
 
@@ -107,7 +108,14 @@ function entryOf(view: OrderView, entry: LogEntry): WallItemEntry {
 
 type Returned = { readonly entry: LogEntry; readonly body: string };
 
-function artifactOf(view: OrderView, station: Station, returns: readonly Returned[]): WallArtifact | null {
+export type TokensOf = (worker: string) => WallTokens;
+
+function artifactOf(
+  view: OrderView,
+  station: Station,
+  returns: readonly Returned[],
+  tokensOf: TokensOf,
+): WallArtifact | null {
   const last = returns.at(-1);
   if (last === undefined) return null;
   const { by, seq } = last.entry;
@@ -119,7 +127,22 @@ function artifactOf(view: OrderView, station: Station, returns: readonly Returne
     approved: view.log.some(
       (entry) => entry.action === "artifact_approved" && entry.details.station === station && entry.seq > seq,
     ),
+    tokens: tokensOf(by.worker),
   };
+}
+
+function stationTokens(view: OrderView, tokensOf: TokensOf): WallTokens {
+  return view.workers
+    .filter((worker) => worker.role !== "operator")
+    .map((worker) => tokensOf(worker.name))
+    .reduce(
+      (sum, tokens) => ({
+        input: sum.input + tokens.input,
+        output: sum.output + tokens.output,
+        cachedRead: sum.cachedRead + tokens.cachedRead,
+      }),
+      { input: 0, output: 0, cachedRead: 0 },
+    );
 }
 
 function artifactBody(entry: LogEntry, station: Station): string | null {
@@ -144,12 +167,13 @@ function returnsOf(log: readonly LogEntry[], station: Station): readonly Returne
   });
 }
 
-export function itemViewOf(view: OrderView): WallItemView {
+export function itemViewOf(view: OrderView, tokensOf: TokensOf): WallItemView {
   return {
     order: cardOf(view),
-    plan: artifactOf(view, "plan", returnsOf(view.log, "plan")),
-    build: artifactOf(view, "build", returnsOf(view.log, "build")),
-    review: artifactOf(view, "review", returnsOf(view.log, "review")),
+    tokens: stationTokens(view, tokensOf),
+    plan: artifactOf(view, "plan", returnsOf(view.log, "plan"), tokensOf),
+    build: artifactOf(view, "build", returnsOf(view.log, "build"), tokensOf),
+    review: artifactOf(view, "review", returnsOf(view.log, "review"), tokensOf),
     entries: view.log.map((entry) => entryOf(view, entry)),
   };
 }

@@ -1,4 +1,6 @@
 import {
+  ArrowDown,
+  ArrowUp,
   CircleAlert,
   CircleCheck,
   CircleDot,
@@ -24,6 +26,7 @@ import { itemLabel } from "./item";
 import { cn } from "./lib/utils";
 import { WallMarkdown } from "./markdown";
 import { msUntilNextMinute } from "./minute-beat";
+import { formatCompactNumber } from "./number-format";
 import {
   BoardPush,
   type BoardStatus,
@@ -33,6 +36,7 @@ import {
   type WallItemView,
   type WallOrder,
   type WallSnapshot,
+  type WallTokens,
   type WallWorker,
 } from "./wall-contract";
 import "./styles.css";
@@ -147,6 +151,22 @@ function OrderCard({
     </Card>
   );
 }
+
+function TokensLabel({ tokens }: { tokens: WallTokens }) {
+  const cached = tokens.input === 0 ? 0 : Math.round((tokens.cachedRead / tokens.input) * 100);
+  return (
+    <span className="flex items-center gap-[var(--space-xs)] text-muted-foreground">
+      <ArrowUp size={12} strokeWidth={1.8} aria-label="in" />
+      <span>{formatCompactNumber(tokens.input)}</span>
+      <ArrowDown size={12} strokeWidth={1.8} aria-label="out" className="ml-[var(--space-xs)]" />
+      <span>{formatCompactNumber(tokens.output)}</span>
+      <span className="text-quiet">tokens</span>
+      <span className="text-quiet">({cached}% cached)</span>
+    </span>
+  );
+}
+
+const hasTokens = (tokens: WallTokens) => tokens.input + tokens.output > 0;
 
 function WorkerLabel({ worker, className }: { worker: WallWorker; className?: string }) {
   return (
@@ -320,6 +340,14 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                 <span className={isWorking(order) ? "breathing" : undefined}>{stateLabel(order)}</span>
               </dd>
             </div>
+            {read.view && hasTokens(read.view.tokens) ? (
+              <div className="flex items-center">
+                <dt className="sr-only">tokens</dt>
+                <dd>
+                  <TokensLabel tokens={read.view.tokens} />
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </header>
 
@@ -350,6 +378,14 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                         ·
                       </span>
                       <span className="text-good">approved</span>
+                    </>
+                  ) : null}
+                  {hasTokens(read.view.plan.tokens) ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <TokensLabel tokens={read.view.plan.tokens} />
                     </>
                   ) : null}
                 </div>
@@ -396,6 +432,14 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                       <span className="text-good">approved</span>
                     </>
                   ) : null}
+                  {hasTokens(read.view.build.tokens) ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <TokensLabel tokens={read.view.build.tokens} />
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -438,6 +482,14 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
                         ·
                       </span>
                       <span className="text-good">approved</span>
+                    </>
+                  ) : null}
+                  {hasTokens(read.view.review.tokens) ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <TokensLabel tokens={read.view.review.tokens} />
                     </>
                   ) : null}
                 </div>

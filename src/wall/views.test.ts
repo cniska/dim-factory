@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LogEntry, OrderView, Status } from "../order-contract";
 import { itemViewOf, MAX_COLUMN_CARDS, snapshotOf } from "./views";
+import type { WallTokens } from "./wall-contract";
 
 const OPERATOR = { kind: "worker", worker: "hinge-1", session: "s-op" } as const;
 const PLANNER = { kind: "worker", worker: "bolt-2", session: "s-plan" } as const;
@@ -139,26 +140,43 @@ describe("an opened order", () => {
     { seq: 7, ts: at(6), by: BUILDER, action: "build_returned", details: { artifact: "## Built" } },
   ];
 
-  test("shows the latest revision of each artifact, who returned it and whether it was approved after", () => {
-    const item = itemViewOf(viewOf({ log }));
+  const TOKENS: Readonly<Record<string, WallTokens>> = {
+    "hinge-1": { input: 5000, output: 500, cachedRead: 4000 },
+    "bolt-2": { input: 300, output: 20, cachedRead: 200 },
+    "crank-3": { input: 700, output: 80, cachedRead: 600 },
+  };
+  const tokensOf = (worker: string): WallTokens => TOKENS[worker] ?? { input: 0, output: 0, cachedRead: 0 };
+
+  test("shows the latest revision of each artifact, who returned it, whether it was approved after, and its worker's tokens", () => {
+    const item = itemViewOf(viewOf({ log }), tokensOf);
 
     expect(item.plan).toEqual({
       revision: 2,
       body: "## Second",
       worker: { name: "bolt-2", role: "planner" },
       approved: true,
+      tokens: { input: 300, output: 20, cachedRead: 200 },
     });
     expect(item.build).toEqual({
       revision: 1,
       body: "## Built",
       worker: { name: "crank-3", role: "builder" },
       approved: false,
+      tokens: { input: 700, output: 80, cachedRead: 600 },
     });
     expect(item.review).toBeNull();
   });
 
+  test("totals the tokens of the order's station workers, leaving out the operator's session", () => {
+    expect(itemViewOf(viewOf({ log }), tokensOf).tokens).toEqual({
+      input: 1000,
+      output: 100,
+      cachedRead: 800,
+    });
+  });
+
   test("lists every log entry in order, with its station and the worker that recorded it, and no stop code", () => {
-    const entries = itemViewOf(viewOf({ log })).entries;
+    const entries = itemViewOf(viewOf({ log }), tokensOf).entries;
 
     expect(entries.map((entry) => entry.action)).toEqual(log.map((entry) => entry.action));
     expect(entries[2]).toStrictEqual({
@@ -176,6 +194,8 @@ describe("an opened order", () => {
   });
 
   test("keeps a cancelled order's status, so an open dialog says so", () => {
-    expect(itemViewOf(viewOf({ status: "cancelled", log: [ADDED] })).order.status).toBe("cancelled");
+    expect(itemViewOf(viewOf({ status: "cancelled", log: [ADDED] }), tokensOf).order.status).toBe(
+      "cancelled",
+    );
   });
 });

@@ -52,16 +52,21 @@ export const WallItemEntry = z.object({
 });
 export type WallItemEntry = z.infer<typeof WallItemEntry>;
 
+export const WallTokens = z.object({ input: z.number(), output: z.number(), cachedRead: z.number() });
+export type WallTokens = z.infer<typeof WallTokens>;
+
 export const WallArtifact = z.object({
   revision: z.number(),
   body: z.string(),
   worker: WallWorker,
   approved: z.boolean(),
+  tokens: WallTokens,
 });
 export type WallArtifact = z.infer<typeof WallArtifact>;
 
 export const WallItemView = z.object({
   order: WallOrder,
+  tokens: WallTokens,
   plan: WallArtifact.nullable(),
   build: WallArtifact.nullable(),
   review: WallArtifact.nullable(),

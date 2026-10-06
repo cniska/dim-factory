@@ -3,6 +3,7 @@ import { isRefusal, recordOf } from "../coded-error";
 import { openReadOnly } from "../db-read";
 import { OrderId } from "../order-contract";
 import { listOrders, showOrder } from "../order-ops";
+import { tokensOf } from "../worker-ops";
 import wallPage from "./index.html";
 import { itemViewOf, snapshotOf } from "./views";
 import type { BoardPush, OrderPush } from "./wall-contract";
@@ -35,7 +36,12 @@ function pushFor(path: string, { order }: Topic): string {
     const push: BoardPush | OrderPush =
       order === null
         ? { kind: "snapshot", snapshot: readRecord(path, (db) => snapshotOf(listOrders(db))) }
-        : { kind: "order", view: readRecord(path, (db) => itemViewOf(showOrder(db, order))) };
+        : {
+            kind: "order",
+            view: readRecord(path, (db) =>
+              itemViewOf(showOrder(db, order), (worker) => tokensOf(db, worker)),
+            ),
+          };
     return JSON.stringify(push);
   } catch (error) {
     if (!isRefusal(error)) throw error;

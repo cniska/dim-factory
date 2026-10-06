@@ -81,3 +81,5 @@ export type Caller = {
 };
 
 export type WorkerRecord = { readonly worker: Worker; readonly sessions: readonly WorkerSession[] };
+
+export type Tokens = { readonly input: number; readonly output: number; readonly cachedRead: number };
