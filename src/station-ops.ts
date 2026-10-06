@@ -368,6 +368,9 @@ function prepareTurn(setup: ProjectSetup, station: Station, env: Env): Prepared 
   const role = roleAt(station);
   const model = modelOf(setup.config.models, role);
   if (model === null) throw refuseStation("no_model", { role, file: userConfigPath() });
+  const { name, signIn } = WORKER_HARNESS;
+  if (!signIn.some((variable) => env[variable]))
+    throw refuseStation("no_sign_in", { harness: name, names: signIn });
   return { model, identity: ownerIdentity(setup.root, env) };
 }
 

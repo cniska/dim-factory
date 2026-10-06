@@ -15,6 +15,7 @@ Each line names the refusal an order meets without it.
 | A lockfile that installs frozen with install scripts off, such as `bun install --frozen-lockfile --ignore-scripts` | `install_failed` |
 | Every tool `mise.toml` pins, installed | `toolchain_unresolved` |
 | `.dim/config.json` on the default branch saying how the project ships: `dim config set ship default-branch --project`, then commit it | `ship_unset` |
+| `CLAUDE_CODE_OAUTH_TOKEN` in the environment `dim` runs from, made by `claude setup-token`, since a worker runs with its own home and never sees the owner's login | `no_sign_in` |
 
 The dependency install and the check run in a sandbox that writes only inside the order's tree and its own temporary directory ([`src/check.ts`](../src/check.ts)), so a check that writes elsewhere fails there though it passes in the checkout. Both get a listed environment with no credentials and `HOME` set to that temporary directory, so a check that reads the owner's home or a secret fails too. The network stays open to both.
 

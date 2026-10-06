@@ -398,6 +398,19 @@ describe("what a station worker can reach", () => {
     }
   });
 
+  test("AC-45 with no sign-in for its harness, a station's worker is refused before it starts", async () => {
+    const m = await start({ script: happyPath(), ownerEnv: { CLAUDE_CODE_OAUTH_TOKEN: "" } });
+    const id = await addOrder(m.operator);
+    const before = await showOrder(m.operator, id);
+    const refused = await runOrder(m.operator, id);
+    expect(refusal(refused)).toMatchObject({
+      code: "no_sign_in",
+      meta: { names: ["CLAUDE_CODE_OAUTH_TOKEN"] },
+    });
+    expect(m.invocations()).toEqual([]);
+    expect(await showOrder(m.operator, id)).toEqual(before);
+  });
+
   test("AC-45 a file one worker leaves in its temp directory is not in the next worker's", async () => {
     const leftover = `left-by-planner-${crypto.randomUUID()}`;
     const m = await start({

@@ -170,6 +170,7 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
   fakeMise(root, bin, options.mise);
 
   const env: MachineEnv = {
+    CLAUDE_CODE_OAUTH_TOKEN: "scripted-login",
     ...options.ownerEnv,
     HOME: home,
     PATH: `${bin}:${process.env.PATH ?? ""}`,

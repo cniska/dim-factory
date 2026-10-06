@@ -87,6 +87,7 @@ type StationRefusalMeta = {
   };
   readonly git_config_changed: { readonly order: string; readonly station: Station; readonly config: string };
   readonly no_model: { readonly role: string; readonly file: string };
+  readonly no_sign_in: { readonly harness: string; readonly names: readonly string[] };
   readonly not_to_operator: StopMeta<"message_refused">["not_to_operator"];
   readonly message_turn: { readonly act: TurnRequest["act"] };
   readonly no_reply: { readonly order: string; readonly station: Station; readonly session: string };
@@ -147,6 +148,12 @@ export const refuseStation = refuser<StationRefusalMeta>({
     message: ({ role, file }) =>
       `${file} names no model for the ${role} and no default, so no ${role} can start; its models setting maps each role, or default, to a model`,
     resolve: () => "dim config",
+  },
+  no_sign_in: {
+    message: ({ harness, names }) =>
+      `${names.join(" or ")} is not set, so no ${harness} worker can sign in: a worker runs with its own home and never sees the owner's login`,
+    resolve: ({ names }) =>
+      `set ${names.join(" or ")} in the environment dim runs from, then run the same command again`,
   },
   not_to_operator: {
     message: ({ to }) =>
