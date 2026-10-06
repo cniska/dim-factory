@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { refuser } from "./coded-error";
+import { LOCKS, type Lock } from "./ecosystems";
 import { type CommittedTree, committedTree } from "./git-committed";
 
 const LONGEST_MANIFEST = 1024 * 1024;
@@ -60,16 +61,6 @@ export function manifestsIn(repo: string): Manifests {
     },
   };
 }
-
-type Lock = { readonly lock: string; readonly manager: string; readonly install: string };
-
-const LOCKS: readonly Lock[] = [
-  { lock: "bun.lock", manager: "bun", install: "bun install --frozen-lockfile --ignore-scripts" },
-  { lock: "bun.lockb", manager: "bun", install: "bun install --frozen-lockfile --ignore-scripts" },
-  { lock: "pnpm-lock.yaml", manager: "pnpm", install: "pnpm install --frozen-lockfile --ignore-scripts" },
-  { lock: "yarn.lock", manager: "yarn", install: "yarn install --frozen-lockfile --ignore-scripts" },
-  { lock: "package-lock.json", manager: "npm", install: "npm ci --ignore-scripts" },
-];
 
 const lockIn = (manifests: Manifests): Lock | null => LOCKS.find(({ lock }) => manifests.has(lock)) ?? null;
 

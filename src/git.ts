@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { constants } from "node:os";
 import { refuseGit } from "./git-contract";
 import type { Env } from "./paths";
 
@@ -6,13 +8,15 @@ export type GitRun = { readonly status: number; readonly out: string; readonly e
 type GitOptions = { readonly env?: Env; readonly stdin?: string };
 
 export function git(repo: string, args: readonly string[], options: GitOptions = {}): GitRun {
-  const run = Bun.spawnSync(["git", "-C", repo, ...args], {
+  const run = spawnSync("git", ["-C", repo, ...args], {
     env: options.env,
-    stdin: options.stdin === undefined ? "ignore" : Buffer.from(options.stdin),
-    stdout: "pipe",
-    stderr: "pipe",
+    input: options.stdin,
+    stdio: [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    maxBuffer: Number.POSITIVE_INFINITY,
   });
-  return { status: run.exitCode, out: run.stdout.toString(), err: run.stderr.toString().trim() };
+  if (run.error) throw run.error;
+  const status = run.status ?? 128 + (run.signal === null ? 0 : constants.signals[run.signal]);
+  return { status, out: run.stdout.toString(), err: run.stderr.toString().trim() };
 }
 
 export function refused(repo: string, args: readonly string[], run: GitRun) {

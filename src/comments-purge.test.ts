@@ -3,9 +3,11 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { COMMENT_LANGUAGES } from "./comments-languages";
 import { purgeCheckout, purgeText } from "./comments-purge";
 
-const purged = (text: string, path = "a.ts") => purgeText(path, text)?.text;
+const purgeTs = (text: string) => purgeText("a.ts", text, COMMENT_LANGUAGES);
+const purged = (text: string, path = "a.ts") => purgeText(path, text, COMMENT_LANGUAGES)?.text;
 
 describe("purging one file", () => {
   test("removes a comment on a line of its own, line and all", () => {
@@ -34,7 +36,7 @@ describe("purging one file", () => {
   });
 
   test("counts what it removed", () => {
-    expect(purgeText("a.ts", "// one\nconst a = 1; // two\n/* three */\n")?.removed).toBe(3);
+    expect(purgeTs("// one\nconst a = 1; // two\n/* three */\n")?.removed).toBe(3);
   });
 
   test("keeps tool contracts and the shebang", () => {
@@ -61,11 +63,11 @@ describe("purging one file", () => {
   });
 
   test("answers nothing for a file it cannot parse", () => {
-    expect(purgeText("a.ts", "const = ;")).toBeNull();
+    expect(purgeTs("const = ;")).toBeNull();
   });
 
   test("answers nothing for a file that parses only by recovering from an error", () => {
-    expect(purgeText("a.ts", "// why\nlet a = 1;\nlet a = 2;\n")).toBeNull();
+    expect(purgeTs("// why\nlet a = 1;\nlet a = 2;\n")).toBeNull();
   });
 });
 
@@ -140,21 +142,21 @@ describe("the purge command", () => {
 describe("purging a checkout", () => {
   test("names what it would remove and writes nothing without write", () => {
     const dir = repo({ "a.ts": "// why\nconst a = 1;\n", "b.ts": "const b = 2;\n" });
-    const report = purgeCheckout(dir, { write: false });
+    const report = purgeCheckout(dir, { languages: COMMENT_LANGUAGES, write: false });
     expect(report.files).toEqual([{ path: "a.ts", removed: 1 }]);
     expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("// why\nconst a = 1;\n");
   });
 
   test("rewrites each file with write", () => {
     const dir = repo({ "src/a.ts": "// why\nconst a = 1;\n" });
-    purgeCheckout(dir, { write: true });
+    purgeCheckout(dir, { languages: COMMENT_LANGUAGES, write: true });
     expect(readFileSync(join(dir, "src/a.ts"), "utf8")).toBe("const a = 1;\n");
   });
 
   test("reads only tracked files, in the languages it parses", () => {
     const dir = repo({ "a.ts": "const a = 1;\n", "notes.md": "<!-- why -->\n", "run.sh": "# why\n" });
     writeFileSync(join(dir, "untracked.ts"), "// why\n");
-    expect(purgeCheckout(dir, { write: false }).files).toEqual([]);
+    expect(purgeCheckout(dir, { languages: COMMENT_LANGUAGES, write: false }).files).toEqual([]);
   });
 
   test("leaves a file git marks generated or vendored", () => {
@@ -163,19 +165,19 @@ describe("purging a checkout", () => {
       "gen.ts": "// why\n",
       "vendor/lib.ts": "// why\n",
     });
-    expect(purgeCheckout(dir, { write: false }).files).toEqual([]);
+    expect(purgeCheckout(dir, { languages: COMMENT_LANGUAGES, write: false }).files).toEqual([]);
   });
 
   test("limits itself to the paths it is given", () => {
     const dir = repo({ "src/a.ts": "// why\n", "test/b.ts": "// why\n" });
-    expect(purgeCheckout(dir, { write: false, paths: ["src"] }).files).toEqual([
+    expect(purgeCheckout(dir, { languages: COMMENT_LANGUAGES, write: false, paths: ["src"] }).files).toEqual([
       { path: "src/a.ts", removed: 1 },
     ]);
   });
 
   test("names a file it cannot parse and leaves it as it is", () => {
     const dir = repo({ "bad.ts": "// why\nlet a = 1;\nlet a = 2;\n" });
-    const report = purgeCheckout(dir, { write: true });
+    const report = purgeCheckout(dir, { languages: COMMENT_LANGUAGES, write: true });
     expect(report.unparsed).toEqual(["bad.ts"]);
     expect(readFileSync(join(dir, "bad.ts"), "utf8")).toBe("// why\nlet a = 1;\nlet a = 2;\n");
   });

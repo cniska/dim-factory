@@ -2,6 +2,7 @@
   "ship": "default-branch",
   "gates": [
     "commit-subject",
-    "check"
+    "check",
+    "no-comments"
   ]
 }

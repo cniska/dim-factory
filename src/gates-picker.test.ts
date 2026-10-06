@@ -35,7 +35,8 @@ describe("the gate picker", () => {
     expect([...toggled.chosen]).toEqual(["commit-subject"]);
     expect([...nextPicking(toggled, "toggle").chosen]).toEqual([]);
     expect(nextPicking(start, "up").index).toBe(0);
-    expect(nextPicking(nextPicking(nextPicking(start, "down"), "down"), "down").index).toBe(1);
+    const bottom = ["down", "down", "down", "down"] as const;
+    expect(bottom.reduce(nextPicking, start).index).toBe(2);
   });
 
   test("returns the gates toggled on, in canonical order, when enter confirms", async () => {

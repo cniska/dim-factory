@@ -5,23 +5,43 @@ import { readGateChoice, writeGateChoice } from "./config";
 import { insertJsoncValue, parseJsonc } from "./config-jsonc";
 import { readJsoncText } from "./config-jsonc-file";
 import { checkTask } from "./declared-tasks";
+import { type Ecosystem, ecosystemsOf } from "./ecosystems";
 import { nextBackupPath } from "./file-backup";
-import { GATE_NAMES, type GateName, HOOKS_DIR, PREPARE, refuseGates } from "./gates-contract";
+import { GATE_NAMES, type GateName, HOOKS_DIR, PREPARE, refuseGates, SCANNER_DIR } from "./gates-contract";
 import { configValue, ran } from "./git";
 
 const CANONICAL_DIR = resolve(import.meta.dir, "..", "gates");
 
-export type GateFile = { readonly source: string; readonly target: string; readonly mode: number };
+export type GateFile = {
+  readonly source: string;
+  readonly target: string;
+  readonly mode: number;
+  readonly ecosystem?: Ecosystem;
+};
+
+const PRE_COMMIT: GateFile = { source: "pre-commit", target: `${HOOKS_DIR}/pre-commit`, mode: 0o755 };
 
 export const GATES: Readonly<Record<GateName, readonly GateFile[]>> = {
   "commit-subject": [
     { source: "commit-msg", target: `${HOOKS_DIR}/commit-msg`, mode: 0o755 },
     { source: "commits.yml", target: ".github/workflows/commits.yml", mode: 0o644 },
   ],
-  check: [{ source: "pre-commit", target: `${HOOKS_DIR}/pre-commit`, mode: 0o755 }],
+  check: [PRE_COMMIT, { source: "check-hook", target: `${HOOKS_DIR}/pre-commit.d/check`, mode: 0o755 }],
+  "no-comments": [
+    PRE_COMMIT,
+    { source: "no-comments-hook", target: `${HOOKS_DIR}/pre-commit.d/no-comments`, mode: 0o755 },
+    { source: "no-comments/scan.cjs", target: `${SCANNER_DIR}/scan.cjs`, mode: 0o644 },
+    {
+      source: "no-comments/javascript.cjs",
+      target: `${SCANNER_DIR}/javascript.cjs`,
+      mode: 0o644,
+      ecosystem: "javascript",
+    },
+    { source: "no-comments.yml", target: ".github/workflows/no-comments.yml", mode: 0o644 },
+  ],
 };
 
-export type GateState = "installed" | "missing" | "behind" | "changed" | "ahead" | "unchosen";
+export type GateState = "installed" | "missing" | "behind" | "changed" | "ahead" | "unchosen" | "unused";
 
 export type GatePlan = { readonly gate: GateName; readonly target: string; readonly state: GateState };
 
@@ -64,20 +84,39 @@ function rendered(root: string, file: GateFile): string {
   return source.replaceAll("{{check}}", check.commandLine);
 }
 
+function checkRunnable(root: string, chosen: readonly GateName[], ecosystems: readonly Ecosystem[]): void {
+  for (const gate of chosen) {
+    const bound = GATES[gate].flatMap((file) => (file.ecosystem === undefined ? [] : [file.ecosystem]));
+    if (bound.length > 0 && !bound.some((ecosystem) => ecosystems.includes(ecosystem)))
+      throw refuseGates("no_ecosystem", { root, gate, ecosystems: bound });
+  }
+}
+
 type Planned = GatePlan & { readonly file: GateFile; readonly path: string; readonly text: string };
 
 function planned(root: string, chosen: readonly GateName[]): Planned[] {
+  const ecosystems = ecosystemsOf(root);
+  checkRunnable(root, chosen, ecosystems);
+  const seen = new Set<string>();
   return GATE_NAMES.flatMap((gate) =>
     GATES[gate].flatMap((file): Planned[] => {
+      if (seen.has(file.target)) return [];
+      seen.add(file.target);
+      const owner = chosen.find((one) => GATES[one].some((listed) => listed.target === file.target)) ?? gate;
       const path = join(root, file.target);
       const found = readOrNull(path);
-      if (!chosen.includes(gate)) {
+      const unwanted: GateState | null = !chosen.includes(owner)
+        ? "unchosen"
+        : file.ecosystem !== undefined && !ecosystems.includes(file.ecosystem)
+          ? "unused"
+          : null;
+      if (unwanted !== null) {
         return found !== null && MARKER.test(found)
-          ? [{ gate, target: file.target, state: "unchosen", file, path, text: "" }]
+          ? [{ gate: owner, target: file.target, state: unwanted, file, path, text: "" }]
           : [];
       }
       const text = rendered(root, file);
-      return [{ gate, target: file.target, state: stateOf(text, found), file, path, text }];
+      return [{ gate: owner, target: file.target, state: stateOf(text, found), file, path, text }];
     }),
   );
 }
@@ -127,7 +166,7 @@ export function installGates(root: string, choice: readonly GateName[] | null): 
   const backups: string[] = [];
   for (const { file, path, text, state } of plans) {
     if (state === "installed" || state === "ahead") continue;
-    if (state === "unchosen") {
+    if (state === "unchosen" || state === "unused") {
       rmSync(path);
       removed.push(file.target);
       continue;

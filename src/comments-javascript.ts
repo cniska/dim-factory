@@ -45,6 +45,7 @@ function jsxExtent(path: string, text: string, comment: CommentSpan): CommentSpa
 }
 
 export const javascriptComments: CommentLanguage = {
+  name: "javascript",
   reads: (path) => READS.test(path),
   comments: (path, text, { recover }) =>
     parsed(path, text, recover)

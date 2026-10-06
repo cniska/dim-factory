@@ -17,6 +17,7 @@ const SEQUENCE_END = /[A-Za-z~]/;
 export const GATE_SUMMARIES: Readonly<Record<GateName, string>> = {
   "commit-subject": "the subject rule at commit and on push",
   check: "the declared check before a commit",
+  "no-comments": "the comment ban at commit and on push",
 };
 
 export function readPickKeys(chunk: string): PickRead {

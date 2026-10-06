@@ -41,7 +41,11 @@ dim skills install
 dim gates install [<gate>...]   # from the project's checkout
 ```
 
-- The gates are `commit-subject`, a `commit-msg` hook and a `commits.yml` workflow that runs it on every pushed commit, and `check`, a `pre-commit` hook that runs the project's [check](glossary.md). Their files are in [`gates/`](../gates).
+- The gates, whose files are in [`gates/`](../gates):
+  - `commit-subject`: a `commit-msg` hook, and a `commits.yml` workflow that runs it on every pushed commit.
+  - `check`: a pre-commit step that runs the project's [check](glossary.md).
+  - `no-comments`: a pre-commit step and a `no-comments.yml` workflow that run the comment scanner under `node`. The scanner is a core plus one parser per [ecosystem](glossary.md), and a project gets only the parsers for the ecosystems it uses. Both are bundled from the code `dim comments purge` runs; `bun run gates:bundle` rebuilds them, and a test fails while they are stale. A project in no ecosystem the scanner reads is refused `no_ecosystem`.
+- `.githooks/pre-commit` runs each executable in `.githooks/pre-commit.d/` in name order and stops at the first that fails. It is installed while a chosen gate has a step there, and a project adds a step of its own the same way.
 - Naming gates records them as the project's choice, `gates` in `.dim/config.json`, and installs exactly those, removing an installed gate no longer chosen. With none named it installs the recorded choice; with no choice recorded, a terminal shows a picker and anything else is refused `no_gates_chosen`. Choosing `check` in a project that declares no check is refused `no_check`. Each refusal writes nothing.
 - Points `core.hooksPath` at `.githooks`, and adds the same command as a `package.json` `prepare` script so a fresh clone runs the gates. A checkout whose hooks run from elsewhere, or whose `prepare` does something else, is refused before anything is written.
 - Each gate carries `dim-gate:<version>`. A gate at a lower version is replaced; one at the same version with other bytes was changed in place and is moved aside before it is replaced; one at a higher version is left. A project extends a gate with a file of its own beside it.
@@ -49,10 +53,10 @@ dim gates install [<gate>...]   # from the project's checkout
 
 ### Comment purge
 
-`dim comments purge [<path>...]` reports the comments tracked JS and TS files hold, parsed with `@babel/parser`. `--write` removes them and runs the declared format command; then run the check and commit. A test that runs the same scan and expects nothing keeps the code free of them, as dim-factory's `src/no-comments.test.ts` does.
+`dim comments purge [<path>...]` reports the comments tracked JS and TS files hold, parsed with `@babel/parser`. `--write` removes them and runs the declared format command; then run the check and commit. Run it before choosing the `no-comments` gate, which fails on any comment the purge would remove.
 
 - **Left in place:** tool contracts (`/// <reference …>`, `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__`, `@__PURE__`, a `/*!` license header, and in plain JS a JSDoc of only `@type`, `@typedef` or `@param`), a `#!` line, files git marks `linguist-generated` or `linguist-vendored`, files that do not parse (named in the report), and other languages.
-- Languages are adapters in [`src/comments-language.ts`](../src/comments-language.ts).
+- Languages are adapters listed in [`src/comments-languages.ts`](../src/comments-languages.ts).
 
 ## Configuration
 

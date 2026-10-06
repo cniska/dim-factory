@@ -1,0 +1,3 @@
+#!/bin/sh
+# dim-gate:1
+exec {{check}}

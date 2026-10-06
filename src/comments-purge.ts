@@ -1,10 +1,17 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { outsideTheCode, trackedFiles } from "./comments-files";
-import { type CommentSpan, languageFor } from "./comments-language";
+import { type CommentLanguage, type CommentSpan, languageFor } from "./comments-language";
 
 export type PurgedFile = { path: string; removed: number };
 export type PurgeReport = { files: PurgedFile[]; unparsed: string[] };
+
+export type PurgeOptions = {
+  readonly write: boolean;
+  readonly languages: readonly CommentLanguage[];
+  readonly paths?: readonly string[];
+  readonly skipped?: readonly string[];
+};
 
 function withItsLine(text: string, { start, end }: CommentSpan): [number, number] {
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
@@ -17,8 +24,12 @@ function withItsLine(text: string, { start, end }: CommentSpan): [number, number
   return [start - (/[ \t]*$/.exec(text.slice(0, start))?.[0].length ?? 0), end];
 }
 
-export function purgeText(path: string, text: string): { text: string; removed: number } | null {
-  const language = languageFor(path);
+export function purgeText(
+  path: string,
+  text: string,
+  languages: readonly CommentLanguage[],
+): { text: string; removed: number } | null {
+  const language = languageFor(path, languages);
   const comments = language?.comments(path, text, { recover: false }) ?? null;
   if (language === undefined || comments === null) return null;
   const spans = comments
@@ -39,15 +50,20 @@ export function purgeText(path: string, text: string): { text: string; removed: 
   return { text: out + text.slice(at), removed: spans.length };
 }
 
-export function purgeCheckout(root: string, options: { write: boolean; paths?: string[] }): PurgeReport {
-  const tracked = trackedFiles(root, options.paths ?? []).filter((path) => languageFor(path) !== undefined);
+export function purgeCheckout(root: string, options: PurgeOptions): PurgeReport {
+  const { languages } = options;
+  const skippedDirs = options.skipped ?? [];
+  const tracked = trackedFiles(root, options.paths ?? []).filter(
+    (path) =>
+      languageFor(path, languages) !== undefined && !skippedDirs.some((dir) => path.startsWith(`${dir}/`)),
+  );
   const skipped = outsideTheCode(root, tracked);
   const files: PurgedFile[] = [];
   const unparsed: string[] = [];
   for (const path of tracked) {
     if (skipped.has(path)) continue;
     const full = join(root, path);
-    const purged = purgeText(path, readFileSync(full, "utf8"));
+    const purged = purgeText(path, readFileSync(full, "utf8"), languages);
     if (purged === null) {
       unparsed.push(path);
       continue;

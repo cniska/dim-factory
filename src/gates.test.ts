@@ -6,15 +6,16 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { isRefusal } from "./coded-error";
 import { readGateChoice } from "./config";
+import { bundleGates, GATE_BUNDLES_DIR } from "./gate-bundles";
 import { GATES, installGates, planGates } from "./gates";
 import { GATE_NAMES, type GateName } from "./gates-contract";
 
 const CANONICAL = resolve(import.meta.dir, "..", "gates");
-const CHECK = { Makefile: "check:\n\ttrue\n" };
-const EVERY: readonly GateName[] = ["commit-subject", "check"];
+const PROJECT = { Makefile: "check:\n\ttrue\n", "package.json": "{}\n", "src/a.ts": "export const a = 1;\n" };
+const EVERY: readonly GateName[] = ["commit-subject", "check", "no-comments"];
 const repos: string[] = [];
 
-function repo(files: Record<string, string> = CHECK): string {
+function repo(files: Record<string, string> = PROJECT): string {
   const dir = mkdtempSync(join(tmpdir(), "dim-gates-"));
   repos.push(dir);
   execFileSync("git", ["init", "-q", dir]);
@@ -22,6 +23,7 @@ function repo(files: Record<string, string> = CHECK): string {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), text);
   }
+  execFileSync("git", ["-C", dir, "add", "-A"]);
   return dir;
 }
 
@@ -38,11 +40,18 @@ function states(dir: string, chosen: readonly GateName[] = EVERY): Record<string
 }
 
 function every(state: string): Record<string, string> {
-  return {
-    ".githooks/commit-msg": state,
-    ".github/workflows/commits.yml": state,
-    ".githooks/pre-commit": state,
-  };
+  return Object.fromEntries(
+    [
+      ".githooks/commit-msg",
+      ".github/workflows/commits.yml",
+      ".githooks/pre-commit",
+      ".githooks/pre-commit.d/check",
+      ".githooks/pre-commit.d/no-comments",
+      ".githooks/no-comments/scan.cjs",
+      ".githooks/no-comments/javascript.cjs",
+      ".github/workflows/no-comments.yml",
+    ].map((target) => [target, state]),
+  );
 }
 
 function canonical(source: string): string {
@@ -63,13 +72,14 @@ function refusalOf(run: () => unknown): string | null {
   }
 }
 
-function commit(dir: string, subject: string): number | null {
+function commit(dir: string, subject: string): { status: number | null; stderr: string } {
   execFileSync("git", ["-C", dir, "add", "-A"]);
-  return spawnSync(
+  const run = spawnSync(
     "git",
     ["-C", dir, "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", subject],
-    { stdio: "pipe" },
-  ).status;
+    { encoding: "utf8" },
+  );
+  return { status: run.status, stderr: run.stderr };
 }
 
 afterEach(() => {
@@ -79,15 +89,13 @@ afterEach(() => {
 describe("canonical gates", () => {
   test("a gate file's bytes change only with its version", () => {
     const pinned = Object.fromEntries(
-      Object.values(GATES)
-        .flat()
-        .map((file) => [
-          file.source,
-          {
-            version: Number(canonical(file.source).match(/dim-gate:(\d+)/)?.[1]),
-            sha256: createHash("sha256").update(canonical(file.source)).digest("hex"),
-          },
-        ]),
+      [...new Set(Object.values(GATES).flat())].map((file) => [
+        file.source,
+        {
+          version: Number(canonical(file.source).match(/dim-gate:(\d+)/)?.[1]),
+          sha256: createHash("sha256").update(canonical(file.source)).digest("hex"),
+        },
+      ]),
     );
     expect(pinned).toEqual({
       "commit-msg": {
@@ -99,19 +107,55 @@ describe("canonical gates", () => {
         sha256: "7e83f8486cfc7bbd1adb6782b3b4fd759d833f5919b12eae4bcb0b4470755a47",
       },
       "pre-commit": {
+        version: 2,
+        sha256: "723dfbd4bcc5e6378326f2726cd1e1a0864ecefbd47041f032c5f13774880f61",
+      },
+      "check-hook": {
         version: 1,
-        sha256: "85b1d93ca7399adeaf0dfe92341978363c635f394471f2d3180e9150c72b2cb1",
+        sha256: "2d3ca1deb17c3b1acdb9b78437cb2c57023faeab12e15164add4d264a8e8015d",
+      },
+      "no-comments-hook": {
+        version: 1,
+        sha256: "0b60b0b3b902a635beecb80294ff4c0c603c9a0a2306e780c6859462238b5039",
+      },
+      "no-comments/scan.cjs": {
+        version: 1,
+        sha256: "0757c8020616988b78da81fca605f438e9fa9463a4a45319f12bba1f126add00",
+      },
+      "no-comments/javascript.cjs": {
+        version: 1,
+        sha256: "7aafdeaef6391bcba71aafd527da2b8883eecab13bf76ee97523ca28b2826d4d",
+      },
+      "no-comments.yml": {
+        version: 1,
+        sha256: "3d38d68feae1d5182aa613a855b88f702b903d0dcffd288c0ee7ae8beca10422",
       },
     });
   });
 
+  test("the comment scanner's bundles are built from the code dim purges with", async () => {
+    const built = await bundleGates();
+    for (const [file, text] of Object.entries(built)) {
+      expect(text, `gates/no-comments/${file} is stale; run bun run gates:bundle`).toBe(
+        readFileSync(join(GATE_BUNDLES_DIR, file), "utf8"),
+      );
+    }
+  });
+
   test("names each gate for its rule, installing the files it runs from", () => {
-    expect(GATE_NAMES).toEqual(["commit-subject", "check"]);
+    expect(GATE_NAMES).toEqual(["commit-subject", "check", "no-comments"]);
     expect(
       Object.fromEntries(GATE_NAMES.map((gate) => [gate, GATES[gate].map((file) => file.target)])),
     ).toEqual({
       "commit-subject": [".githooks/commit-msg", ".github/workflows/commits.yml"],
-      check: [".githooks/pre-commit"],
+      check: [".githooks/pre-commit", ".githooks/pre-commit.d/check"],
+      "no-comments": [
+        ".githooks/pre-commit",
+        ".githooks/pre-commit.d/no-comments",
+        ".githooks/no-comments/scan.cjs",
+        ".githooks/no-comments/javascript.cjs",
+        ".github/workflows/no-comments.yml",
+      ],
     });
   });
 
@@ -134,18 +178,22 @@ describe("gate install", () => {
     expect(hooksPath(dir)).toBe(".githooks");
   });
 
-  test("installs only the chosen gates", () => {
+  test("installs only the chosen gates, and the pre-commit runner only for a gate that needs it", () => {
     const dir = repo();
     installGates(dir, ["commit-subject"]);
     expect(existsSync(join(dir, ".githooks/commit-msg"))).toBe(true);
     expect(existsSync(join(dir, ".githooks/pre-commit"))).toBe(false);
+    expect(existsSync(join(dir, ".githooks/no-comments"))).toBe(false);
   });
 
   test("installs the recorded choice when none is named", () => {
     const dir = repo();
     installGates(dir, ["check"]);
-    rmSync(join(dir, ".githooks/pre-commit"));
-    expect(installGates(dir, null)).toMatchObject({ gates: ["check"], written: [".githooks/pre-commit"] });
+    rmSync(join(dir, ".githooks/pre-commit.d/check"));
+    expect(installGates(dir, null)).toMatchObject({
+      gates: ["check"],
+      written: [".githooks/pre-commit.d/check"],
+    });
   });
 
   test("refuses to install with no choice named or recorded, writing nothing", () => {
@@ -155,39 +203,68 @@ describe("gate install", () => {
     expect(existsSync(join(dir, ".dim"))).toBe(false);
   });
 
-  test("removes a gate no longer chosen, leaving the rest", () => {
+  test("removes a gate no longer chosen, keeping a file another chosen gate still runs", () => {
     const dir = repo();
     installGates(dir, EVERY);
-    expect(installGates(dir, ["commit-subject"]).removed).toEqual([".githooks/pre-commit"]);
-    expect(existsSync(join(dir, ".githooks/pre-commit"))).toBe(false);
-    expect(states(dir, ["commit-subject"])).toEqual({
-      ".githooks/commit-msg": "installed",
-      ".github/workflows/commits.yml": "installed",
-    });
+    expect(installGates(dir, ["commit-subject", "check"]).removed).toEqual([
+      ".githooks/pre-commit.d/no-comments",
+      ".githooks/no-comments/scan.cjs",
+      ".githooks/no-comments/javascript.cjs",
+      ".github/workflows/no-comments.yml",
+    ]);
+    expect(existsSync(join(dir, ".githooks/pre-commit"))).toBe(true);
   });
 
   test("reports an installed gate that is not chosen", () => {
     const dir = repo();
     installGates(dir, EVERY);
-    expect(states(dir, ["commit-subject"])[".githooks/pre-commit"]).toBe("unchosen");
+    expect(states(dir, ["commit-subject", "no-comments"])[".githooks/pre-commit.d/check"]).toBe("unchosen");
   });
 
   test("the check gate runs the check the project declares", () => {
     const dir = repo();
     installGates(dir, ["check"]);
-    expect(read(dir, ".githooks/pre-commit")).toEndWith("\nexec make check\n");
+    expect(read(dir, ".githooks/pre-commit.d/check")).toEndWith("\nexec make check\n");
   });
 
   test("a commit is refused while the project's check fails", () => {
-    const dir = repo({ Makefile: "check:\n\tfalse\n" });
+    const dir = repo({ ...PROJECT, Makefile: "check:\n\tfalse\n" });
     installGates(dir, EVERY);
-    expect(commit(dir, "feat: add the gates")).not.toBe(0);
+    expect(commit(dir, "feat: add the gates").status).not.toBe(0);
     writeFileSync(join(dir, "Makefile"), "check:\n\ttrue\n");
-    expect(commit(dir, "feat: add the gates")).toBe(0);
+    expect(commit(dir, "feat: add the gates").status).toBe(0);
+  });
+
+  test("a commit is refused while a tracked file carries a comment", () => {
+    const dir = repo();
+    installGates(dir, EVERY);
+    writeFileSync(join(dir, "src/a.ts"), "export const a = 1; // why\n");
+    const refused = commit(dir, "feat: add the gates");
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("no-comments: src/a.ts holds 1 comment(s)");
+    writeFileSync(join(dir, "src/a.ts"), "export const a = 1;\n");
+    expect(commit(dir, "feat: add the gates").status).toBe(0);
+  });
+
+  test("installs a language's scanner only where the project uses that language", () => {
+    const dir = repo();
+    installGates(dir, EVERY);
+    rmSync(join(dir, "package.json"));
+    execFileSync("git", ["-C", dir, "rm", "-q", "--cached", "package.json"]);
+    writeFileSync(join(dir, "deno.json"), "{}\n");
+    execFileSync("git", ["-C", dir, "add", "deno.json"]);
+    expect(states(dir)[".githooks/no-comments/javascript.cjs"]).toBe("installed");
+  });
+
+  test("refuses the comment ban in a project with no language it reads, writing nothing", () => {
+    const dir = repo({ Makefile: "check:\n\ttrue\n" });
+    expect(refusalOf(() => installGates(dir, EVERY))).toBe("no_ecosystem");
+    expect(existsSync(join(dir, ".githooks"))).toBe(false);
+    expect(existsSync(join(dir, ".dim"))).toBe(false);
   });
 
   test("refuses the check gate in a project that declares no check, writing nothing", () => {
-    const dir = repo({});
+    const dir = repo({ "package.json": "{}\n" });
     expect(refusalOf(() => installGates(dir, EVERY))).toBe("no_check");
     expect(existsSync(join(dir, ".githooks"))).toBe(false);
     expect(existsSync(join(dir, ".dim"))).toBe(false);
@@ -207,7 +284,7 @@ describe("gate install", () => {
   });
 
   test("replaces a gate behind the canonical one, keeping no copy", () => {
-    const dir = repo({ ...CHECK, ".githooks/commit-msg": "#!/bin/sh\n# dim-gate:0\nexit 0\n" });
+    const dir = repo({ ...PROJECT, ".githooks/commit-msg": "#!/bin/sh\n# dim-gate:0\nexit 0\n" });
     expect(states(dir)[".githooks/commit-msg"]).toBe("behind");
     const result = installGates(dir, ["commit-subject"]);
     expect(result.written).toEqual([".githooks/commit-msg", ".github/workflows/commits.yml"]);
@@ -217,7 +294,7 @@ describe("gate install", () => {
 
   test("moves a gate changed in place aside before replacing it", () => {
     const edited = canonical("commit-msg").replace("-le 50", "-le 72");
-    const dir = repo({ ...CHECK, ".githooks/commit-msg": edited });
+    const dir = repo({ ...PROJECT, ".githooks/commit-msg": edited });
     expect(states(dir)[".githooks/commit-msg"]).toBe("changed");
     const result = installGates(dir, EVERY);
     expect(result.backups).toEqual([".githooks/commit-msg.dim-backup"]);
@@ -227,7 +304,7 @@ describe("gate install", () => {
 
   test("treats a project's own file at a gate's path as changed when chosen, and leaves it when not", () => {
     const own = "#!/bin/sh\nexit 0\n";
-    const dir = repo({ ...CHECK, ".githooks/pre-commit": own });
+    const dir = repo({ ...PROJECT, ".githooks/pre-commit": own });
     expect(states(dir)[".githooks/pre-commit"]).toBe("changed");
     installGates(dir, ["commit-subject"]);
     expect(read(dir, ".githooks/pre-commit")).toBe(own);
@@ -237,26 +314,32 @@ describe("gate install", () => {
     const dir = repo();
     installGates(dir, EVERY);
     writeFileSync(join(dir, "Makefile"), "verify:\n\ttrue\n");
-    expect(states(dir)[".githooks/pre-commit"]).toBe("changed");
+    expect(states(dir)[".githooks/pre-commit.d/check"]).toBe("changed");
   });
 
   test("leaves a gate ahead of this dim as it is", () => {
     const ahead = "#!/bin/sh\n# dim-gate:99\nexit 0\n";
-    const dir = repo({ ...CHECK, ".githooks/commit-msg": ahead });
+    const dir = repo({ ...PROJECT, ".githooks/commit-msg": ahead });
     expect(states(dir)[".githooks/commit-msg"]).toBe("ahead");
     installGates(dir, EVERY);
     expect(read(dir, ".githooks/commit-msg")).toBe(ahead);
   });
 
-  test("leaves a file the project added beside a gate as it is", () => {
-    const dir = repo({ ...CHECK, ".githooks/pre-push": "#!/bin/sh\nexit 0\n" });
+  test("runs a pre-commit step the project adds beside the gates", () => {
+    const dir = repo();
     installGates(dir, EVERY);
-    expect(read(dir, ".githooks/pre-push")).toBe("#!/bin/sh\nexit 0\n");
+    mkdirSync(join(dir, ".githooks/pre-commit.d"), { recursive: true });
+    writeFileSync(join(dir, ".githooks/pre-commit.d/own"), "#!/bin/sh\necho own step failed >&2\nexit 1\n", {
+      mode: 0o755,
+    });
+    expect(commit(dir, "feat: add the gates").stderr).toContain("own step failed");
+    installGates(dir, null);
+    expect(existsSync(join(dir, ".githooks/pre-commit.d/own"))).toBe(true);
   });
 
   test("adds the hook wiring to a package.json so a fresh clone runs the gates", () => {
     const dir = repo({
-      ...CHECK,
+      ...PROJECT,
       "package.json": '{\n  "name": "p",\n  "scripts": {\n    "test": "bun test"\n  }\n}\n',
     });
     installGates(dir, EVERY);
@@ -267,13 +350,13 @@ describe("gate install", () => {
   });
 
   test("adds no package.json to a project without one", () => {
-    const dir = repo();
-    installGates(dir, EVERY);
+    const dir = repo({ Makefile: "check:\n\ttrue\n" });
+    installGates(dir, ["commit-subject", "check"]);
     expect(existsSync(join(dir, "package.json"))).toBe(false);
   });
 
   test("refuses a package.json whose prepare script does something else, writing nothing", () => {
-    const dir = repo({ ...CHECK, "package.json": '{ "scripts": { "prepare": "husky" } }\n' });
+    const dir = repo({ ...PROJECT, "package.json": '{ "scripts": { "prepare": "husky" } }\n' });
     expect(refusalOf(() => installGates(dir, EVERY))).toBe("prepare_occupied");
     expect(states(dir)).toEqual(every("missing"));
     expect(existsSync(join(dir, ".dim"))).toBe(false);

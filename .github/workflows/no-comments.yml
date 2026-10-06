@@ -1,0 +1,21 @@
+# dim-gate:1
+name: No comments
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  no-comments:
+    name: No comments
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - run: node .githooks/no-comments/scan.cjs

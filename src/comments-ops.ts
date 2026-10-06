@@ -1,7 +1,9 @@
 import { relative, resolve } from "node:path";
 import { refuseComments } from "./comments-contract";
+import { COMMENT_LANGUAGES } from "./comments-languages";
 import { type PurgedFile, purgeCheckout } from "./comments-purge";
 import { checkTask, formatTask } from "./declared-tasks";
+import { SCANNER_DIR } from "./gates-contract";
 import { checkoutRoot } from "./git-checkout";
 
 type Formatted = { command: string; exitCode: number | null; signal: string | null; output: string };
@@ -34,7 +36,12 @@ export function purgeComments(
   const root = checkoutRoot(cwd);
   if (root === null) throw refuseComments("not_a_checkout", { cwd });
   const paths = options.paths.map((path) => relative(root, resolve(cwd, path)) || ".");
-  const { files, unparsed } = purgeCheckout(root, { write: options.write, paths });
+  const { files, unparsed } = purgeCheckout(root, {
+    write: options.write,
+    paths,
+    languages: COMMENT_LANGUAGES,
+    skipped: [SCANNER_DIR],
+  });
   const comments = files.reduce((sum, file) => sum + file.removed, 0);
   const format = formatTask(root)?.commandLine ?? null;
   const check = checkTask(root)?.commandLine ?? null;

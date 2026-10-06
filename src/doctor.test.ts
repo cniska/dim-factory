@@ -311,7 +311,7 @@ describe("doctor in a project's checkout", () => {
     const found = check(env, "gates", join(dir, ".githooks"));
     expect(found).toMatchObject({ state: "fail", fix: `dim gates install, from ${dir}` });
     expect(found?.detail).toBe(
-      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit unchosen; git hooks do not run from .githooks",
+      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit unchosen; .githooks/pre-commit.d/check unchosen; git hooks do not run from .githooks",
     );
     expect(status(dir)).toBe(before);
   });

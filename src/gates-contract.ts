@@ -1,6 +1,6 @@
 import { refuser } from "./coded-error";
 
-export const GATE_NAMES = ["commit-subject", "check"] as const;
+export const GATE_NAMES = ["commit-subject", "check", "no-comments"] as const;
 
 export type GateName = (typeof GATE_NAMES)[number];
 
@@ -12,12 +12,19 @@ export const HOOKS_DIR = ".githooks";
 
 export const PREPARE = `git config core.hooksPath ${HOOKS_DIR}`;
 
+export const SCANNER_DIR = `${HOOKS_DIR}/no-comments`;
+
 const INSTALL = `dim gates install <gate>..., choosing from ${GATE_NAMES.join(", ")}`;
 
 export const refuseGates = refuser<{
   readonly not_a_checkout: { readonly cwd: string };
   readonly no_gates_chosen: { readonly root: string };
   readonly no_check: { readonly root: string };
+  readonly no_ecosystem: {
+    readonly root: string;
+    readonly gate: GateName;
+    readonly ecosystems: readonly string[];
+  };
   readonly prepare_occupied: { readonly path: string; readonly prepare: string };
   readonly hooks_path_occupied: { readonly root: string; readonly hooksPath: string };
 }>({
@@ -34,6 +41,11 @@ export const refuseGates = refuser<{
     message: ({ root }) => `${root} declares no check, so the check gate has nothing to run before a commit`,
     resolve: () =>
       "stop and hand this error to the owner: the project must declare a verify, check, ci, validate or test task in package.json, mise.toml or a Makefile, or not choose the check gate",
+  },
+  no_ecosystem: {
+    message: ({ root, gate, ecosystems }) =>
+      `${root} tracks no ${ecosystems.join(" or ")} manifest, so the ${gate} gate has nothing it can read`,
+    resolve: ({ gate }) => `stop and ask the owner whether to choose the gates without ${gate}`,
   },
   prepare_occupied: {
     message: ({ path, prepare }) =>
