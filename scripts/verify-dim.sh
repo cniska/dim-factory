@@ -29,7 +29,7 @@ if [ "$1" = new ]; then
   git -C "$repo" remote add origin https://github.com/example/verify.git
   mkdir -p "$repo/noop"
   printf '{"name":"noop","version":"1.0.0"}\n' > "$repo/noop/package.json"
-  printf '{"name":"verify","scripts":{"verify":"true"},"dependencies":{"noop":"file:./noop"}}\n' > "$repo/package.json"
+  printf '{"name":"verify","scripts":{"check":"true"},"dependencies":{"noop":"file:./noop"}}\n' > "$repo/package.json"
   (cd "$repo" && bun install --silent)
   printf '.claude/\nnode_modules/\n' > "$repo/.gitignore"
   git -C "$repo" add .
