@@ -2,11 +2,12 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { z } from "zod";
 import { invariant } from "./assert";
+import { isRefusal } from "./coded-error";
 import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
-import { hooksWired, planGates } from "./gates";
+import { type GatePlan, hooksWired, planGates } from "./gates";
 import { checkoutRoot } from "./git-checkout";
 import { HARNESSES } from "./harness-contract";
 import { installedHarnesses } from "./harness-ops";
@@ -281,7 +282,13 @@ function outcomes(db: Database): Health {
 }
 
 function gates(root: string): Health {
-  const plans = planGates(root);
+  let plans: GatePlan[];
+  try {
+    plans = planGates(root);
+  } catch (error) {
+    if (!isRefusal(error)) throw error;
+    return { name: "gates", state: "fail", detail: error.message, fix: error.resolve };
+  }
   const unmet = plans.filter((plan) => plan.state !== "installed" && plan.state !== "ahead");
   const ahead = plans.filter((plan) => plan.state === "ahead");
   const unwired = !hooksWired(root);

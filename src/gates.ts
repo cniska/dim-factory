@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { insertJsoncValue, parseJsonc } from "./config-jsonc";
 import { readJsoncText } from "./config-jsonc-file";
+import { checkTask } from "./declared-tasks";
 import { nextBackupPath } from "./file-backup";
 import { HOOKS_DIR, PREPARE, refuseGates } from "./gates-contract";
 import { configValue, ran } from "./git";
@@ -19,6 +20,7 @@ export type Gate = {
 export const GATES: readonly Gate[] = [
   { name: "commit-msg", source: "commit-msg", target: `${HOOKS_DIR}/commit-msg`, mode: 0o755 },
   { name: "commits", source: "commits.yml", target: ".github/workflows/commits.yml", mode: 0o644 },
+  { name: "pre-commit", source: "pre-commit", target: `${HOOKS_DIR}/pre-commit`, mode: 0o755 },
 ];
 
 export type GateState = "installed" | "missing" | "behind" | "changed" | "ahead";
@@ -32,8 +34,25 @@ function versionOf(text: string): number | null {
   return found === undefined ? null : Number(found);
 }
 
-function canonicalText(gate: Gate): string {
+export function canonicalSource(gate: Gate): string {
   return readFileSync(join(CANONICAL_DIR, gate.source), "utf8");
+}
+
+type Planned = {
+  readonly gate: Gate;
+  readonly path: string;
+  readonly text: string;
+  readonly state: GateState;
+};
+
+function planned(root: string): Planned[] {
+  const check = checkTask(root);
+  if (check === null) throw refuseGates("no_check", { root });
+  return GATES.map((gate) => {
+    const path = join(root, gate.target);
+    const text = canonicalSource(gate).replaceAll("{{check}}", check.commandLine);
+    return { gate, path, text, state: stateOf(text, readOrNull(path)) };
+  });
 }
 
 function stateOf(canonical: string, installed: string | null): GateState {
@@ -50,11 +69,7 @@ function readOrNull(path: string): string | null {
 }
 
 export function planGates(root: string): GatePlan[] {
-  return GATES.map((gate) => ({
-    name: gate.name,
-    target: gate.target,
-    state: stateOf(canonicalText(gate), readOrNull(join(root, gate.target))),
-  }));
+  return planned(root).map(({ gate, state }) => ({ name: gate.name, target: gate.target, state }));
 }
 
 const PackageScripts = z.looseObject({
@@ -84,12 +99,10 @@ function checkHooksPath(root: string): void {
 export function installGates(root: string): GatesInstalled {
   checkHooksPath(root);
   const packageJson = prepareWiring(root);
+  const plans = planned(root);
   const written: string[] = [];
   const backups: string[] = [];
-  for (const gate of GATES) {
-    const path = join(root, gate.target);
-    const canonical = canonicalText(gate);
-    const state = stateOf(canonical, readOrNull(path));
+  for (const { gate, path, text, state } of plans) {
     if (state === "installed" || state === "ahead") continue;
     if (state === "changed") {
       const backup = nextBackupPath(path);
@@ -97,7 +110,7 @@ export function installGates(root: string): GatesInstalled {
       backups.push(relative(root, backup));
     }
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, canonical);
+    writeFileSync(path, text);
     chmodSync(path, gate.mode);
     written.push(gate.target);
   }

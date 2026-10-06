@@ -265,8 +265,19 @@ describe("doctor in a project's checkout", () => {
   function project(): string {
     const dir = newRoot();
     execFileSync("git", ["init", "-q", dir]);
+    writeFileSync(join(dir, "Makefile"), "check:\n\ttrue\n");
     return dir;
   }
+
+  test("reports a project that declares no check", () => {
+    const env = seeded();
+    const dir = project();
+    rmSync(join(dir, "Makefile"));
+    expect(check(env, "gates", dir)).toMatchObject({
+      state: "fail",
+      detail: `${dir} declares no check, so no gate can run it before a commit`,
+    });
+  });
 
   function status(dir: string): string {
     return execFileSync("git", ["-C", dir, "status", "--porcelain", "--untracked-files=all"]).toString();
@@ -288,7 +299,7 @@ describe("doctor in a project's checkout", () => {
     const found = check(env, "gates", join(dir, ".githooks"));
     expect(found).toMatchObject({ state: "fail", fix: `dim gates install, from ${dir}` });
     expect(found?.detail).toBe(
-      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; git hooks do not run from .githooks",
+      ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit missing; git hooks do not run from .githooks",
     );
     expect(status(dir)).toBe(before);
   });
