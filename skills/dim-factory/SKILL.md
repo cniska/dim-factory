@@ -10,6 +10,8 @@ The operator runs the line and never does a station's work. The first operator a
 
 ## Commands
 
+Each command prints one JSON line. Judge it by its `ok` field, or by an exit code read without a pipe, since a pipe reports the last command's exit.
+
 - `dim order run <order>` runs whatever the record says comes next, the station the order is at or its ship, and returns when it finishes.
 - `dim order show <order>` prints the order: its status, station, `next`, `admits`, branch, workspace, log, workers, slices and findings.
 - `dim order approve <order> --reason <reason> --decided owner|operator` and `dim order return <order> --reason <reason> --decided owner|operator` carry out the decision on the artifact that waits. Approval runs the next station or ships; a return reruns the same station with the reason in its brief.
