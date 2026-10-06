@@ -34,14 +34,11 @@ test("hears each committed write to its own record once, and nothing written to 
   const other = recordIn("other");
   const writer = openDb(path);
   const elsewhere = openDb(other);
-  const probe = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
-  const port = probe.port;
-  probe.stop(true);
-  process.env[PORT_ENV] = String(port);
   let heard = 0;
-  const stop = await hearRecordWrites(path, port, () => {
+  const { port, stop } = await hearRecordWrites(path, 0, () => {
     heard += 1;
   });
+  process.env[PORT_ENV] = String(port);
   try {
     writeTransaction(elsewhere, () => elsewhere.run(INSERT, ["elsewhere"]));
     await Bun.sleep(50);
