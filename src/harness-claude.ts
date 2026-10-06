@@ -45,7 +45,11 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
 
 const editRule = (path: string) => `Edit(${absoluteRule(path)}/**)`;
 
+const STATION_TOOLS = ["Bash", "Read", "Write", "Edit", "Agent"];
+
 const WEB_TOOLS = ["WebSearch", "WebFetch"];
+
+const tools = ({ web }: Policy) => [...STATION_TOOLS, ...(web ? WEB_TOOLS : [])].join(",");
 
 const permissions = ({ writable, denied, unedited, web }: Policy) => ({
   allow: [...writable.map(editRule), ...(web ? WEB_TOOLS : [])],
@@ -82,6 +86,8 @@ export const claude: Adapter = {
     settings(start),
     "--setting-sources",
     "user",
+    "--tools",
+    tools(start.policy),
     "--append-system-prompt",
     start.instructions,
     ...sessionFlags(start.session),

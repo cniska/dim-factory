@@ -288,6 +288,18 @@ describe("what a station worker may change", () => {
       expect(allowed(role)).not.toContain("WebFetch");
     }
   });
+
+  test("AC-86 every station turn is offered the shell, file and subagent tools, and the planner the web tools too", async () => {
+    const m = await start({ script: happyPath() });
+    await reviewed(m.operator);
+
+    const station = ["Bash", "Read", "Write", "Edit", "Agent"];
+    const offered = (role: StationRole) => m.invocations(role).map((invocation) => invocation.tools);
+    for (const tools of offered("planner")) expect(tools).toEqual([...station, "WebSearch", "WebFetch"]);
+    for (const role of ["builder", "reviewer"] as const) {
+      for (const tools of offered(role)) expect(tools).toEqual(station);
+    }
+  });
 });
 
 describe("slice gates", () => {

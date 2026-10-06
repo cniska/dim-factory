@@ -38,6 +38,7 @@ type Flags = {
   readonly permissionMode: PermissionMode;
   readonly settings: ClaudeSettings & { readonly hooks?: ClaudeHooks };
   readonly settingSources: string | null;
+  readonly tools: readonly string[] | null;
   readonly prompt: string;
 };
 
@@ -50,6 +51,7 @@ const NO_FLAGS: Flags = {
   permissionMode: "default",
   settings: {},
   settingSources: null,
+  tools: null,
   prompt: "",
 };
 
@@ -82,6 +84,7 @@ type Valued =
   | "--model"
   | "--resume"
   | "--session-id"
+  | "--tools"
   | "--append-system-prompt";
 
 const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> = {
@@ -92,6 +95,7 @@ const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> =
   "--model": (flags, value) => ({ ...flags, model: value }),
   "--resume": (flags, value) => ({ ...flags, resume: value }),
   "--session-id": (flags, value) => ({ ...flags, sessionId: value }),
+  "--tools": (flags, value) => ({ ...flags, tools: value.split(",") }),
   "--append-system-prompt": (flags, value) => ({ ...flags, instructions: value }),
 };
 
@@ -203,6 +207,7 @@ const invocation: Invocation = {
   instructions: flags.instructions,
   prompt: flags.prompt,
   allowed: flags.settings.permissions?.allow ?? [],
+  tools: flags.tools,
   cwd,
   home,
   pid: process.pid,
