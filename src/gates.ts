@@ -71,11 +71,22 @@ function readOrNull(path: string): string | null {
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
-function stateOf(canonical: string, installed: string | null): GateState {
+const SLOT = /\{\{(?:check|setup)\}\}\n?/g;
+
+function rendersFrom(source: string, installed: string): boolean {
+  const pattern = source
+    .split(SLOT)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[^]*");
+  return new RegExp(`^${pattern}$`).test(installed);
+}
+
+function stateOf(source: string, canonical: string, installed: string | null): GateState {
   if (installed === null) return "missing";
   if (installed === canonical) return "installed";
   const at = versionOf(installed);
   const wanted = versionOf(canonical);
+  if (at === wanted && source !== canonical && rendersFrom(source, installed)) return "behind";
   if (at === null || at === wanted) return "changed";
   return wanted !== null && at < wanted ? "behind" : "ahead";
 }
@@ -130,7 +141,16 @@ function planned(root: string, chosen: readonly GateName[]): Planned[] {
           : [];
       }
       const text = rendered(root, file);
-      return [{ gate: owner, target: file.target, state: stateOf(text, found), file, path, text }];
+      return [
+        {
+          gate: owner,
+          target: file.target,
+          state: stateOf(canonicalSource(file), text, found),
+          file,
+          path,
+          text,
+        },
+      ];
     }),
   );
 }

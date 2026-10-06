@@ -2,6 +2,8 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { refuser } from "./coded-error";
+import { PROJECT_CONFIG, parseConfig } from "./config";
+import { type TaskSetting, taskOf } from "./config-contract";
 import { LOCKS, type Lock } from "./ecosystems";
 import { type CommittedTree, committedTree } from "./git-committed";
 
@@ -71,7 +73,7 @@ export function installCommand(repo: string): InstallCommand | null {
   return found === null ? null : { commandLine: found.install, source: found.lock };
 }
 
-const MANIFESTS = ["package.json", "mise.toml", "Makefile", ...LOCKS.map(({ lock }) => lock)];
+const MANIFESTS = ["package.json", "mise.toml", "Makefile", PROJECT_CONFIG, ...LOCKS.map(({ lock }) => lock)];
 
 export function manifestsAt(root: string, at: string): Manifests | null {
   return committedTree(root, at, MANIFESTS);
@@ -157,21 +159,19 @@ function fromMakefile(manifests: Manifests): DeclaredTask[] {
   return [...names].map((name) => ({ name, commandLine: `make ${name}`, source: "Makefile", body: text }));
 }
 
-const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
+export function taskName(manifests: Manifests, setting: TaskSetting): string {
+  const text = readText(manifests, PROJECT_CONFIG);
+  return taskOf(text === null ? {} : parseConfig(text, PROJECT_CONFIG), setting);
+}
 
-const FORMAT_ORDER = ["format", "fmt"];
-
-function firstDeclared(manifests: Manifests, order: readonly string[]): DeclaredTask | null {
+function declared(manifests: Manifests, setting: TaskSetting): DeclaredTask | null {
+  const name = taskName(manifests, setting);
   const tasks = [...fromPackageJson(manifests), ...fromMise(manifests), ...fromMakefile(manifests)];
-  for (const name of order) {
-    const found = tasks.find((one) => one.name === name);
-    if (found) return found;
-  }
-  return null;
+  return tasks.find((one) => one.name === name) ?? null;
 }
 
 export function checkDeclared(manifests: Manifests): DeclaredTask | null {
-  return firstDeclared(manifests, CHECK_ORDER);
+  return declared(manifests, "check");
 }
 
 export function checkTask(repo: string): DeclaredTask | null {
@@ -179,5 +179,5 @@ export function checkTask(repo: string): DeclaredTask | null {
 }
 
 export function formatTask(repo: string): DeclaredTask | null {
-  return firstDeclared(manifestsIn(repo), FORMAT_ORDER);
+  return declared(manifestsIn(repo), "format");
 }

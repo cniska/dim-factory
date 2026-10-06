@@ -312,7 +312,7 @@ describe("hooks", () => {
     });
     writeFileSync(
       join(m.repo, "package.json"),
-      manifest({ verify: "true", format: "touch formatted.marker" }),
+      manifest({ check: "true", format: "touch formatted.marker" }),
     );
     mkdirSync(join(m.repo, ".claude"), { recursive: true });
     writeFileSync(

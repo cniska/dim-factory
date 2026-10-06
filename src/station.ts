@@ -3,7 +3,7 @@ import type { z } from "zod";
 import { invariant, unreachable } from "./assert";
 import { listedEnv, PASSED_THROUGH } from "./check";
 import { type CodedError, recordOf } from "./coded-error";
-import type { Models } from "./config";
+import type { Models } from "./config-contract";
 import type { Identity } from "./git";
 import type { Adapter, Outcome, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";

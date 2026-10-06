@@ -3,13 +3,16 @@ import {
   projectConfigPath,
   readProjectConfig,
   readUserConfig,
-  SETTINGS,
-  type Setting,
   userConfigPath,
   writeConfigValue,
 } from "./config";
+import { type Layer, SETTING_KEYS } from "./config-contract";
 import { checkoutRoot } from "./git-checkout";
 import type { Env } from "./paths";
+
+const SETTINGS_LISTED = Object.fromEntries(
+  Object.entries(SETTING_KEYS).map(([key, { layers }]) => [key, layers]),
+);
 
 export function configLayers(cwd: string, env: Env) {
   const root = checkoutRoot(cwd);
@@ -19,7 +22,7 @@ export function configLayers(cwd: string, env: Env) {
       user: { path: userConfigPath(env), config: user },
       project: null,
       resolved: user,
-      settings: SETTINGS,
+      settings: SETTINGS_LISTED,
     };
   }
   const committed = readProjectConfig(root, "HEAD");
@@ -27,14 +30,14 @@ export function configLayers(cwd: string, env: Env) {
     user: { path: userConfigPath(env), config: user },
     project: { path: projectConfigPath(root), config: readProjectConfig(root), committed },
     resolved: { ...user, ...committed },
-    settings: SETTINGS,
+    settings: SETTINGS_LISTED,
   };
 }
 
 export type SettingChange = {
-  readonly name: Setting;
+  readonly key: string;
   readonly value: string | undefined;
-  readonly layer: "user" | "project";
+  readonly layer: Layer;
 };
 
 export function changeSetting(cwd: string, env: Env, change: SettingChange) {
@@ -42,6 +45,7 @@ export function changeSetting(cwd: string, env: Env, change: SettingChange) {
   if (change.layer === "project" && root === null) {
     throw new UsageError(`${cwd} is not inside a git checkout, so it has no project config`);
   }
-  writeConfigValue(root === null ? userConfigPath(env) : projectConfigPath(root), change.name, change.value);
+  const path = root === null ? userConfigPath(env) : projectConfigPath(root);
+  writeConfigValue(path, change.layer, change.key, change.value);
   return configLayers(cwd, env);
 }

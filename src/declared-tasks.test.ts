@@ -10,7 +10,10 @@ const roots: string[] = [];
 function repo(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "dim-tasks-"));
   roots.push(root);
-  for (const [name, body] of Object.entries(files)) writeFileSync(join(root, name), body);
+  for (const [name, body] of Object.entries(files)) {
+    mkdirSync(join(root, name, ".."), { recursive: true });
+    writeFileSync(join(root, name), body);
+  }
   return root;
 }
 
@@ -21,29 +24,55 @@ afterEach(() => {
 describe("the check task", () => {
   test("names the script as the repo declares it, through its own package manager", () => {
     const root = repo({
-      "package.json": JSON.stringify({ scripts: { verify: "biome check && bun test" } }),
+      "package.json": JSON.stringify({ scripts: { check: "biome check && bun test" } }),
       "bun.lock": "",
     });
     expect(checkTask(root)).toEqual({
-      name: "verify",
-      commandLine: "bun run verify",
+      name: "check",
+      commandLine: "bun run check",
       source: "package.json",
-      body: '{"verify":"biome check && bun test"}',
+      body: '{"check":"biome check && bun test"}',
     });
   });
 
+  test("is the task named check, whatever else the repo declares", () => {
+    const root = repo({
+      "package.json": JSON.stringify({ scripts: { test: "bun test", verify: "bun run lint && bun test" } }),
+      "bun.lock": "",
+    });
+    expect(checkTask(root)).toBeNull();
+  });
+
+  test("is the task the project's settings name instead", () => {
+    const root = repo({
+      "package.json": JSON.stringify({ scripts: { check: "true", verify: "bun run lint && bun test" } }),
+      "bun.lock": "",
+      ".dim/config.json": '{ "tasks": { "check": "verify" } }',
+    });
+    expect(checkTask(root)?.commandLine).toBe("bun run verify");
+  });
+
+  test("finds nothing where the settings name a task the repo does not declare", () => {
+    const root = repo({
+      "package.json": JSON.stringify({ scripts: { check: "true" } }),
+      "bun.lock": "",
+      ".dim/config.json": '{ "tasks": { "check": "verify" } }',
+    });
+    expect(checkTask(root)).toBeNull();
+  });
+
   test("carries the whole section that declares the check, so a change to a task it calls shows too", () => {
-    const scripts = { lint: "biome check", verify: "bun run lint && bun test" };
+    const scripts = { lint: "biome check", check: "bun run lint && bun test" };
     const before = checkTask(repo({ "package.json": JSON.stringify({ scripts }), "bun.lock": "" }));
     const lintChanged = { scripts: { ...scripts, lint: "true" } };
     const after = checkTask(repo({ "package.json": JSON.stringify(lintChanged), "bun.lock": "" }));
     expect(before?.body).not.toBe(after?.body);
-    expect(checkTask(repo({ Makefile: "verify:\n\tbun test\n" }))?.body).toBe("verify:\n\tbun test\n");
+    expect(checkTask(repo({ Makefile: "check:\n\tbun test\n" }))?.body).toBe("check:\n\tbun test\n");
   });
 
-  test("reads a revision's declaration from git, not the working tree", () => {
+  test("reads a revision's declaration and settings from git, not the working tree", () => {
     const root = repo({
-      "package.json": JSON.stringify({ scripts: { verify: "bun test" } }),
+      "package.json": JSON.stringify({ scripts: { check: "bun test", verify: "true" } }),
       "bun.lock": "",
     });
     execFileSync("git", ["init", "-q", root]);
@@ -60,45 +89,31 @@ describe("the check task", () => {
       "x",
       "--no-verify",
     ]);
-    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
+    mkdirSync(join(root, ".dim"));
+    writeFileSync(join(root, ".dim", "config.json"), '{ "tasks": { "check": "verify" } }');
     const at = manifestsAt(root, "HEAD");
-    expect(at === null ? null : checkDeclared(at)?.body).toBe('{"verify":"bun test"}');
-    expect(checkTask(root)?.body).toBe('{"verify":"true"}');
+    expect(at === null ? null : checkDeclared(at)?.name).toBe("check");
+    expect(checkTask(root)?.name).toBe("verify");
   });
 
   test("runs through the package manager the lock file names", () => {
-    const scripts = JSON.stringify({ scripts: { verify: "vitest" } });
+    const scripts = JSON.stringify({ scripts: { check: "vitest" } });
     expect(checkTask(repo({ "package.json": scripts, "pnpm-lock.yaml": "" }))?.commandLine).toBe(
-      "pnpm run verify",
+      "pnpm run check",
     );
-    expect(checkTask(repo({ "package.json": scripts, "yarn.lock": "" }))?.commandLine).toBe(
-      "yarn run verify",
-    );
+    expect(checkTask(repo({ "package.json": scripts, "yarn.lock": "" }))?.commandLine).toBe("yarn run check");
   });
 
   test("names no task where no lock file names a manager", () => {
-    expect(checkTask(repo({ "package.json": JSON.stringify({ scripts: { verify: "vitest" } }) }))).toBeNull();
+    expect(checkTask(repo({ "package.json": JSON.stringify({ scripts: { check: "vitest" } }) }))).toBeNull();
   });
 
   test("reads mise tasks and Makefile targets", () => {
     expect(checkTask(repo({ "mise.toml": '[tasks.check]\nrun = "biome check"\n' }))?.commandLine).toBe(
       "mise run check",
     );
-    const make = repo({ Makefile: ".PHONY: verify\nverify:\n\tgo test ./...\nVAR := x\n" });
-    expect(checkTask(make)?.commandLine).toBe("make verify");
-  });
-
-  test("prefers the widest declared check over a narrower one", () => {
-    const root = repo({
-      "package.json": JSON.stringify({ scripts: { test: "bun test", verify: "bun run lint && bun test" } }),
-      "bun.lock": "",
-    });
-    expect(checkTask(root)?.name).toBe("verify");
-  });
-
-  test("falls back to test where that is all the repo declares", () => {
-    const root = repo({ "package.json": JSON.stringify({ scripts: { test: "bun test" } }), "bun.lock": "" });
-    expect(checkTask(root)?.commandLine).toBe("bun run test");
+    const make = repo({ Makefile: ".PHONY: check\ncheck:\n\tgo test ./...\nVAR := x\n" });
+    expect(checkTask(make)?.commandLine).toBe("make check");
   });
 
   test("returns nothing for a repo that declares nothing, rather than guessing", () => {
@@ -113,13 +128,13 @@ describe("the check task", () => {
         meta: expect.objectContaining({ file: "package.json" }),
       }),
     );
-    expect(() => checkTask(repo({ "mise.toml": "[tasks\nverify" }))).toThrow(
+    expect(() => checkTask(repo({ "mise.toml": "[tasks\ncheck" }))).toThrow(
       expect.objectContaining({ code: "manifest_unparseable" }),
     );
   });
 
   test("names a manifest whose declared tasks are not a table, rather than reading it as declaring nothing", () => {
-    const scripts = repo({ "package.json": JSON.stringify({ scripts: "verify" }), "bun.lock": "" });
+    const scripts = repo({ "package.json": JSON.stringify({ scripts: "check" }), "bun.lock": "" });
     expect(() => checkTask(scripts)).toThrow(
       expect.objectContaining({
         code: "manifest_unparseable",
@@ -129,7 +144,7 @@ describe("the check task", () => {
     expect(() => checkTask(repo({ "package.json": "[]", "bun.lock": "" }))).toThrow(
       expect.objectContaining({ code: "manifest_unparseable" }),
     );
-    expect(() => checkTask(repo({ "mise.toml": 'tasks = "verify"' }))).toThrow(
+    expect(() => checkTask(repo({ "mise.toml": 'tasks = "check"' }))).toThrow(
       expect.objectContaining({
         code: "manifest_unparseable",
         meta: expect.objectContaining({ file: "mise.toml" }),
@@ -138,7 +153,7 @@ describe("the check task", () => {
   });
 
   test("names a manifest it cannot read, rather than reading it as a repo that declares nothing", () => {
-    const root = repo({ "package.json": JSON.stringify({ scripts: { verify: "true" } }), "bun.lock": "" });
+    const root = repo({ "package.json": JSON.stringify({ scripts: { check: "true" } }), "bun.lock": "" });
     chmodSync(join(root, "package.json"), 0o000);
     try {
       expect(() => checkTask(root)).toThrow(
@@ -150,7 +165,7 @@ describe("the check task", () => {
   });
 
   test("finds this repo's own check task", () => {
-    expect(checkTask(new URL("..", import.meta.url).pathname)?.commandLine).toBe("bun run verify");
+    expect(checkTask(new URL("..", import.meta.url).pathname)?.commandLine).toBe("bun run check");
   });
 });
 
@@ -177,12 +192,15 @@ describe("the install command", () => {
 });
 
 describe("the format task", () => {
-  test("names format or fmt as the repo declares it", () => {
-    const root = repo({
-      "package.json": JSON.stringify({ scripts: { fmt: "biome format" } }),
+  test("is the task named format, or the one the project's settings name", () => {
+    const scripts = JSON.stringify({ scripts: { format: "biome format", fmt: "prettier" } });
+    expect(formatTask(repo({ "package.json": scripts, "bun.lock": "" }))?.commandLine).toBe("bun run format");
+    const named = repo({
+      "package.json": scripts,
       "bun.lock": "",
+      ".dim/config.json": '{ "tasks": { "format": "fmt" } }',
     });
-    expect(formatTask(root)?.commandLine).toBe("bun run fmt");
+    expect(formatTask(named)?.commandLine).toBe("bun run fmt");
   });
 });
 

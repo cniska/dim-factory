@@ -131,7 +131,7 @@ describe("briefs", () => {
     const m = await start({ script: happyPath() });
     await shipThrough(m.operator, await addOrder(m.operator));
 
-    expect(briefFrom(m.invocation("builder", 0).prompt).check).toBe("bun run verify");
+    expect(briefFrom(m.invocation("builder", 0).prompt).check).toBe("bun run check");
   });
 
   test("AC-17 each recorded slice of a plan has a title and an outcome", async () => {
@@ -282,7 +282,7 @@ describe("slice gates", () => {
       options: { check: "[ ! -e red.txt ]" },
       acts: [
         { act: "write", path: "red.txt", content: "x\n" },
-        { act: "write", path: "package.json", content: manifest({ verify: "true" }) },
+        { act: "write", path: "package.json", content: manifest({ check: "true" }) },
       ],
     },
     {

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
 import { judge } from "./check-ops";
-import type { UserConfig } from "./config";
+import type { UserConfig } from "./config-contract";
 import { checkTask } from "./declared-tasks";
 import { checkedOutBranch, commitsBetween, isClean, tipOf } from "./git";
 import { movedCommits } from "./order";

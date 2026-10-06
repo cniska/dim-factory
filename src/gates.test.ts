@@ -239,7 +239,7 @@ describe("gate install", () => {
 
     const pinned = repo({
       "mise.toml": '[tools]\nbun = "1"\n',
-      "package.json": '{ "scripts": { "verify": "true" } }\n',
+      "package.json": '{ "scripts": { "check": "true" } }\n',
       "bun.lock": "",
     });
     installGates(pinned, ["check"]);
@@ -247,7 +247,7 @@ describe("gate install", () => {
       [
         "      - uses: jdx/mise-action@v5",
         "      - run: bun install --frozen-lockfile --ignore-scripts",
-        "      - run: bun run verify",
+        "      - run: bun run check",
         "",
       ].join("\n"),
     );
@@ -336,10 +336,20 @@ describe("gate install", () => {
     expect(read(dir, ".githooks/pre-commit")).toBe(own);
   });
 
-  test("treats a check gate that runs another check as changed", () => {
+  test("rewrites a check gate after the project names another check, keeping no copy, but not one edited in place", () => {
     const dir = repo();
     installGates(dir, EVERY);
-    writeFileSync(join(dir, "Makefile"), "verify:\n\ttrue\n");
+    writeFileSync(join(dir, "Makefile"), "check:\n\ttrue\nci:\n\ttrue\n");
+    mkdirSync(join(dir, ".dim"), { recursive: true });
+    writeFileSync(
+      join(dir, ".dim/config.json"),
+      `{ "gates": ${JSON.stringify(EVERY)}, "tasks": { "check": "ci" } }\n`,
+    );
+    expect(states(dir)[".githooks/pre-commit.d/check"]).toBe("behind");
+    expect(installGates(dir, null).backups).toEqual([]);
+    expect(read(dir, ".githooks/pre-commit.d/check")).toEndWith("\nexec make ci\n");
+
+    writeFileSync(join(dir, ".githooks/pre-commit.d/check"), "#!/bin/sh\n# dim-gate:1\nexit 0\n");
     expect(states(dir)[".githooks/pre-commit.d/check"]).toBe("changed");
   });
 

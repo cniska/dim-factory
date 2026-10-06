@@ -60,18 +60,23 @@ dim gates install [<gate>...]   # from the project's checkout
 
 ## Configuration
 
-Two layers of JSON: the user's `config.json` in the [config directory](core.md#paths) and the project's committed `.dim/config.json`, which overrides it setting by setting. [`src/config.ts`](../src/config.ts) holds the settings and their values; an unknown one is refused.
+Two layers of JSON: the user's `config.json` in the [config directory](core.md#paths) and the project's committed `.dim/config.json`, which overrides it setting by setting. [`src/config-contract.ts`](../src/config-contract.ts) holds each setting's layers and values; an unknown setting, or one set in the wrong layer, is refused. A key inside a section is set by its dotted name, and unsetting a section's last key removes the section.
 
 ```sh
 dim config
 dim config set ship default-branch --project
+dim config set tasks.check verify --project
+dim config set models.default claude-opus-5-5
 dim config unset ship
 ```
 
-| Setting | Values |
-|---|---|
-| `ship` | `default-branch` lands an approved order on the project's default branch by fast-forward |
-| `models` | User config only, edited in `config.json`: a model name for any of `planner`, `builder` and `reviewer`, and a `default` for the rest. A station refuses to start a role with no model |
+| Setting | Layer | Values |
+|---|---|---|
+| `ship` | user, project | `default-branch` lands an approved order on the project's default branch by fast-forward |
+| `tasks.check` | project | The declared task that is the project's [check](glossary.md); without it, the task named `check` |
+| `tasks.format` | project | The declared task that formats; without it, the task named `format` |
+| `models.<role>` | user | A model name for `planner`, `builder` or `reviewer`, and `models.default` for the rest. A station refuses to start a role with no model |
+| `gates` | project | The [canonical gates](#install-the-canonical-gates) the project chose, set by `dim gates install` |
 
 ## Session start
 
@@ -79,4 +84,4 @@ The `SessionStart` hook runs `dim hooks start` to print the repo's declared chec
 
 ## Verification
 
-`bun run verify` runs lint, typecheck and tests. `bun run format` formats.
+`bun run check` runs lint, typecheck and tests. `bun run format` formats.

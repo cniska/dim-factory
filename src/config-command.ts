@@ -1,6 +1,6 @@
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
-import { isSetting, SETTINGS } from "./config";
+import { isSettingKey, SETTING_KEYS } from "./config-contract";
 import { changeSetting, configLayers } from "./config-ops";
 import type { Env } from "./paths";
 
@@ -25,10 +25,10 @@ export function runConfig(args: string[], cwd = process.cwd(), env: Env = proces
     extra.length === 0 &&
     ((verb === "set" && value !== undefined) || (verb === "unset" && value === undefined));
   if (!wellFormed) throw new UsageError(`${args.join(" ")} is not a config command`);
-  if (!isSetting(name)) {
-    throw new UsageError(`${name} is no setting; the settings are ${Object.keys(SETTINGS).join(", ")}`);
+  if (!isSettingKey(name)) {
+    throw new UsageError(`${name} is no setting; the settings are ${Object.keys(SETTING_KEYS).join(", ")}`);
   }
-  return changeSetting(cwd, env, { name, value, layer: project ? "project" : "user" });
+  return changeSetting(cwd, env, { key: name, value, layer: project ? "project" : "user" });
 }
 
 export const configCommand: Command = {

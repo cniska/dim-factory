@@ -11,6 +11,7 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 ## Features
 
 - **The factory picks its own work** — select ready orders and run a bounded count, with claims and integration serialized, so fix orders run unattended.
+- **The commit-subject gate follows the project's convention** — the gate is chosen, but its rule (Conventional Commits, 50 characters, no body) is dim-factory's. A project whose log keeps another convention gets a rule it can set, once an adopted project needs one.
 - **Ship through a pull request** — since most repos do not fast-forward their default branch. Built against one of the owner's repos that ships by PR, once the factory runs again.
 - **Gates earn trust per kind of order** — over a lookback window with a minimum sample, the record shows which kinds of order the owner has stopped needing to read, and the wall marks them. Trust is asymmetric: a return or a revert demotes at once, and promotion happens only on the owner's word, citing the evidence ([`landscape.md`](landscape.md#earned-autonomy)).
 

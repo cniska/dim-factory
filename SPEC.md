@@ -142,6 +142,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-96** — Adopting a project chooses which canonical gates it installs and commits the choice as a project setting. Installing writes each chosen gate into the checkout, where the project commits and owns it, and removes a gate no longer chosen. A gate the project cannot run, such as the comment ban in a project with no code it reads, is refused when chosen. A part of a gate that serves one language is installed only while the project uses that language, which `dim` finds from the project's tracked files without being told.
 - **FR-97** — Installing the gates is idempotent: a gate that matches the canonical one is left as it is, and one that has fallen behind is replaced whole. Installing with no choice made is refused, except that a person at a terminal is asked to choose. A project extends a gate with a file of its own beside it, such as a step of its own before a commit, never by editing the installed one.
 - **FR-98** — `dim doctor` changes nothing. Run in a project's checkout, it reports each thing the factory needs of the machine and of that project that does not hold, with what resolves it: no gates chosen, a chosen gate missing, behind the canonical set or changed in place, and a gate present but not chosen among them.
+- **FR-99** — A project's check is the declared task its settings name, or the task named `check` where they name none, and its format command likewise with `format`. Adopting a project records the names its own tasks already have rather than renaming them.
 
 ## 10. Acceptance criteria
 
@@ -226,6 +227,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-79** — Adopting a TypeScript project with no gates and choosing every canonical gate installs each, after which a commit with a long subject, a commit whose check fails, and a commented line each fail with no `dim` on the path; choosing the comment ban in a project with no code it reads is refused and nothing is written; installing with no choice made outside a terminal is refused. (FR-80, FR-95, FR-96, FR-97)
 - **AC-80** — Installing the gates again changes nothing; after a canonical gate changes, installing replaces only that gate; choosing fewer gates removes only the dropped one; a gate file the project added beside them is left as it is. (FR-97)
 - **AC-81** — `dim doctor` in a project's checkout with one chosen gate missing, one behind, one changed in place, one present but not chosen, and no shipping setting reports each with what resolves it, and leaves the checkout, its settings and the record unchanged. (FR-98)
+- **AC-82** — An order in a project whose settings name `verify` as its check, while it also declares a failing `check`, is built and judged by `verify`, and its builder's brief names `verify`. (FR-99)
 
 ## 11. Constraints
 

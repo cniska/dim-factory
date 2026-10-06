@@ -5,7 +5,7 @@ description: Drive a changed dim through its own CLI against a throwaway record 
 
 # Verify
 
-Run the changed checkout's `dim` against a record, a repository and harness configs that exist only for this run, and read what it did in the trace. `bun run verify` proves the suite; this proves the behavior a user meets. The suite does not replace this run, and this run does not replace the suite. The factory's orders are driven by the acceptance suite under `acceptance/`, not by this run.
+Run the changed checkout's `dim` against a record, a repository and harness configs that exist only for this run, and read what it did in the trace. `bun run check` proves the suite; this proves the behavior a user meets. The suite does not replace this run, and this run does not replace the suite. The factory's orders are driven by the acceptance suite under `acceptance/`, not by this run.
 
 ## Start
 

@@ -11,7 +11,7 @@ describe("session-start context", () => {
       mkdirSync(join(repo, ".git"));
       writeFileSync(
         join(repo, "package.json"),
-        JSON.stringify({ scripts: { verify: "bun test", format: "biome format", lint: "biome lint" } }),
+        JSON.stringify({ scripts: { check: "bun test", format: "biome format", lint: "biome lint" } }),
       );
       writeFileSync(join(repo, "bun.lock"), "");
       mkdirSync(join(repo, "docs"));
@@ -19,7 +19,7 @@ describe("session-start context", () => {
 
       const line = projectLine(join(repo, "docs"));
       if (line === null) throw new Error("no declared tasks found");
-      expect(line).toContain("check `bun run verify`");
+      expect(line).toContain("check `bun run check`");
       expect(line).toContain("format `bun run format`");
       expect(line).not.toContain("lint");
       expect(line).not.toContain("make test");

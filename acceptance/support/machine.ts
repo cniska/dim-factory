@@ -142,7 +142,7 @@ function initRepo(repo: string, project: string, check: string): void {
   git(["config", "commit.gpgsign", "false"], repo);
   git(["remote", "add", "origin", `git@github.com:${project}.git`], repo);
   writeFileSync(join(repo, ".dim", "config.json"), `${JSON.stringify(PROJECT_SETTINGS)}\n`);
-  writeFileSync(join(repo, "package.json"), manifest({ verify: check }));
+  writeFileSync(join(repo, "package.json"), manifest({ check }));
   lockDependencies(repo);
   writeFileSync(join(repo, ".gitignore"), ".claude/\nnode_modules/\n");
   writeFileSync(join(repo, "README.md"), "# widgets\n");

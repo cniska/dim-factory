@@ -30,11 +30,11 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Slice | One increment of a plan, with a title and its outcome, that the builder commits on its own |
 | Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
-| Command line | The text a shell runs, such as `bun run verify` |
+| Command line | The text a shell runs, such as `bun run check` |
 | Slash command | The `/name` a user types into a harness, such as `/clear` or `/dim-factory` |
 | Declared task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/declared-tasks.ts`](../src/declared-tasks.ts)) |
 | Ecosystem | A language and its tooling, found from the manifests and lockfiles a project tracks, such as `package.json` or `bun.lock` ([`src/ecosystems.ts`](../src/ecosystems.ts)). It decides how dependencies install and which per-language parts of a gate a project gets |
-| Check | The declared task that says a change is sound, whatever the project names it, such as `verify` or `test`. The `check` gate runs it before a commit, and the slice gate runs it on a slice's commit |
+| Check | The declared task that says a change is sound: the one the project's `tasks.check` setting names, or else the task named `check`. The `check` gate runs it before a commit, and the slice gate runs it on a slice's commit |
 
 ## The record
 

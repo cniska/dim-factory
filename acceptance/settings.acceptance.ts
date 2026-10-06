@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { briefFrom } from "./support/brief";
 import { refusal } from "./support/dim-output";
-import { machines, PROJECT_SETTINGS } from "./support/machine";
-import { approve, reviewed, showOrder } from "./support/operator-acts";
+import { machines, manifest, PROJECT_SETTINGS } from "./support/machine";
+import { addOrder, approve, reviewed, shipThrough, showOrder } from "./support/operator-acts";
 import { actions, entryOf, OrderView } from "./support/order-view";
 import { BUILD_ARTIFACT, happyPath, sliceActs } from "./support/scripts";
 import { ACTION } from "./support/vocabulary";
@@ -9,6 +10,17 @@ import { ACTION } from "./support/vocabulary";
 const start = machines();
 
 describe("settings", () => {
+  test("AC-82 a project whose settings name verify as its check is built and judged by verify, not by a failing check task", async () => {
+    const m = await start({ script: happyPath() });
+    m.ownerCommits("package.json", manifest({ check: "false", verify: "true" }));
+    m.projectSettings({ ...PROJECT_SETTINGS, tasks: { check: "verify" } });
+
+    const order = await shipThrough(m.operator, await addOrder(m.operator));
+
+    expect(order.status).toBe("shipped");
+    expect(briefFrom(m.invocation("builder", 0).prompt).check).toBe("bun run verify");
+  });
+
   test("AC-67 a project whose settings do not say how it ships is not shipped", async () => {
     const m = await start({ script: happyPath() });
     m.projectSettings({});

@@ -34,7 +34,7 @@ describe("dim config", () => {
       user: { config: {} },
       project: { config: { ship: "default-branch" }, committed: {} },
       resolved: {},
-      settings: { ship: ["default-branch"] },
+      settings: { ship: ["user", "project"], "tasks.check": ["project"], "models.default": ["user"] },
     });
     execFileSync("git", ["-C", dir, "add", ".dim/config.json"]);
     execFileSync("git", [
@@ -80,6 +80,14 @@ describe("dim config", () => {
     expect(run([]).status).toBe(0);
     expect(JSON.parse(readFileSync(join(dir, ".home", ".config", "dim", "config.json"), "utf8"))).toEqual({
       ship: "default-branch",
+    });
+  });
+
+  test("sets a dotted key in its section", () => {
+    const { dir, run } = config(["set", "tasks.check", "verify", "--project"]);
+    expect(run([]).status).toBe(0);
+    expect(JSON.parse(readFileSync(join(dir, ".dim", "config.json"), "utf8"))).toEqual({
+      tasks: { check: "verify" },
     });
   });
 

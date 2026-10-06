@@ -64,7 +64,7 @@ describe("a project's dependencies", () => {
   test("AC-73 an order whose check needs a locked dependency ships, with the dependency installed before the plan", async () => {
     const check = `test -e node_modules/${DEPENDENCY}/index.js`;
     const m = await start({ script: happyPath(), check });
-    m.ownerCommits("package.json", manifest({ verify: check, prepare: "touch prepared.marker" }));
+    m.ownerCommits("package.json", manifest({ check, prepare: "touch prepared.marker" }));
     const id = await planned(m.operator);
     const { workspace } = await showOrder(m.operator, id);
     expect(existsSync(join(workspace, "node_modules", DEPENDENCY, "index.js"))).toBe(true);
@@ -79,7 +79,7 @@ describe("a project's dependencies", () => {
     const m = await start({ script: happyPath() });
     m.ownerCommits(
       "package.json",
-      `${JSON.stringify({ scripts: { verify: "true" }, dependencies: { unlocked: "file:./vendor/unlocked" } })}\n`,
+      `${JSON.stringify({ scripts: { check: "true" }, dependencies: { unlocked: "file:./vendor/unlocked" } })}\n`,
     );
     const id = await addOrder(m.operator);
 

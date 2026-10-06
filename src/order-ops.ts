@@ -2,7 +2,8 @@ import type { Database } from "bun:sqlite";
 import { version } from "../package.json";
 import { invariant } from "./assert";
 import type { CodedError } from "./coded-error";
-import { readConfig, type UserConfig } from "./config";
+import { readConfig } from "./config";
+import type { UserConfig } from "./config-contract";
 import { writeTransaction } from "./db";
 import { type Identity, identityOf } from "./git";
 import {

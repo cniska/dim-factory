@@ -72,7 +72,7 @@ function check(root: string): Health {
         name: "check",
         state: "fail",
         detail: `${root} declares no check, so no slice can be judged`,
-        fix: "stop and ask the owner which task is the project's check, and declare it as a verify, check, ci, validate or test task",
+        fix: "stop and ask the owner which declared task is the project's check, then dim config set tasks.check <task> --project",
       }
     : { name: "check", state: "ok", detail: `${task.commandLine}, from ${task.source}` };
 }

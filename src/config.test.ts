@@ -3,7 +3,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { projectConfigPath, readConfig, SETTINGS, userConfigPath, writeConfigValue } from "./config";
+import { projectConfigPath, readConfig, userConfigPath, writeConfigValue } from "./config";
+import { SHIP_WAYS } from "./config-contract";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -38,14 +39,27 @@ describe("the layers a setting is read from", () => {
     expect(readConfig({ env: { HOME: scratch() } })).toEqual({});
   });
 
-  test("carries every setting the table names through both layers", () => {
-    for (const [name, [value]] of Object.entries(SETTINGS)) {
+  test("refuses a check or format task named in the user layer", () => {
+    const home = scratch();
+    put(join(home, ".config", "dim", "config.json"), '{ "check": "verify" }');
+    expect(() => readConfig({ env: { HOME: home } })).toThrow("check");
+  });
+
+  test("carries the ship setting through both layers", () => {
+    for (const value of SHIP_WAYS) {
       const home = scratch();
-      put(join(home, ".config", "dim", "config.json"), JSON.stringify({ [name]: value }));
-      expect(readConfig({ env: { HOME: home } })).toEqual({ [name]: value });
-      const dir = repo(JSON.stringify({ [name]: value }));
-      expect(readConfig({ env: { HOME: scratch() }, root: dir })).toEqual({ [name]: value });
+      put(join(home, ".config", "dim", "config.json"), JSON.stringify({ ship: value }));
+      expect(readConfig({ env: { HOME: home } })).toEqual({ ship: value });
+      const dir = repo(JSON.stringify({ ship: value }));
+      expect(readConfig({ env: { HOME: scratch() }, root: dir })).toEqual({ ship: value });
     }
+  });
+
+  test("reads a project's check and format tasks from its layer", () => {
+    const dir = repo('{ "tasks": { "check": "verify", "format": "fmt" } }');
+    expect(readConfig({ env: { HOME: scratch() }, root: dir })).toEqual({
+      tasks: { check: "verify", format: "fmt" },
+    });
   });
 
   test("reads the user layer from the home config", () => {
@@ -119,27 +133,65 @@ describe("the layers a setting is read from", () => {
 describe("writing a setting", () => {
   test("creates the layer when it is absent", () => {
     const path = join(scratch(), ".dim", "config.json");
-    writeConfigValue(path, "ship", "default-branch");
+    writeConfigValue(path, "project", "ship", "default-branch");
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ ship: "default-branch" });
   });
 
   test("keeps the comments and other lines already in the layer", () => {
     const path = join(scratch(), "config.json");
     put(path, "{\n  // mine\n}\n");
-    writeConfigValue(path, "ship", "default-branch");
+    writeConfigValue(path, "user", "ship", "default-branch");
     expect(readFileSync(path, "utf8")).toBe('{\n  "ship": "default-branch"\n  // mine\n}\n');
+  });
+
+  test("writes a user setting beside the models", () => {
+    const path = join(scratch(), "config.json");
+    put(path, '{ "models": { "default": "opus" } }\n');
+    writeConfigValue(path, "user", "ship", "default-branch");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
+      models: { default: "opus" },
+      ship: "default-branch",
+    });
   });
 
   test("removes a setting when given no value", () => {
     const path = join(scratch(), "config.json");
     put(path, '{ "ship": "default-branch" }\n');
-    writeConfigValue(path, "ship", undefined);
+    writeConfigValue(path, "user", "ship", undefined);
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({});
   });
 
   test("refuses a value the key does not take, writing nothing", () => {
     const path = join(scratch(), "config.json");
-    expect(() => writeConfigValue(path, "ship", "maybe")).toThrow("default-branch");
+    expect(() => writeConfigValue(path, "user", "ship", "maybe")).toThrow("default-branch");
     expect(() => readFileSync(path)).toThrow();
+  });
+
+  test("sets a dotted key inside its section, and drops the section with its last key", () => {
+    const path = join(scratch(), ".dim", "config.json");
+    writeConfigValue(path, "project", "tasks.check", "verify");
+    writeConfigValue(path, "project", "tasks.format", "fmt");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ tasks: { check: "verify", format: "fmt" } });
+    writeConfigValue(path, "project", "tasks.check", undefined);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ tasks: { format: "fmt" } });
+    writeConfigValue(path, "project", "tasks.format", undefined);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({});
+  });
+
+  test("sets a role's model in the user layer", () => {
+    const path = join(scratch(), "config.json");
+    writeConfigValue(path, "user", "models.default", "opus");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ models: { default: "opus" } });
+  });
+
+  test("refuses a key in the wrong layer, an unknown key and a bad value, writing nothing", () => {
+    const user = join(scratch(), "config.json");
+    const project = join(scratch(), ".dim", "config.json");
+    expect(() => writeConfigValue(user, "user", "tasks.check", "verify")).toThrow("--project");
+    expect(() => writeConfigValue(project, "project", "models.default", "opus")).toThrow("without --project");
+    expect(() => writeConfigValue(project, "project", "tasks.lint", "lint")).toThrow("no setting");
+    expect(() => writeConfigValue(project, "project", "tasks.check", "run it; rm -rf /")).toThrow("task");
+    expect(() => readFileSync(user)).toThrow();
+    expect(() => readFileSync(project)).toThrow();
   });
 });

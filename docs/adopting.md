@@ -11,7 +11,7 @@ Each line names the refusal an order meets without it. `dim doctor`, run in the 
 | A git checkout whose `origin` remote names an `owner/repo` project | `no_project` |
 | `origin/HEAD` set, which names the default branch: `git remote set-head origin --auto` | `no_default_branch` |
 | A git `user.name` and `user.email`, which every factory commit carries | `no_git_identity` |
-| A declared check: the first of `verify`, `check`, `ci`, `validate` or `test` among the `package.json` scripts, `mise.toml` tasks or `Makefile` targets ([`src/declared-tasks.ts`](../src/declared-tasks.ts)) | `no_check` |
+| A declared check: the `package.json` script, `mise.toml` task or `Makefile` target named `check`, or the one `dim config set tasks.check <task> --project` names ([`src/declared-tasks.ts`](../src/declared-tasks.ts)) | `no_check` |
 | A lockfile that installs frozen with install scripts off, such as `bun install --frozen-lockfile --ignore-scripts` | `install_failed` |
 | Every tool `mise.toml` pins, installed | `toolchain_unresolved` |
 | `.dim/config.json` on the default branch saying how the project ships: `dim config set ship default-branch --project`, then commit it | `ship_unset` |

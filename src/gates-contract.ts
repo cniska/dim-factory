@@ -40,7 +40,7 @@ export const refuseGates = refuser<{
   no_check: {
     message: ({ root }) => `${root} declares no check, so the check gate has nothing to run before a commit`,
     resolve: () =>
-      "stop and hand this error to the owner: the project must declare a verify, check, ci, validate or test task in package.json, mise.toml or a Makefile, or not choose the check gate",
+      "stop and ask the owner which declared task is the project's check, then dim config set tasks.check <task> --project, or choose the gates without check",
   },
   no_ecosystem: {
     message: ({ root, gate, ecosystems }) =>

@@ -69,6 +69,8 @@ test("hooks start gives the session its checkout's declared tasks", () => {
     mkdirSync(join(root, ".git"));
     writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "bun test" } }));
     writeFileSync(join(root, "bun.lock"), "");
+    mkdirSync(join(root, ".dim"));
+    writeFileSync(join(root, ".dim", "config.json"), '{ "tasks": { "check": "verify" } }');
     const run = runHook("start", { cwd: root }, root);
     expect(run.exitCode).toBe(0);
     expect(JSON.parse(run.stdout.toString())).toEqual({

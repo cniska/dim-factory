@@ -18,7 +18,7 @@ Clone this repository, open the checkout in Claude Code, and ask the agent to ru
 
 Then open a project in Claude Code. For routine factory work, ask the agent to use `dim-factory` to add an order and run it by id. The factory gives each station's worker its instructions as the order advances. The [agent command reference](docs/usage.md) explains the commands behind them.
 
-`bun run verify` is the repository check.
+`bun run check` is the repository check.
 
 ## Docs
 
