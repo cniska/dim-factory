@@ -33,6 +33,7 @@ export type Policy = {
   readonly writable: readonly string[];
   readonly denied: readonly string[];
   readonly unedited: readonly string[];
+  readonly web: boolean;
 };
 
 export type SessionStart =

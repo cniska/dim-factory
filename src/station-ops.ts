@@ -361,7 +361,13 @@ function spawnFor(
     session: startOf(session),
     model: turn.model,
     instructions: stationInstructions(turn.station),
-    policy: policyOf({ access: turn.purpose.access, workspace, checkoutGit: turn.checkoutGit, turn: opened }),
+    policy: policyOf({
+      access: turn.purpose.access,
+      web: turn.purpose.web,
+      workspace,
+      checkoutGit: turn.checkoutGit,
+      turn: opened,
+    }),
     socket: opened.socket,
   });
   const env = workerEnv(turn.env, opened, turn.identity, WORKER_HARNESS);

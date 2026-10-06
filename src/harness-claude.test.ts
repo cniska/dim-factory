@@ -6,7 +6,7 @@ const START: Start = {
   session: { kind: "new", id: "s1" },
   model: "opus",
   instructions: "# Build",
-  policy: { writable: ["/t"], denied: ["/w"], unedited: [] },
+  policy: { writable: ["/t"], denied: ["/w"], unedited: [], web: false },
   socket: "/t/s",
 };
 
@@ -56,7 +56,7 @@ describe("starting Claude Code", () => {
   test("allows the edit tool the writable directories, and denies Bash and the edit tool both the policy's directories", () => {
     const argv = claude.argv({
       ...START,
-      policy: { writable: ["/t"], denied: ["/w/.git/hooks", "/c/.git"], unedited: [] },
+      policy: { ...START.policy, denied: ["/w/.git/hooks", "/c/.git"] },
     });
     expect(settingsOf(argv).permissions.allow).toEqual(["Edit(//t/**)"]);
     expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/.git/hooks/**)", "Edit(//c/.git/**)"]);
@@ -67,9 +67,15 @@ describe("starting Claude Code", () => {
   });
 
   test("denies the edit tool a directory it may not edit while Bash may still write there", () => {
-    const argv = claude.argv({ ...START, policy: { writable: ["/t"], denied: [], unedited: ["/w"] } });
+    const argv = claude.argv({ ...START, policy: { ...START.policy, denied: [], unedited: ["/w"] } });
     expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/**)"]);
     expect(settingsOf(argv).sandbox.filesystem).toEqual({ allowWrite: ["/t"], denyWrite: [] });
+  });
+
+  test("allows web search and fetch only when the policy gives the web", () => {
+    expect(settingsOf(claude.argv(START)).permissions.allow).toEqual(["Edit(//t/**)"]);
+    const argv = claude.argv({ ...START, policy: { ...START.policy, web: true } });
+    expect(settingsOf(argv).permissions.allow).toEqual(["Edit(//t/**)", "WebSearch", "WebFetch"]);
   });
 });
 

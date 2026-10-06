@@ -276,6 +276,18 @@ describe("what a station worker may change", () => {
       expect(edited).toContain("has been denied");
     }
   });
+
+  test("AC-85 a planner's turn may search the web and fetch pages, and a builder's or reviewer's may not", async () => {
+    const m = await start({ script: happyPath() });
+    await reviewed(m.operator);
+
+    const allowed = (role: StationRole) => m.invocations(role)[0]?.allowed ?? [];
+    expect(allowed("planner")).toEqual(expect.arrayContaining(["WebSearch", "WebFetch"]));
+    for (const role of ["builder", "reviewer"] as const) {
+      expect(allowed(role)).not.toContain("WebSearch");
+      expect(allowed(role)).not.toContain("WebFetch");
+    }
+  });
 });
 
 describe("slice gates", () => {

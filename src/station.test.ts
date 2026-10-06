@@ -8,6 +8,7 @@ describe("a station worker's sandbox", () => {
     workspace: "/w",
     checkoutGit: "/c/.git",
     turn: { dir: "/t", home: "/t/home", tmp: "/t/tmp", socket: "/t/s" },
+    web: false,
   };
 
   test("lets a building turn edit and write the workspace, with the checkout's git hooks out of reach", () => {
@@ -15,6 +16,7 @@ describe("a station worker's sandbox", () => {
       writable: ["/t/tmp"],
       denied: ["/c/.git/hooks"],
       unedited: [],
+      web: false,
     });
   });
 
@@ -23,6 +25,7 @@ describe("a station worker's sandbox", () => {
       writable: ["/t/tmp"],
       denied: ["/c/.git/hooks"],
       unedited: ["/w"],
+      web: false,
     });
   });
 
@@ -35,6 +38,13 @@ describe("a station worker's sandbox", () => {
     expect(stationPurpose("plan").access).toBe("run");
     expect(stationPurpose("review").access).toBe("run");
     expect(messagePurpose("hi").access).toBe("read");
+  });
+
+  test("gives the web only to the planner's station turns", () => {
+    expect(stationPurpose("plan").web).toBe(true);
+    expect(stationPurpose("build").web).toBe(false);
+    expect(stationPurpose("review").web).toBe(false);
+    expect(messagePurpose("hi").web).toBe(false);
   });
 });
 

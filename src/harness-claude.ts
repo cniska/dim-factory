@@ -45,8 +45,10 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
 
 const editRule = (path: string) => `Edit(${absoluteRule(path)}/**)`;
 
-const permissions = ({ writable, denied, unedited }: Policy) => ({
-  allow: writable.map(editRule),
+const WEB_TOOLS = ["WebSearch", "WebFetch"];
+
+const permissions = ({ writable, denied, unedited, web }: Policy) => ({
+  allow: [...writable.map(editRule), ...(web ? WEB_TOOLS : [])],
   deny: [...denied, ...unedited].map(editRule),
 });
 

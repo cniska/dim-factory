@@ -202,6 +202,7 @@ const invocation: Invocation = {
   model: flags.model,
   instructions: flags.instructions,
   prompt: flags.prompt,
+  allowed: flags.settings.permissions?.allow ?? [],
   cwd,
   home,
   pid: process.pid,

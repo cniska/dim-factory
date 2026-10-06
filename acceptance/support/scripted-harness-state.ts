@@ -16,6 +16,7 @@ const Invocation = z.strictObject({
   model: z.string().nullable(),
   instructions: z.string().nullable(),
   prompt: z.string(),
+  allowed: z.array(z.string()).readonly(),
   cwd: z.string(),
   home: z.string(),
   pid: z.number(),

@@ -63,11 +63,13 @@ export type WorkspaceAccess = "edit" | "run" | "read";
 
 export function policyOf({
   access,
+  web,
   workspace,
   checkoutGit,
   turn,
 }: {
   readonly access: WorkspaceAccess;
+  readonly web: boolean;
   readonly workspace: string;
   readonly checkoutGit: string;
   readonly turn: Turn;
@@ -75,11 +77,11 @@ export function policyOf({
   const hooks = join(checkoutGit, "hooks");
   switch (access) {
     case "edit":
-      return { writable: [turn.tmp], denied: [hooks], unedited: [] };
+      return { writable: [turn.tmp], denied: [hooks], unedited: [], web };
     case "run":
-      return { writable: [turn.tmp], denied: [hooks], unedited: [workspace] };
+      return { writable: [turn.tmp], denied: [hooks], unedited: [workspace], web };
     case "read":
-      return { writable: [turn.tmp], denied: [workspace, checkoutGit], unedited: [] };
+      return { writable: [turn.tmp], denied: [workspace, checkoutGit], unedited: [], web };
     default:
       return unreachable(access);
   }
@@ -172,6 +174,7 @@ export type Answering = "return" | "reply";
 export type Purpose = {
   readonly answers: Answering;
   readonly access: WorkspaceAccess;
+  readonly web: boolean;
   readonly briefsDiff: boolean;
   readonly briefsCheck: boolean;
   readonly prompt: (facts: BriefFacts) => string;
@@ -183,6 +186,7 @@ export function stationPurpose(station: Station): Purpose {
   return {
     answers: "return",
     access: station === "build" ? "edit" : "run",
+    web: station === "plan",
     briefsDiff,
     briefsCheck,
     prompt: (facts) => JSON.stringify(brief(facts)),
@@ -195,6 +199,7 @@ export function messagePurpose(text: string): Purpose {
   return {
     answers: "reply",
     access: "read",
+    web: false,
     briefsDiff: false,
     briefsCheck: false,
     prompt: () => text,
