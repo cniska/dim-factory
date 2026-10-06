@@ -62,7 +62,7 @@ A turn resumes or replaces the worker's session, spawns the harness with a brief
 
 ## Instructions
 
-A station's instructions are [`prompts/<station>.md`](../prompts), followed by each reference in [`prompts/references/`](../prompts/references) they name as *Title* below ([`src/station-instructions.ts`](../src/station-instructions.ts)). They reach the worker whole, so they link no file.
+A station's instructions are [`prompts/<station>.md`](../prompts), followed by each reference in [`prompts/references/`](../prompts/references) they name as *Title* below ([`src/station-instructions.ts`](../src/station-instructions.ts)). The builder's and the reviewer's also carry the reference for each language the project uses, such as `typescript.md`. They reach the worker whole, so they link no file.
 
 The operator's instructions are the one installed skill, [`skills/dim-factory`](../skills/dim-factory). What it needs only on request, such as adding an order or an audit, is a reference in its `references/` folder that it loads then; a file it shares with a station is a link there to the file in `prompts/`.
 

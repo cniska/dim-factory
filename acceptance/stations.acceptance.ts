@@ -289,6 +289,20 @@ describe("what a station worker may change", () => {
     }
   });
 
+  test("AC-87 a builder's and a reviewer's turn in a TypeScript project carry the TypeScript guidance, and a planner's does not", async () => {
+    const m = await start({ script: happyPath() });
+    m.ownerCommits("src/greet.ts", "export const greet = 'hello';\n");
+    await reviewed(m.operator);
+
+    const carries = (role: StationRole) =>
+      m.invocations(role).map((invocation) => invocation.instructions?.includes("`null` is the empty value"));
+    expect(carries("planner")).toEqual(carries("planner").map(() => false));
+    for (const role of ["builder", "reviewer"] as const) {
+      expect(carries(role).length).toBeGreaterThan(0);
+      expect(carries(role)).toEqual(carries(role).map(() => true));
+    }
+  });
+
   test("AC-86 every station turn is offered the shell, file and subagent tools, and the planner the web tools too", async () => {
     const m = await start({ script: happyPath() });
     await reviewed(m.operator);

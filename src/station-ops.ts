@@ -10,6 +10,7 @@ import { checkTask, installCommand } from "./declared-tasks";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git";
 import type { SessionStart, Spawned } from "./harness-contract";
 import { startHarness, stopHarness, WORKER_HARNESS } from "./harness-ops";
+import { languagesOf } from "./languages";
 import { type Death, type OrderState, phaseAfter, roleAt, stepRefusal, type WorkBy } from "./order";
 import { type OperatorAct, refuseOrder, type Station } from "./order-contract";
 import {
@@ -360,7 +361,7 @@ function spawnFor(
   const argv = WORKER_HARNESS.argv({
     session: startOf(session),
     model: turn.model,
-    instructions: stationInstructions(turn.station),
+    instructions: stationInstructions(turn.station, languagesOf(workspace)),
     policy: policyOf({
       access: turn.purpose.access,
       web: turn.purpose.web,
