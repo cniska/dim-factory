@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { constants, Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Glob } from "bun";
@@ -48,7 +48,10 @@ export function codexTitlesPath(env: Env = process.env): string {
 export function readCodexTitles(statePath: string): Map<string, string> {
   const titles = new Map<string, string>();
   if (!existsSync(statePath)) return titles;
-  const db = new Database(`file:${statePath}?immutable=1`, { readonly: true });
+  const db = new Database(
+    `file:${statePath}?immutable=1`,
+    constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_URI,
+  );
   try {
     for (const row of db
       .prepare<{ id: string; title: string | null }, []>("SELECT id, title FROM threads")
