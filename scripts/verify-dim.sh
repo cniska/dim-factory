@@ -4,6 +4,7 @@ set -euo pipefail
 usage="usage: scripts/verify-dim.sh new | scripts/verify-dim.sh <run-dir> <dim args...>"
 checkout=$(cd "$(dirname "$0")/.." && pwd)
 [ $# -ge 1 ] || { echo "$usage" >&2; exit 2; }
+bun_dir_past_shims=$(dirname "$(bun -e 'console.log(process.execPath)')")
 
 enter() {
   scratch="$1"
@@ -12,7 +13,7 @@ enter() {
   export XDG_CONFIG_HOME="$scratch/config"
   export XDG_DATA_HOME="$scratch/data"
   export XDG_STATE_HOME="$scratch/state"
-  export PATH="$scratch/bin:$PATH"
+  export PATH="$scratch/bin:$bun_dir_past_shims:$PATH"
 }
 
 if [ "$1" = new ]; then
