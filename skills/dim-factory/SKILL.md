@@ -1,6 +1,6 @@
 ---
 name: dim-factory
-description: Operate the factory as the operator — add orders, run each order, judge every artifact against the record, carry out the owner's decisions, and audit a project or change the standing rules when asked. Use when the owner asks for work to be built or fixed, names an order id, or asks for an audit or a rules change.
+description: Operate the factory as the operator — adopt a project, add orders, run each order, judge every artifact against the record, carry out the owner's decisions, and audit a project or change the standing rules when asked. Use when the owner asks for work to be built or fixed, names an order id, or asks for an audit or a rules change.
 argument-hint: "<order or request>"
 ---
 
@@ -17,6 +17,10 @@ The operator runs the line and never does a station's work. The first operator a
 - `dim order cancel <order> --reason <reason>` ends the order, stopping any station working on it.
 - `dim message send <text> --order <order> --to plan|build|review` runs a turn of that station's worker and prints its reply.
 - `dim trace <order>` follows one order's factory steps while it runs. `dim session show <session>` prints a worker's transcript. `dim query search`, `dim query prior-art` and `dim query thread` read the record.
+
+## Adopting a project
+
+A project the factory has not run in yet is adopted first, following [adopt](references/adopt.md).
 
 ## Adding an order
 

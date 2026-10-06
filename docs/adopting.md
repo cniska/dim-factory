@@ -23,4 +23,4 @@ A ship fast-forwards the default branch of the checkout, so a project that lands
 
 ## The operator
 
-The operator is a Claude Code session in the project's checkout, with dim's hooks installed. Its first operator act registers it as the project's operator, and orders are added from there through the `dim-factory` skill. The factory reads the project's settings from a checkout a session on record ran in, so an order added from anywhere else is refused `no_checkout`.
+The operator is a Claude Code session in the project's checkout, with dim's hooks installed. Its first operator act registers it as the project's operator, and it adopts the project and adds orders from there through the `dim-factory` skill, whose [adopt](../skills/dim-factory/references/adopt.md) reference holds the steps. The factory reads the project's settings from a checkout a session on record ran in, so an order added from anywhere else is refused `no_checkout`.
