@@ -1,4 +1,4 @@
-name: CI
+name: Acceptance
 
 on:
   push:
@@ -9,28 +9,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: acceptance-${{ github.ref }}
   # A superseded pull request run is worth cancelling; a push to main is the run
   # that says whether main is green, so it finishes.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    name: Verify
-    runs-on: macos-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-
-      # mise.toml is the single toolchain pin, so CI runs the bun the owner runs.
-      - uses: jdx/mise-action@v5
-
-      - run: bun install --frozen-lockfile
-
-      - run: bun run verify
-
   acceptance:
     name: Acceptance
+    # The acceptance suite drives the check's sandbox, which is macOS's sandbox-exec.
     runs-on: macos-latest
     timeout-minutes: 60
     steps:

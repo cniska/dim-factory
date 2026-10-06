@@ -43,7 +43,7 @@ dim gates install [<gate>...]   # from the project's checkout
 
 - The gates, whose files are in [`gates/`](../gates):
   - `commit-subject`: a `commit-msg` hook, and a `commits.yml` workflow that runs it on every pushed commit.
-  - `check`: a pre-commit step that runs the project's [check](glossary.md).
+  - `check`: a pre-commit step that runs the project's [check](glossary.md), and a `check.yml` workflow that runs it on every push on `ubuntu-latest`, after `mise`'s pinned tools when the project has a `mise.toml` and a frozen install when it has a lockfile.
   - `no-comments`: a pre-commit step and a `no-comments.yml` workflow that run the comment scanner under `node`. The scanner is a core plus one parser per [ecosystem](glossary.md), and a project gets only the parsers for the ecosystems it uses. Both are bundled from the code `dim comments purge` runs; `bun run gates:bundle` rebuilds them, and a test fails while they are stale. A project in no ecosystem the scanner reads is refused `no_ecosystem`.
 - `.githooks/pre-commit` runs each executable in `.githooks/pre-commit.d/` in name order and stops at the first that fails. It is installed while a chosen gate has a step there, and a project adds a step of its own the same way.
 - Naming gates records them as the project's choice, `gates` in `.dim/config.json`, and installs exactly those, removing an installed gate no longer chosen. With none named it installs the recorded choice; with no choice recorded, a terminal shows a picker and anything else is refused `no_gates_chosen`. Choosing `check` in a project that declares no check is refused `no_check`. Each refusal writes nothing.

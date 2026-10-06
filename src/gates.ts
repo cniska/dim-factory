@@ -4,7 +4,7 @@ import { z } from "zod";
 import { readGateChoice, writeGateChoice } from "./config";
 import { insertJsoncValue, parseJsonc } from "./config-jsonc";
 import { readJsoncText } from "./config-jsonc-file";
-import { checkTask } from "./declared-tasks";
+import { checkTask, installCommand } from "./declared-tasks";
 import { type Ecosystem, ecosystemsOf } from "./ecosystems";
 import { nextBackupPath } from "./file-backup";
 import { GATE_NAMES, type GateName, HOOKS_DIR, PREPARE, refuseGates, SCANNER_DIR } from "./gates-contract";
@@ -26,7 +26,11 @@ export const GATES: Readonly<Record<GateName, readonly GateFile[]>> = {
     { source: "commit-msg", target: `${HOOKS_DIR}/commit-msg`, mode: 0o755 },
     { source: "commits.yml", target: ".github/workflows/commits.yml", mode: 0o644 },
   ],
-  check: [PRE_COMMIT, { source: "check-hook", target: `${HOOKS_DIR}/pre-commit.d/check`, mode: 0o755 }],
+  check: [
+    PRE_COMMIT,
+    { source: "check-hook", target: `${HOOKS_DIR}/pre-commit.d/check`, mode: 0o755 },
+    { source: "check.yml", target: ".github/workflows/check.yml", mode: 0o644 },
+  ],
   "no-comments": [
     PRE_COMMIT,
     { source: "no-comments-hook", target: `${HOOKS_DIR}/pre-commit.d/no-comments`, mode: 0o755 },
@@ -76,12 +80,22 @@ function stateOf(canonical: string, installed: string | null): GateState {
   return wanted !== null && at < wanted ? "behind" : "ahead";
 }
 
+function setupSteps(root: string): string {
+  const install = installCommand(root);
+  return [
+    ...(existsSync(join(root, "mise.toml")) ? ["      - uses: jdx/mise-action@v5"] : []),
+    ...(install === null ? [] : [`      - run: ${install.commandLine}`]),
+  ]
+    .map((line) => `${line}\n`)
+    .join("");
+}
+
 function rendered(root: string, file: GateFile): string {
   const source = canonicalSource(file);
   if (!source.includes("{{check}}")) return source;
   const check = checkTask(root);
   if (check === null) throw refuseGates("no_check", { root });
-  return source.replaceAll("{{check}}", check.commandLine);
+  return source.replaceAll("{{check}}", check.commandLine).replaceAll("{{setup}}\n", setupSteps(root));
 }
 
 function checkRunnable(root: string, chosen: readonly GateName[], ecosystems: readonly Ecosystem[]): void {

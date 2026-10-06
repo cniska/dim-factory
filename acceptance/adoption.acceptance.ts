@@ -106,7 +106,7 @@ describe("adopting a project", () => {
 
     expect(resultOf(await install(m, "commit-subject"))).toMatchObject({
       written: [],
-      removed: [".githooks/pre-commit", ".githooks/pre-commit.d/check"],
+      removed: [".githooks/pre-commit", ".githooks/pre-commit.d/check", ".github/workflows/check.yml"],
     });
     expect(readFileSync(join(m.repo, ".githooks", "pre-push"), "utf8")).toBe(OWN_HOOK);
   });
@@ -130,7 +130,7 @@ describe("adopting a project", () => {
     expect(first.gates).toMatchObject({
       state: "fail",
       detail:
-        ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit changed",
+        ".githooks/commit-msg behind; .github/workflows/commits.yml missing; .githooks/pre-commit changed; .github/workflows/check.yml missing",
       fix: `dim gates install, from ${realpathSync(m.repo)}`,
     });
     expect(first.ship).toMatchObject({ state: "fail", fix: expect.stringContaining("dim config set ship") });
@@ -140,7 +140,7 @@ describe("adopting a project", () => {
     resultOf(await install(m));
     writeFileSync(join(m.repo, ".dim", "config.json"), '{ "gates": ["commit-subject"] }\n');
     expect((await doctor(m)).gates?.detail).toBe(
-      ".githooks/pre-commit unchosen; .githooks/pre-commit.d/check unchosen",
+      ".githooks/pre-commit unchosen; .githooks/pre-commit.d/check unchosen; .github/workflows/check.yml unchosen",
     );
   });
 });

@@ -46,6 +46,7 @@ function every(state: string): Record<string, string> {
       ".github/workflows/commits.yml",
       ".githooks/pre-commit",
       ".githooks/pre-commit.d/check",
+      ".github/workflows/check.yml",
       ".githooks/pre-commit.d/no-comments",
       ".githooks/no-comments/scan.cjs",
       ".githooks/no-comments/javascript.cjs",
@@ -126,6 +127,7 @@ describe("canonical gates", () => {
         version: 1,
         sha256: "7aafdeaef6391bcba71aafd527da2b8883eecab13bf76ee97523ca28b2826d4d",
       },
+      "check.yml": { version: 1, sha256: "1ceaedac6bf370dcc7782bbae1099d85562d6ab5795fac12fb9939a1a8d570b1" },
       "no-comments.yml": {
         version: 1,
         sha256: "3d38d68feae1d5182aa613a855b88f702b903d0dcffd288c0ee7ae8beca10422",
@@ -148,7 +150,7 @@ describe("canonical gates", () => {
       Object.fromEntries(GATE_NAMES.map((gate) => [gate, GATES[gate].map((file) => file.target)])),
     ).toEqual({
       "commit-subject": [".githooks/commit-msg", ".github/workflows/commits.yml"],
-      check: [".githooks/pre-commit", ".githooks/pre-commit.d/check"],
+      check: [".githooks/pre-commit", ".githooks/pre-commit.d/check", ".github/workflows/check.yml"],
       "no-comments": [
         ".githooks/pre-commit",
         ".githooks/pre-commit.d/no-comments",
@@ -225,6 +227,30 @@ describe("gate install", () => {
     const dir = repo();
     installGates(dir, ["check"]);
     expect(read(dir, ".githooks/pre-commit.d/check")).toEndWith("\nexec make check\n");
+  });
+
+  test("the check gate's workflow runs the check on Linux after the project's pinned tools and frozen install", () => {
+    const plain = repo({ Makefile: "check:\n\ttrue\n" });
+    installGates(plain, ["check"]);
+    expect(read(plain, ".github/workflows/check.yml")).toContain("    runs-on: ubuntu-latest\n");
+    expect(read(plain, ".github/workflows/check.yml")).toEndWith(
+      "|| github.sha }}\n      - run: make check\n",
+    );
+
+    const pinned = repo({
+      "mise.toml": '[tools]\nbun = "1"\n',
+      "package.json": '{ "scripts": { "verify": "true" } }\n',
+      "bun.lock": "",
+    });
+    installGates(pinned, ["check"]);
+    expect(read(pinned, ".github/workflows/check.yml")).toEndWith(
+      [
+        "      - uses: jdx/mise-action@v5",
+        "      - run: bun install --frozen-lockfile --ignore-scripts",
+        "      - run: bun run verify",
+        "",
+      ].join("\n"),
+    );
   });
 
   test("a commit is refused while the project's check fails", () => {
