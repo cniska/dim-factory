@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { openReadOnly } from "./db-read";
 import { SCHEMA_SQL } from "./db-schema";
 import { scratchEnv, writeClaudeTranscript, writeCodexRollout } from "./fixtures.test-support";
@@ -34,7 +34,7 @@ function seeded(): Env {
   writeCodexRollout(env, "sessions", THREAD);
   const db = openDb(dbPath(env));
   sync(db, env);
-  closeDb(db);
+  db.close();
   return env;
 }
 

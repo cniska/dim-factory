@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { invariant } from "./assert";
-import { closeDb, openDb, writeTransaction } from "./db";
+import { openDb, withDb, writeTransaction } from "./db";
 
 const [mode, path, who] = process.argv.slice(2);
 invariant(mode !== undefined && path !== undefined && who !== undefined, "mode, path and who are arguments");
@@ -27,7 +27,7 @@ if (mode === "hold") {
   await nextLine();
   console.log("writing");
   db.run("INSERT INTO probe (who) VALUES (?)", [who]);
-  closeDb(db);
+  db.close();
 } else if (mode === "read-write") {
   const db = openDb(path);
   console.log("opened");
@@ -37,17 +37,22 @@ if (mode === "hold") {
     db.query("SELECT count(*) FROM probe").get();
     db.run("INSERT INTO probe (who) VALUES (?)", [who]);
   });
-  closeDb(db);
+  db.close();
 } else if (mode === "open") {
   console.log("opening");
   const db = openDb(path);
   db.run("INSERT INTO probe (who) VALUES (?)", [who]);
-  closeDb(db);
+  db.close();
+} else if (mode === "close") {
+  withDb(path, (db) => {
+    db.run("INSERT INTO probe (who) VALUES (?)", [who]);
+    console.log("closing");
+  });
 } else if (mode === "initialize") {
   console.log("ready");
   await nextLine();
   const db = openDb(path);
-  closeDb(db);
+  db.close();
 } else {
   throw new Error(`unknown mode ${mode}`);
 }

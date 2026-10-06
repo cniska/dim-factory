@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { invariant } from "./assert";
 import { Ran } from "./cli-contract";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
 import { diagnose } from "./doctor";
@@ -40,7 +40,7 @@ function seeded(): Env {
   writeClaudeTranscript(env, "-Users-x-code-demo", "11111111-2222-3333-4444-555555555555");
   const db = openDb(dbPath(env));
   sync(db, env);
-  closeDb(db);
+  db.close();
   return env;
 }
 
@@ -62,7 +62,7 @@ describe("doctor", () => {
     const env = seeded();
     const db = openDb(dbPath(env));
     db.run(`PRAGMA user_version = ${SCHEMA_VERSION - 1}`);
-    closeDb(db);
+    db.close();
     const dataHome = process.env.XDG_DATA_HOME;
     process.env.XDG_DATA_HOME = env.XDG_DATA_HOME;
     try {
@@ -170,7 +170,7 @@ describe("doctor", () => {
     });
     const db = openDb(dbPath(env));
     sync(db, env);
-    closeDb(db);
+    db.close();
     expect(check(env, "end reasons")).toMatchObject({
       state: "ok",
       detail: "no session has both started and finished since the hooks went in",
@@ -216,7 +216,7 @@ describe("doctor", () => {
     spooled("2026-09-16T10:30:00.000Z", "1-", { hook_event_name: "SessionEnd", reason: "exit" });
     const db = openDb(dbPath(env));
     sync(db, env);
-    closeDb(db);
+    db.close();
 
     expect(check(env, "end reasons")).toMatchObject({ state: "ok" });
   });

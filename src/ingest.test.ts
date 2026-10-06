@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import {
   bytesThroughLine,
   claudeTranscriptLines,
@@ -84,7 +84,7 @@ describe("ingest", () => {
       expect(db.prepare("SELECT count(*) AS n FROM usage").get()).toEqual({ n: 1 });
       expect(db.prepare("SELECT sum(output_tokens) AS n FROM usage").get()).toEqual({ n: 50 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -97,7 +97,7 @@ describe("ingest", () => {
       const row = db.prepare<{ text: string }, []>("SELECT text FROM message WHERE id = 'msg-1'").get();
       expect(row?.text).toBe("First half.\nSecond half.");
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -111,7 +111,7 @@ describe("ingest", () => {
       expect(all).not.toContain("SECRET FILE CONTENTS");
       expect(all).not.toContain("SECRET REASONING");
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -143,7 +143,7 @@ describe("ingest", () => {
         { status: "interrupted", duration_ms: 8128, model: "gpt-5.6-sol" },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -159,7 +159,7 @@ describe("ingest", () => {
       expect(JSON.stringify(snapshot(db, root))).not.toContain("SECRET AGENT MESSAGE");
       expect(dump?.t).not.toContain("SECRET AGENT MESSAGE");
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -184,7 +184,7 @@ describe("ingest", () => {
         result_bytes: 40,
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -200,7 +200,7 @@ describe("ingest", () => {
         db.prepare("SELECT result_bytes, src_line_result FROM tool_call WHERE id = 'toolu-1'").get(),
       ).toMatchObject({ result_bytes: 40 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -216,7 +216,7 @@ describe("ingest", () => {
         .get(SESSION);
       expect(claude).toEqual({ n: 0 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -232,7 +232,7 @@ describe("ingest", () => {
       sync(db, env);
       expect(snapshot(db, root)).toEqual(before);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -245,7 +245,7 @@ describe("ingest", () => {
     writeClaudeTranscript(oneEnv, "-Users-x-code-demo", SESSION);
     const oneDb = run(oneEnv);
     const expected = snapshot(oneDb, oneRoot);
-    closeDb(oneDb);
+    oneDb.close();
 
     const incRoot = newRoot();
     const incEnv = scratchEnv(incRoot);
@@ -257,7 +257,7 @@ describe("ingest", () => {
     try {
       expect(snapshot(incDb, incRoot)).toEqual(expected);
     } finally {
-      closeDb(incDb);
+      incDb.close();
     }
   });
 
@@ -270,7 +270,7 @@ describe("ingest", () => {
     writeClaudeTranscript(oneEnv, "-Users-x-code-demo", SESSION);
     const oneDb = run(oneEnv);
     const expected = snapshot(oneDb, oneRoot);
-    closeDb(oneDb);
+    oneDb.close();
 
     const incRoot = newRoot();
     const incEnv = scratchEnv(incRoot);
@@ -285,7 +285,7 @@ describe("ingest", () => {
     try {
       expect(snapshot(incDb, incRoot)).toEqual(expected);
     } finally {
-      closeDb(incDb);
+      incDb.close();
     }
   });
 
@@ -297,7 +297,7 @@ describe("ingest", () => {
     writeClaudeTranscript(oneEnv, "-Users-x-code-demo", SESSION);
     const oneDb = run(oneEnv);
     const expected = snapshot(oneDb, oneRoot);
-    closeDb(oneDb);
+    oneDb.close();
 
     const root = newRoot();
     const env = scratchEnv(root);
@@ -311,7 +311,7 @@ describe("ingest", () => {
     try {
       expect(snapshot(db, root)).toEqual(expected);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -334,7 +334,7 @@ describe("ingest", () => {
       const src = db.prepare<{ src_file: string }, []>("SELECT src_file FROM message LIMIT 1").get();
       expect(src?.src_file).toContain("archived_sessions");
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -358,7 +358,7 @@ describe("ingest", () => {
         title: "Read the slice",
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -378,7 +378,7 @@ describe("ingest", () => {
       ]);
       expect(db.prepare("SELECT count(*) AS n FROM session WHERE id = ?").get(THREAD)).toEqual({ n: 1 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -398,7 +398,7 @@ describe("ingest", () => {
       expect(db.prepare("SELECT count(*) AS n FROM message").get()).not.toEqual({ n: 0 });
       expect(sync(db, env).dropped).toEqual([]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -422,7 +422,7 @@ describe("ingest", () => {
       expect(report.dropped).toEqual([{ path, lines: [4] }]);
       expect(db.prepare("SELECT count(*) AS n FROM message WHERE ts = ''").get()).toEqual({ n: 0 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -437,7 +437,7 @@ describe("ingest", () => {
     try {
       expect(db.prepare("SELECT count(*) AS n FROM message").get()).toEqual({ n: 3 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -464,7 +464,7 @@ describe("ingest", () => {
         db.prepare("SELECT parent_id, agent_type FROM session WHERE id = ?").get(`${agentId}@${SESSION}`),
       ).toEqual({ parent_id: SESSION, agent_type: "Explore" });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -488,7 +488,7 @@ describe("ingest", () => {
         db.prepare("SELECT parent_id, agent_type FROM session WHERE id = ?").get(`${agentId}@${SESSION}`),
       ).toEqual({ parent_id: SESSION, agent_type: null });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -504,7 +504,7 @@ describe("ingest", () => {
         .map((l) => JSON.stringify(l).replace(/"(msg|toolu|u|a)-/g, '"agent-$1-'))
         .join("\n")}\n`,
     );
-    closeDb(run(env));
+    run(env).close();
     const kept = claudeTranscriptLines(SESSION).slice(0, 2);
     writeFileSync(path, `${kept.map((l) => JSON.stringify(l)).join("\n")}\n`);
 
@@ -527,13 +527,13 @@ describe("ingest", () => {
           .prepare<{ n: number }, [string]>("SELECT count(*) AS n FROM message WHERE session_id = ?")
           .get(SESSION)?.n;
       })();
-      closeDb(fresh);
+      fresh.close();
       expect(reread).toBe(expected);
       expect(
         db.prepare("SELECT parent_id FROM session WHERE id = ?").get(`a1111111111111111@${SESSION}`),
       ).toEqual({ parent_id: SESSION });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -568,7 +568,7 @@ describe("ingest", () => {
         n: 2,
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -593,7 +593,7 @@ describe("ingest", () => {
         parent_id: null,
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 });
@@ -676,7 +676,7 @@ describe("skill loads", () => {
     try {
       expect(skillLoads(db)).toEqual([calledLoad]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -692,7 +692,7 @@ describe("skill loads", () => {
       sync(db, env);
       expect(skillLoads(db)).toEqual([calledLoad]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -722,7 +722,7 @@ describe("skill loads", () => {
         },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -750,7 +750,7 @@ describe("skill loads", () => {
         },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -766,7 +766,7 @@ describe("skill loads", () => {
         expect.objectContaining({ message_id: "u-other", skill_name: "dim-plan" }),
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -791,7 +791,7 @@ describe("skill loads", () => {
         },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -803,7 +803,7 @@ describe("skill loads", () => {
     try {
       expect(skillLoads(db)).toEqual([calledLoad, { ...calledLoad, session_id: COPY }]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -815,7 +815,7 @@ describe("skill loads", () => {
       expect(sync(db, env).failures).toEqual([]);
       expect(skillLoads(db)).toEqual([]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -837,7 +837,7 @@ describe("skill loads", () => {
       expect(sync(db, env).failures).toEqual([]);
       expect(skillLoads(db)).toEqual([]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -859,7 +859,7 @@ describe("skill loads", () => {
       expect(sync(db, env).failures).toEqual([]);
       expect(skillLoads(db)).toEqual([]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -890,7 +890,7 @@ describe("skill loads", () => {
       expect(sync(db, env).failures).toEqual([]);
       expect(skillLoads(db)).toEqual([]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 });
@@ -980,7 +980,7 @@ describe("worker transcript copies", () => {
         { session_id: SESSION, skill_name: "dim:dim-plan" },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -998,7 +998,7 @@ describe("worker transcript copies", () => {
       expect(db.prepare("SELECT path FROM source_file").all()).toEqual([{ path: projects }]);
       expect(messageTexts(db)).toEqual(before);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -1015,7 +1015,7 @@ describe("worker transcript copies", () => {
       expect(db.prepare("SELECT path FROM source_file").all()).toEqual([{ path: copy }]);
       expect(messageTexts(db)).toEqual(before);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -1029,7 +1029,7 @@ describe("worker transcript copies", () => {
       expect(db.prepare("SELECT path FROM source_file").all()).toEqual([{ path: projects }]);
       expect(messageTexts(db)).toHaveLength(3);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -1047,7 +1047,7 @@ describe("worker transcript copies", () => {
         { worker: WORKER },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -1093,7 +1093,7 @@ describe("worker transcript copies", () => {
           .all(),
       ).toEqual([{ worker: WORKER }]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -1109,7 +1109,7 @@ describe("worker transcript copies", () => {
         { path: projects },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -1131,7 +1131,7 @@ describe("worker transcript copies", () => {
         before,
       );
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 });

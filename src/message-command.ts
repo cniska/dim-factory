@@ -1,6 +1,6 @@
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { OrderId, Station } from "./order-contract";
 import { dbPath } from "./paths";
 import { inTurn, messageWorker, sendAct } from "./station-ops";
@@ -32,7 +32,7 @@ async function send(args: readonly string[]) {
     const reply = await messageWorker(db, order.data, caller, { station: station.data, text }, process.env);
     return { reply };
   } finally {
-    closeDb(db);
+    db.close();
   }
 }
 

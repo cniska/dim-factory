@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { claudeTranscriptLines } from "./fixtures.test-support";
 import { followUsage } from "./usage-follow";
 
@@ -40,7 +40,7 @@ test("records a running worker's token usage each time the worker speaks, before
     expect(usage()).toBeGreaterThan(first);
   } finally {
     follow.stop();
-    closeDb(db);
+    db.close();
   }
 });
 
@@ -54,5 +54,5 @@ test("reads what the worker wrote last when the turn ends, though nothing was he
   writeFileSync(transcript, transcriptText("msg-only"));
   follow.stop();
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM usage").get()?.n).toBeGreaterThan(0);
-  closeDb(db);
+  db.close();
 });

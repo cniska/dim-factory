@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { insertSession, insertWorker, workerUsage } from "./worker-store";
 
 const roots: string[] = [];
@@ -60,7 +60,7 @@ describe("a worker's usage", () => {
         },
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -76,7 +76,7 @@ describe("a worker's usage", () => {
       const { subagents } = workerUsage(db, "axle-2");
       expect({ sessions: subagents.sessions, calls: subagents.calls }).toEqual({ sessions: 2, calls: 3 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -91,7 +91,7 @@ describe("a worker's usage", () => {
       };
       expect(workerUsage(db, "hinge-1")).toEqual({ agent: none, subagents: none });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 });

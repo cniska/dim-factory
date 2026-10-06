@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { scratchEnv } from "./fixtures.test-support";
 import { listGrokSessions } from "./ingest-grok-source";
 import { parseGrokChunk } from "./ingest-parse-grok";
@@ -199,7 +199,7 @@ describe("grok sessions", () => {
       expect(stored).not.toContain("THINKING_SECRET");
       expect(stored).not.toContain("SECRET_RESULT");
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -213,7 +213,7 @@ describe("grok sessions", () => {
       expect(again.filesRead).toBe(0);
       expect(db.prepare("SELECT count(*) AS n FROM message").get()).toEqual({ n: 4 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -225,7 +225,7 @@ describe("grok sessions", () => {
       expect(report.sources.find((source) => source.tool === "grok")).toEqual({ tool: "grok", files: 0 });
       expect(db.prepare("SELECT count(*) AS n FROM session WHERE tool = 'grok'").get()).toEqual({ n: 0 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 

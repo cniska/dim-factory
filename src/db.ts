@@ -58,16 +58,11 @@ export function writeTransaction<T>(db: Database, fn: () => T): T {
   return result;
 }
 
-export function closeDb(db: Database): void {
-  db.run("PRAGMA wal_checkpoint(TRUNCATE)");
-  db.close();
-}
-
 export function withDb<T>(path: string, use: (db: Database) => T, opts: { forRebuild?: boolean } = {}): T {
   const db = openDb(path, opts);
   try {
     return use(db);
   } finally {
-    closeDb(db);
+    db.close();
   }
 }

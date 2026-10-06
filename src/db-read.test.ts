@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
 import { errorCode } from "./error-code";
@@ -77,7 +77,7 @@ function recordWithCommit(): { home: string; path: string } {
   db.run(
     "INSERT INTO repo_commit (sha, repo, label, ts, subject) VALUES ('abc123', '/repo', 'cniska/dim-factory', '2026-01-01T00:00:00Z', 'feat: stay as written')",
   );
-  closeDb(db);
+  db.close();
   return { home, path };
 }
 

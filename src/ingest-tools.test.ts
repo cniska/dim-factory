@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { SCHEMA_SQL } from "./db-schema";
 import { scratchEnv } from "./fixtures.test-support";
 import { HOOK_EVENTS } from "./hook-events";
@@ -23,7 +23,7 @@ describe("the tool vocabulary", () => {
     try {
       expect(sync(db, env).sources).toEqual(TOOLS.map((tool) => ({ tool, files: 0 })));
     } finally {
-      closeDb(db);
+      db.close();
       rmSync(root, { recursive: true, force: true });
     }
   });

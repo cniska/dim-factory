@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { invariant } from "./assert";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import type { LogEntry } from "./order-contract";
 import { appendEntry, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
 
@@ -122,7 +122,7 @@ test("keeps the factory's tables when the record is reopened", () => {
   const path = join(root, "sessions.db");
   const first = openDb(path);
   appendAll(first, "k7m2qx4d", ENTRIES);
-  closeDb(first);
+  first.close();
   const again = openDb(path);
   opened.push(again);
   expect(readLog(again, "k7m2qx4d")).toEqual(ENTRIES);

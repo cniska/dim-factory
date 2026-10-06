@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { HARNESSES, type HarnessName } from "./harness-contract";
 import {
@@ -71,7 +71,7 @@ describe("spool", () => {
       expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
       expect(db.prepare("SELECT harness_pid FROM hook_event").get()).toEqual({ harness_pid: 7319 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -89,7 +89,7 @@ describe("spool", () => {
         harness_pid: process.pid,
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -106,7 +106,7 @@ describe("spool", () => {
         end_reason: "prompt_input_exit",
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -124,7 +124,7 @@ describe("spool", () => {
         end_reason: null,
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -138,7 +138,7 @@ describe("spool", () => {
       expect(readdirSync(toolSpoolDir("claude", env))).toEqual([]);
       expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 1 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -158,7 +158,7 @@ describe("spool", () => {
         end_reason: "logout",
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -183,7 +183,7 @@ describe("spool", () => {
         end_reason: "clear",
       });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -198,7 +198,7 @@ describe("spool", () => {
       expect(drainSpool(db, env)).toMatchObject({ applied: 0, duplicate: 1 });
       expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 1 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -215,7 +215,7 @@ describe("spool", () => {
         { ts: "2026-09-10T00:26:40.400Z" },
       ]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -240,7 +240,7 @@ describe("spool", () => {
       expect(drainSpool(db, env)).toMatchObject({ applied: 2, unreadable: 0 });
       expect([existsSync(first), existsSync(second)]).toEqual([false, false]);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -252,7 +252,7 @@ describe("spool", () => {
     try {
       expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -266,7 +266,7 @@ describe("spool", () => {
       expect(existsSync(path)).toBe(false);
       expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 0 });
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -281,7 +281,7 @@ describe("spool", () => {
       expect(existsSync(path)).toBe(false);
       expect(readdirSync(join(spoolDir(env), "unreadable")).length).toBe(2);
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 
@@ -304,7 +304,7 @@ describe("spool", () => {
         ),
       ).toThrow();
     } finally {
-      closeDb(db);
+      db.close();
     }
   });
 });

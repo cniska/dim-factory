@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { Decision, OrderId, Reason } from "./order-contract";
 import { addOrder, showOrder, updateOrder } from "./order-ops";
 import { dbPath } from "./paths";
@@ -157,7 +157,7 @@ export const orderCommand: Command = {
     try {
       return await act(db, rest);
     } finally {
-      closeDb(db);
+      db.close();
     }
   },
 };

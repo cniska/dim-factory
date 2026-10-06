@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { refuseRecord } from "./db-contract";
 import { SCHEMA_VERSION } from "./db-schema";
 
@@ -31,7 +31,7 @@ interface Writer {
 }
 
 function spawnWriter(
-  mode: "hold" | "write" | "read-write" | "open" | "initialize",
+  mode: "hold" | "write" | "read-write" | "open" | "close" | "initialize",
   path: string,
   who: string,
 ): Writer {
@@ -111,14 +111,38 @@ describe("concurrent writers", () => {
     }
     const reopened = openDb(path);
     expect(reopened.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
-    closeDb(reopened);
+    reopened.close();
+  });
+
+  test("a connection closing while a reader holds a snapshot does not hold up another writer", async () => {
+    const path = scratchPath();
+    const setup = openDb(path);
+    setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
+    setup.close();
+    const reader = new Database(path);
+    reader.run("BEGIN");
+    reader.query("SELECT count(*) FROM probe").get();
+    try {
+      const closer = spawnWriter("close", path, "closer");
+      await closer.expectLine("closing");
+      await Bun.sleep(HOLD_MS);
+      const writer = openDb(path, { busyTimeoutMs: HOLD_MS });
+      writer.run("INSERT INTO probe (who) VALUES ('writer')");
+      writer.close();
+      reader.run("COMMIT");
+      expect(await exited(closer)).toEqual({ code: 0, stderr: "" });
+    } finally {
+      if (reader.inTransaction) reader.run("ROLLBACK");
+      reader.close();
+    }
+    expect(committed(path)).toEqual(["closer", "writer"]);
   });
 
   test("a writer opening while another holds the write lock waits for it and both commit", async () => {
     const path = scratchPath();
     const setup = openDb(path);
     setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
-    closeDb(setup);
+    setup.close();
 
     const holder = spawnWriter("hold", path, "holder");
     await holder.expectLine("held");
@@ -136,7 +160,7 @@ describe("concurrent writers", () => {
     const path = scratchPath();
     const setup = openDb(path);
     setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
-    closeDb(setup);
+    setup.close();
 
     const writer = spawnWriter("write", path, "writer");
     await writer.expectLine("opened");
@@ -156,7 +180,7 @@ describe("concurrent writers", () => {
     const path = scratchPath();
     const setup = openDb(path);
     setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
-    closeDb(setup);
+    setup.close();
 
     const writer = spawnWriter("read-write", path, "writer");
     await writer.expectLine("opened");
@@ -176,7 +200,7 @@ describe("concurrent writers", () => {
     const path = scratchPath();
     const setup = openDb(path);
     setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
-    closeDb(setup);
+    setup.close();
 
     const holder = new Database(path);
     holder.run("BEGIN IMMEDIATE");

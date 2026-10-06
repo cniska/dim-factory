@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb, writeTransaction } from "../db";
+import { openDb, writeTransaction } from "../db";
 import { hearRecordWrites } from "./record-notices";
 
 const roots: string[] = [];
@@ -49,7 +49,7 @@ test("hears each committed write to its own record once, and nothing written to 
     expect(heard).toBe(1);
   } finally {
     stop();
-    closeDb(writer);
-    closeDb(elsewhere);
+    writer.close();
+    elsewhere.close();
   }
 });
