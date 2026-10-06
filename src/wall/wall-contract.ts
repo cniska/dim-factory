@@ -71,9 +71,21 @@ export const WallWorking = z.object({
 });
 export type WallWorking = z.infer<typeof WallWorking>;
 
+export const WallContextShares = z.object({ brief: z.number(), tools: z.number(), messages: z.number() });
+
+export const WallWorkerUsage = z.object({
+  worker: WallWorker,
+  subagents: z.number(),
+  calls: z.number(),
+  tokens: WallTokens,
+  context: WallContextShares,
+});
+export type WallWorkerUsage = z.infer<typeof WallWorkerUsage>;
+
 export const WallItemView = z.object({
   order: WallOrder,
   tokens: WallTokens,
+  usage: z.array(WallWorkerUsage).readonly(),
   working: WallWorking.nullable(),
   plan: WallArtifact.nullable(),
   build: WallArtifact.nullable(),

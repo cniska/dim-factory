@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
-import { insertSession, insertWorker, workerTokens } from "./worker-store";
+import { insertSession, insertWorker, workerUsage } from "./worker-store";
 
 const roots: string[] = [];
 
@@ -41,20 +41,55 @@ function seeded() {
   return db;
 }
 
-describe("a worker's tokens", () => {
-  test("sum every response of its sessions and their subagents, counting cached input as input", () => {
+describe("a worker's usage", () => {
+  test("counts its own sessions' responses apart from its subagents', counting cached input as input", () => {
     const db = seeded();
     try {
-      expect(workerTokens(db, "axle-2")).toEqual({ input: 1000, output: 25, cachedRead: 840 });
+      expect(workerUsage(db, "axle-2")).toEqual({
+        agent: {
+          sessions: 1,
+          calls: 1,
+          tokens: { input: 950, output: 20, cachedRead: 800 },
+          context: { brief: 950, tools: 0, messages: 0 },
+        },
+        subagents: {
+          sessions: 1,
+          calls: 1,
+          tokens: { input: 50, output: 5, cachedRead: 40 },
+          context: { brief: 50, tools: 0, messages: 0 },
+        },
+      });
     } finally {
       closeDb(db);
     }
   });
 
-  test("are zero for a worker with no responses on record", () => {
+  test("counts each subagent once, however many calls it made", () => {
     const db = seeded();
     try {
-      expect(workerTokens(db, "hinge-1")).toEqual({ input: 0, output: 0, cachedRead: 0 });
+      db.run("INSERT INTO session (id, tool, parent_id) VALUES ('a2@s-axle', 'claude', 's-axle')");
+      const usage = db.prepare(
+        "INSERT INTO usage (response_id, session_id, ts, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens) VALUES (?, ?, '2026-10-06T10:01:00Z', 1, 0, 0, 1)",
+      );
+      usage.run("r4", "a1@s-axle");
+      usage.run("r5", "a2@s-axle");
+      const { subagents } = workerUsage(db, "axle-2");
+      expect({ sessions: subagents.sessions, calls: subagents.calls }).toEqual({ sessions: 2, calls: 3 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("is zero for a worker with no responses on record", () => {
+    const db = seeded();
+    try {
+      const none = {
+        sessions: 0,
+        calls: 0,
+        tokens: { input: 0, output: 0, cachedRead: 0 },
+        context: { brief: 0, tools: 0, messages: 0 },
+      };
+      expect(workerUsage(db, "hinge-1")).toEqual({ agent: none, subagents: none });
     } finally {
       closeDb(db);
     }

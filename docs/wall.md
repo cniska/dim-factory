@@ -24,6 +24,7 @@ Opening a card shows that order alone, as a dialog over the board:
 
 - the order's identity and facts, on screen before the record loads, showing the worker as a card does and the tokens its station workers used, with the status last
 - the **Plan**, **Build** and **Review** artifacts, each a document the owner can read in place of the transcript and diff, its header carrying the tokens that station's worker used, with the approval last. While a station's worker is at work, its section names that worker, the revision it is producing and the tokens it has used so far, with a line saying the order is being planned, built or reviewed; both come from the order's run and leave once the station has returned
+- **Tokens**: one row per station worker, its subagents included. What it read splits into the brief (everything a session starts with), tool results and messages, each counted once per call that read it ([`src/context-shares.ts`](../src/context-shares.ts))
 
 Tokens read `↑ 233k ↓ 4.0k (85% cached)`: everything the model read, cached reads included, then what it wrote, and the share of the reading served from cache. A worker's count covers its subagents, and the operator's own session is left out. They come from the record, which takes each message's tokens as a running worker writes its transcript.
 - the order's log in order, each entry its action, station, time and the worker that recorded it, or a faint "factory" for the factory's own entries, with no details

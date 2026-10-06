@@ -38,6 +38,7 @@ import {
   type WallSnapshot,
   type WallTokens,
   type WallWorker,
+  type WallWorkerUsage,
 } from "./wall-contract";
 import "./styles.css";
 
@@ -266,8 +267,97 @@ function OrderCard({
   );
 }
 
+const TOKEN_COLUMNS = ["Worker", "Calls", "In", "Out", "Cached"];
+
+const CONTEXT_SHARES: readonly (keyof WallWorkerUsage["context"])[] = ["brief", "tools", "messages"];
+
+function TokenCount({ value }: { value: number }) {
+  return value === 0 ? (
+    <span className="text-quiet">none</span>
+  ) : (
+    <Digits value={formatCompactNumber(value)} />
+  );
+}
+
+const cachedPercent = (tokens: WallTokens) =>
+  tokens.input === 0 ? 0 : Math.round((tokens.cachedRead / tokens.input) * 100);
+
+function UsageCells({ usage }: { usage: WallWorkerUsage }) {
+  return (
+    <>
+      <td className="text-quiet">
+        <Digits value={String(usage.calls)} />
+      </td>
+      <td>
+        <TokenCount value={usage.tokens.input} />
+        {CONTEXT_SHARES.map((share) => (
+          <span key={share} className="flex items-center text-quiet">
+            {share}&nbsp;
+            <TokenCount value={usage.context[share]} />
+          </span>
+        ))}
+      </td>
+      <td>
+        <TokenCount value={usage.tokens.output} />
+      </td>
+      <td>
+        <Digits value={`${cachedPercent(usage.tokens)}%`} />
+      </td>
+    </>
+  );
+}
+
+function TokenSection({ view }: { view: WallItemView | null }) {
+  return (
+    <section
+      aria-labelledby="item-tokens"
+      className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+    >
+      <h3 id="item-tokens" className="text-xl font-medium text-foreground leading-7">
+        Tokens
+      </h3>
+      {view === null ? null : view.usage.length === 0 ? (
+        <p className="text-quiet">No station worker has run yet.</p>
+      ) : (
+        <div className="wall-markdown wall-table-scroll text-muted-foreground">
+          <table className="tabular-nums whitespace-nowrap">
+            <thead>
+              <tr>
+                {TOKEN_COLUMNS.map((column) => (
+                  <th key={column}>{column}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {view.usage.map((usage) => (
+                <tr key={usage.worker.name}>
+                  <td>
+                    <WorkerLabel worker={usage.worker} />
+                    {usage.subagents === 0 ? null : (
+                      <span className="flex items-center gap-[var(--space-sm)] text-quiet">
+                        <span className="invisible flex" aria-hidden="true">
+                          <Robot label="" />
+                        </span>
+                        <span>
+                          <Digits value={String(usage.subagents)} />{" "}
+                          {usage.subagents === 1 ? "subagent" : "subagents"}
+                        </span>
+                      </span>
+                    )}
+                  </td>
+                  <UsageCells usage={usage} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function TokensLabel({ tokens }: { tokens: WallTokens }) {
-  const cached = tokens.input === 0 ? 0 : Math.round((tokens.cachedRead / tokens.input) * 100);
+  const cached = cachedPercent(tokens);
   return (
     <span className="flex items-center gap-[var(--space-xs)] tabular-nums text-muted-foreground">
       <ArrowUp size={12} strokeWidth={1.8} aria-label="in" />
@@ -471,6 +561,8 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
           <div className="border-t" aria-hidden="true" />
           <StationSection station="review" view={read.view} />
           <div className="border-t" aria-hidden="true" />
+          <TokenSection view={read.view} />
+          <div className="border-t" aria-hidden="true" />
           <section
             aria-labelledby="item-log"
             className="min-w-0 px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
@@ -485,7 +577,11 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
               {read.view && read.view.entries.length > 0 ? (
                 <ItemHistory entries={read.view.entries} now={new Date()} />
               ) : read.state === "unavailable" ? null : (
-                <p>{ITEM_READ_MESSAGE[read.state]}</p>
+                <p>
+                  <span className={read.state === "reading" ? "shimmering" : undefined}>
+                    {ITEM_READ_MESSAGE[read.state]}
+                  </span>
+                </p>
               )}
             </div>
           </section>

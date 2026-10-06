@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LogEntry, OrderView, Status } from "../order-contract";
-import { itemViewOf, MAX_COLUMN_CARDS, snapshotOf } from "./views";
-import type { WallTokens } from "./wall-contract";
+import { itemViewOf, MAX_COLUMN_CARDS, snapshotOf, type UsageOf } from "./views";
 
 const OPERATOR = { kind: "worker", worker: "hinge-1", session: "s-op" } as const;
 const PLANNER = { kind: "worker", worker: "bolt-2", session: "s-plan" } as const;
@@ -140,15 +139,24 @@ describe("an opened order", () => {
     { seq: 7, ts: at(6), by: BUILDER, action: "build_returned", details: { artifact: "## Built" } },
   ];
 
-  const TOKENS: Readonly<Record<string, WallTokens>> = {
-    "hinge-1": { input: 5000, output: 500, cachedRead: 4000 },
-    "bolt-2": { input: 300, output: 20, cachedRead: 200 },
-    "crank-3": { input: 700, output: 80, cachedRead: 600 },
+  const usage = (calls: number, input: number, output: number, cachedRead: number) => ({
+    sessions: calls === 0 ? 0 : 2,
+    calls,
+    tokens: { input, output, cachedRead },
+    context: { brief: input, tools: 0, messages: 0 },
+  });
+  const USAGE: Readonly<Record<string, ReturnType<UsageOf>>> = {
+    "bolt-2": { agent: usage(4, 300, 20, 200), subagents: usage(0, 0, 0, 0) },
+    "crank-3": { agent: usage(6, 500, 60, 400), subagents: usage(3, 200, 20, 200) },
   };
-  const tokensOf = (worker: string): WallTokens => TOKENS[worker] ?? { input: 0, output: 0, cachedRead: 0 };
+  const usageOf: UsageOf = (worker) => {
+    const found = USAGE[worker];
+    if (found === undefined) throw new Error(`no usage for ${worker} in the fixture`);
+    return found;
+  };
 
   test("shows the latest revision of each artifact, who returned it, whether it was approved after, and its worker's tokens", () => {
-    const item = itemViewOf(viewOf({ log }), tokensOf, null);
+    const item = itemViewOf(viewOf({ log }), usageOf, null);
 
     expect(item.plan).toEqual({
       revision: 2,
@@ -167,16 +175,35 @@ describe("an opened order", () => {
     expect(item.review).toBeNull();
   });
 
-  test("totals the tokens of the order's station workers, leaving out the operator's session", () => {
-    expect(itemViewOf(viewOf({ log }), tokensOf, null).tokens).toEqual({
+  test("totals the tokens of the order's station workers, subagents included, leaving out the operator's session", () => {
+    expect(itemViewOf(viewOf({ log }), usageOf, null).tokens).toEqual({
       input: 1000,
       output: 100,
       cachedRead: 800,
     });
   });
 
+  test("breaks the tokens down by station worker, its subagents included and their calls counted apart", () => {
+    expect(itemViewOf(viewOf({ log }), usageOf, null).usage).toEqual([
+      {
+        worker: { name: "bolt-2", role: "planner" },
+        subagents: 0,
+        calls: 4,
+        tokens: { input: 300, output: 20, cachedRead: 200 },
+        context: { brief: 300, tools: 0, messages: 0 },
+      },
+      {
+        worker: { name: "crank-3", role: "builder" },
+        subagents: 2,
+        calls: 9,
+        tokens: { input: 700, output: 80, cachedRead: 600 },
+        context: { brief: 700, tools: 0, messages: 0 },
+      },
+    ]);
+  });
+
   test("lists every log entry in order, with its station and the worker that recorded it, and no stop code", () => {
-    const entries = itemViewOf(viewOf({ log }), tokensOf, null).entries;
+    const entries = itemViewOf(viewOf({ log }), usageOf, null).entries;
 
     expect(entries.map((entry) => entry.action)).toEqual(log.map((entry) => entry.action));
     expect(entries[2]).toStrictEqual({
@@ -194,21 +221,21 @@ describe("an opened order", () => {
   });
 
   test("keeps a cancelled order's status, so an open dialog says so", () => {
-    expect(itemViewOf(viewOf({ status: "cancelled", log: [ADDED] }), tokensOf, null).order.status).toBe(
+    expect(itemViewOf(viewOf({ status: "cancelled", log: [ADDED] }), usageOf, null).order.status).toBe(
       "cancelled",
     );
   });
 
   test("shows no work in progress while no run of the order is alive", () => {
-    expect(itemViewOf(viewOf({ log }), tokensOf, null).working).toBeNull();
+    expect(itemViewOf(viewOf({ log }), usageOf, null).working).toBeNull();
   });
 
   test("shows no work in progress once the station has returned, while its run is still ending", () => {
-    expect(itemViewOf(viewOf({ next: "approve", log }), tokensOf, "station").working).toBeNull();
+    expect(itemViewOf(viewOf({ next: "approve", log }), usageOf, "station").working).toBeNull();
   });
 
   test("shows a live station run's worker with its tokens and the revision it is working on", () => {
-    expect(itemViewOf(viewOf({ station: "plan", log }), tokensOf, "station").working).toEqual({
+    expect(itemViewOf(viewOf({ station: "plan", log }), usageOf, "station").working).toEqual({
       station: "plan",
       worker: { name: "bolt-2", role: "planner", tokens: { input: 300, output: 20, cachedRead: 200 } },
       revision: 3,
@@ -216,11 +243,11 @@ describe("an opened order", () => {
   });
 
   test("shows a live station run with no worker yet as unassigned, and nothing for a live ship", () => {
-    expect(itemViewOf(viewOf({ station: "review", log }), tokensOf, "station").working).toEqual({
+    expect(itemViewOf(viewOf({ station: "review", log }), usageOf, "station").working).toEqual({
       station: "review",
       worker: null,
       revision: 1,
     });
-    expect(itemViewOf(viewOf({ log }), tokensOf, "ship").working).toBeNull();
+    expect(itemViewOf(viewOf({ log }), usageOf, "ship").working).toBeNull();
   });
 });

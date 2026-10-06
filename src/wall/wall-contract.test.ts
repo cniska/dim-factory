@@ -61,6 +61,7 @@ describe("parsePush", () => {
     const view = {
       order: ORDER,
       tokens: NO_TOKENS,
+      usage: [],
       working: null,
       plan: null,
       build: null,
@@ -75,6 +76,7 @@ describe("parsePush", () => {
     const view = {
       order: ORDER,
       tokens: NO_TOKENS,
+      usage: [],
       working: null,
       plan: null,
       build: null,
@@ -92,6 +94,7 @@ describe("parsePush", () => {
     const view = {
       order: ORDER,
       tokens: NO_TOKENS,
+      usage: [],
       working: null,
       plan: null,
       build: null,

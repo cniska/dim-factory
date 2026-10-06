@@ -1,7 +1,17 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
+import { addShares, type ContextCall, contextShares, NO_SHARES } from "./context-shares";
 import { HarnessName } from "./harness-contract";
-import { ROLES, type Role, type Tokens, type Worker, type WorkerSession } from "./worker-contract";
+import {
+  type ContextShares,
+  ROLES,
+  type Role,
+  type Tokens,
+  type Usage,
+  type Worker,
+  type WorkerSession,
+  type WorkerUsage,
+} from "./worker-contract";
 
 type WorkerRow = {
   readonly name: string;
@@ -101,19 +111,58 @@ export function sessions(db: Database): readonly WorkerSession[] {
   return db.query<SessionRow, []>(`${SESSION} ORDER BY rowid`).all().map(sessionOf);
 }
 
-export function workerTokens(db: Database, worker: string): Tokens {
-  const row = db
-    .query<Tokens, [string, string]>(
-      `SELECT coalesce(sum(u.input_tokens + u.cache_read_tokens + u.cache_write_tokens), 0) AS input,
-              coalesce(sum(u.output_tokens), 0) AS output,
-              coalesce(sum(u.cache_read_tokens), 0) AS cachedRead
+type UsageRow = Tokens & { readonly sessions: number; readonly calls: number };
+
+const USAGE = `SELECT count(DISTINCT u.session_id) AS sessions, count(u.session_id) AS calls,
+         coalesce(sum(u.input_tokens + u.cache_read_tokens + u.cache_write_tokens), 0) AS input,
+         coalesce(sum(u.output_tokens), 0) AS output,
+         coalesce(sum(u.cache_read_tokens), 0) AS cachedRead
+  FROM usage u JOIN session s ON s.id = u.session_id`;
+
+type CallRow = ContextCall & { readonly session: string };
+
+type ResultRow = { readonly session: string; readonly at: string };
+
+function contextWhere(db: Database, where: string, worker: string): ContextShares {
+  const calls = db
+    .query<CallRow, [string]>(
+      `SELECT u.session_id AS session, u.ts AS at, u.output_tokens AS output,
+              u.input_tokens + u.cache_read_tokens + u.cache_write_tokens AS context
        FROM usage u JOIN session s ON s.id = u.session_id
-       WHERE s.id IN (SELECT id FROM worker_session WHERE worker = ?)
-          OR s.parent_id IN (SELECT id FROM worker_session WHERE worker = ?)`,
+       WHERE ${where} ORDER BY u.ts, u.rowid`,
     )
-    .get(worker, worker);
+    .all(worker);
+  const results = db
+    .query<ResultRow, [string]>(
+      `SELECT t.session_id AS session, t.ts_result AS at
+       FROM tool_call t JOIN session s ON s.id = t.session_id
+       WHERE ${where} AND t.ts_result IS NOT NULL`,
+    )
+    .all(worker);
+  const sessions = [...new Set(calls.map((call) => call.session))];
+  return sessions
+    .map((session) =>
+      contextShares(
+        calls.filter((call) => call.session === session),
+        results.filter((result) => result.session === session).map((result) => result.at),
+      ),
+    )
+    .reduce(addShares, NO_SHARES);
+}
+
+function usageWhere(db: Database, where: string, worker: string): Usage {
+  const row = db.query<UsageRow, [string]>(`${USAGE} WHERE ${where}`).get(worker);
   invariant(row !== null, "an aggregate returns one row");
-  return row;
+  const { sessions, calls, ...tokens } = row;
+  return { sessions, calls, tokens, context: contextWhere(db, where, worker) };
+}
+
+export function workerUsage(db: Database, worker: string): WorkerUsage {
+  const sessions = "(SELECT id FROM worker_session WHERE worker = ?)";
+  return {
+    agent: usageWhere(db, `s.id IN ${sessions}`, worker),
+    subagents: usageWhere(db, `s.parent_id IN ${sessions}`, worker),
+  };
 }
 
 export function operatorOf(db: Database, project: string): Worker | null {

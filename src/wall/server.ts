@@ -4,7 +4,7 @@ import { isRefusal, recordOf } from "../coded-error";
 import { openReadOnly } from "../db-read";
 import { OrderId } from "../order-contract";
 import { listOrders, liveRun, showOrder } from "../order-ops";
-import { runningProcesses, tokensOf } from "../worker-ops";
+import { runningProcesses, usageOf } from "../worker-ops";
 import wallPage from "./index.html";
 import { hearRecordWrites } from "./record-notices";
 import { itemViewOf, snapshotOf } from "./views";
@@ -41,7 +41,7 @@ function pushFor(path: string, { order }: Topic): string {
             view: readRecord(path, (db) =>
               itemViewOf(
                 showOrder(db, order),
-                (worker) => tokensOf(db, worker),
+                (worker) => usageOf(db, worker),
                 liveRun(db, order, runningProcesses()),
               ),
             ),

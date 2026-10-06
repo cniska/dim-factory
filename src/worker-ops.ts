@@ -15,10 +15,10 @@ import {
   type ProcessRow,
   refuseWorker,
   type StationRole,
-  type Tokens,
   type Worker,
   type WorkerRecord,
   type WorkerSession,
+  type WorkerUsage,
 } from "./worker-contract";
 import { processTable, transcriptLines } from "./worker-effects";
 import {
@@ -31,7 +31,7 @@ import {
   stationWorkerOf,
   workerNamed,
   workerNames,
-  workerTokens,
+  workerUsage,
 } from "./worker-store";
 
 type StationWorker = {
@@ -118,8 +118,8 @@ export function workersNamed(db: Database, names: readonly string[]): readonly W
   });
 }
 
-export function tokensOf(db: Database, worker: string): Tokens {
-  return workerTokens(db, worker);
+export function usageOf(db: Database, worker: string): WorkerUsage {
+  return workerUsage(db, worker);
 }
 
 function mintedName(db: Database): string {

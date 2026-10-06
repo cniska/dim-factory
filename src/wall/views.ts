@@ -1,6 +1,8 @@
 import { invariant, unreachable } from "../assert";
+import { addShares } from "../context-shares";
 import { roleAt } from "../order";
 import type { LogEntry, OrderView, RunKind, Station } from "../order-contract";
+import type { WorkerUsage } from "../worker-contract";
 import type {
   BoardOrder,
   BoardStatus,
@@ -11,6 +13,7 @@ import type {
   WallSnapshot,
   WallTokens,
   WallWorker,
+  WallWorkerUsage,
   WallWorking,
 } from "./wall-contract";
 
@@ -134,18 +137,28 @@ function artifactOf(
   };
 }
 
-function stationTokens(view: OrderView, tokensOf: TokensOf): WallTokens {
-  return view.workers
-    .filter((worker) => worker.role !== "operator")
-    .map((worker) => tokensOf(worker.name))
-    .reduce(
-      (sum, tokens) => ({
-        input: sum.input + tokens.input,
-        output: sum.output + tokens.output,
-        cachedRead: sum.cachedRead + tokens.cachedRead,
-      }),
-      { input: 0, output: 0, cachedRead: 0 },
-    );
+const NO_TOKENS: WallTokens = { input: 0, output: 0, cachedRead: 0 };
+
+const addTokens = (sum: WallTokens, tokens: WallTokens): WallTokens => ({
+  input: sum.input + tokens.input,
+  output: sum.output + tokens.output,
+  cachedRead: sum.cachedRead + tokens.cachedRead,
+});
+
+export type UsageOf = (worker: string) => WorkerUsage;
+
+function usageOfEach(view: OrderView, usageOf: UsageOf): readonly WallWorkerUsage[] {
+  const stationWorkers = view.workers.filter((worker) => worker.role !== "operator");
+  return stationWorkers.map(({ name, role }) => {
+    const { agent, subagents } = usageOf(name);
+    return {
+      worker: { name, role },
+      calls: agent.calls + subagents.calls,
+      subagents: subagents.sessions,
+      tokens: addTokens(agent.tokens, subagents.tokens),
+      context: addShares(agent.context, subagents.context),
+    };
+  });
 }
 
 function artifactBody(entry: LogEntry, station: Station): string | null {
@@ -182,10 +195,17 @@ function workingOf(view: OrderView, run: RunKind | null, tokensOf: TokensOf): Wa
   };
 }
 
-export function itemViewOf(view: OrderView, tokensOf: TokensOf, run: RunKind | null): WallItemView {
+export function itemViewOf(view: OrderView, usageOf: UsageOf, run: RunKind | null): WallItemView {
+  const usage = usageOfEach(view, usageOf);
+  const tokensOf: TokensOf = (name) => {
+    const found = usage.find((each) => each.worker.name === name);
+    invariant(found !== undefined, `order ${view.id}'s station workers include ${name}`);
+    return found.tokens;
+  };
   return {
     order: cardOf(view),
-    tokens: stationTokens(view, tokensOf),
+    tokens: usage.map((each) => each.tokens).reduce(addTokens, NO_TOKENS),
+    usage,
     working: workingOf(view, run, tokensOf),
     plan: artifactOf(view, "plan", returnsOf(view.log, "plan"), tokensOf),
     build: artifactOf(view, "build", returnsOf(view.log, "build"), tokensOf),

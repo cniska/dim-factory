@@ -83,3 +83,14 @@ export type Caller = {
 export type WorkerRecord = { readonly worker: Worker; readonly sessions: readonly WorkerSession[] };
 
 export type Tokens = { readonly input: number; readonly output: number; readonly cachedRead: number };
+
+export type ContextShares = { readonly brief: number; readonly tools: number; readonly messages: number };
+
+export type Usage = {
+  readonly sessions: number;
+  readonly calls: number;
+  readonly tokens: Tokens;
+  readonly context: ContextShares;
+};
+
+export type WorkerUsage = { readonly agent: Usage; readonly subagents: Usage };

@@ -118,7 +118,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 ## 7. The wall
 
 - **FR-91** — The wall shows the owner every order across all projects on one board, each with its title, project, station and worker, in one column per order status: queued, running and shipped. A cancelled order leaves the board. It changes nothing.
-- **FR-92** — Opening an order on the wall shows that order alone: its facts, its plan, Build and Review artifacts as documents the owner reads in place of the diff and the sessions, and its log in order.
+- **FR-92** — Opening an order on the wall shows that order alone: its facts, its plan, Build and Review artifacts as documents the owner reads in place of the diff and the sessions, the model calls and tokens each station's worker and its subagents used with what the tokens were read for, and its log in order.
 - **FR-93** — The board and an open order follow the record as it changes, without a reload, and the wall says so when it cannot read the record rather than showing what it last read as current.
 - **FR-94** — The wall has a development mode in which a change to the wall's own code reloads the open page by itself.
 - **NF-2** — Only the owner's own browser page can read the wall. Another website, or a web address pointed at this machine, reads nothing.
@@ -220,7 +220,7 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-68** — A builder's commit names the owner's git identity as author and committer and carries no signature, in a checkout whose config signs commits. (FR-42)
 - **AC-69** — A project hook in the checkout runs on a builder's commit, and a hook that refuses the commit leaves it uncommitted. (FR-43)
 - **AC-70** — In a checkout whose config signs commits, every commit that lands on the default branch is signed with the owner's key, and a landing whose key cannot be reached leaves the default branch where it was and the order ready to ship again. (FR-21)
-- **AC-71** — An opened order shows its facts, each artifact it has rendered as a document and every entry of its log in order, and a new artifact or log entry appears on an open order and on the board without a reload. With the record unreadable, the wall says so and shows no order as current. (FR-92, FR-93)
+- **AC-71** — An opened order shows its facts, each artifact it has rendered as a document, each station worker's calls and tokens apart from its subagents', each split by what put the context there, and every entry of its log in order, and a new artifact or log entry appears on an open order and on the board without a reload. With the record unreadable, the wall says so and shows no order as current. (FR-92, FR-93)
 - **AC-72** — With the wall served in development mode, an edit to the wall's code shows on the open page without a manual reload. (FR-94)
 - **AC-73** — An order in a project whose check needs a dependency its lockfile pins ships, with that dependency installed in the workspace before the plan station works and none of the project's lifecycle scripts run. (FR-7, FR-9)
 - **AC-74** — An install that fails stops the run with a refusal naming the command, and no station works on the order. (FR-8)
