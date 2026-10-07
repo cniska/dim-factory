@@ -1,8 +1,10 @@
 # dim-factory
 
-A software factory run by coding agents, with a human at the gates that still earn one.
+An experiment in automating how I build software. My workflow of scoping, designing, building, reviewing and shipping runs through coding agents, and I stay at the gates that still need me.
 
-dim records sessions on this machine, brings earlier work back to agents, and runs agreed work through checked, isolated stations. Agents use its local CLI to operate the record and the factory; the owner requests work and reads the artifacts.
+dim records sessions on my machine, brings earlier work back to agents, and runs agreed work through checked, isolated stations. Agents use its local CLI to operate the record and the factory; I request work and read the artifacts.
+
+The record is also how the experiment is measured: the artifacts I return, what I catch after review, and the tokens each order uses. [My workflow](docs/my-workflow.md) lists each step and whether the factory does it yet.
 
 - **Record.** Sessions, tool calls, commits and usage in one local SQLite database. No network, no credential, no per-token cost.
 - **Recall.** Named queries and keyword search let agents ask what was decided before.

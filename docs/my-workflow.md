@@ -1,6 +1,6 @@
 # My workflow
 
-How I build software with coding agents by hand — the workflow the factory replaces. It is the factory's yardstick: each step either has a station or gate that does it, or it is a gap. [`factory.md`](factory.md) says how the factory works.
+How I build software with coding agents by hand, the workflow the factory is an experiment in automating. It is the factory's yardstick: each step either has a station or gate that does it, or it is a gap, and each names the measure in the order log (`dim sql` over `order_log`) that says how well the factory does it. [`factory.md`](factory.md) says how the factory works.
 
 Sources: my [My Workflow](https://gist.github.com/cniska/e3081dc2b47de82fe2ae04f5af3a2237) gist, what I said on 2026-09-20 (Codex session `01a0b967`), and what the record shows.
 
@@ -18,6 +18,7 @@ Before deciding anything, ask the record: where this shape already exists (`dim 
 
 - **Check:** nothing is re-derived that the record already holds.
 - **Factory:** the planner's instructions ([`prompts/plan.md`](../prompts/plan.md)).
+- **Measure:** the planner's `dim query` calls in a plan turn, from its tool calls.
 
 ### 2. Design with a second model
 
@@ -25,6 +26,7 @@ A powerful model produces the design directly, with no separate planning step, a
 
 - **Check:** the design survived an independent reading, and no claim in it is unverified.
 - **Factory:** the planner, on the model the `models` setting names for it. A second model arguing the plan is a gap.
+- **Measure:** the plans I return (`artifact_returned` at plan, decided by me) and orders the planner returns (`order_returned`).
 
 ### 3. Review the contracts before building
 
@@ -39,6 +41,7 @@ One slice at a time, each verified and committed on its own. Features go in depe
 
 - **Check:** each slice is green on the repo's own check, and the model has exercised the change itself rather than handing me something only I can confirm. Every finding is fixed or refused with a reason.
 - **Factory:** the builder runs this loop ([`prompts/build.md`](../prompts/build.md)), running the tests each slice touches, and the factory hands the build over only once the project's check passes on its head in the check sandbox. The model exercising the product itself is a gap.
+- **Measure:** slices refused at the gates (`slice_refused`), returns refused by the check (`build_refused`), and the findings review raises on each build.
 
 ### 5. Review by dimension
 
@@ -46,13 +49,15 @@ The finished work is reviewed one agent per dimension — correctness, tests, ar
 
 - **Check:** no finding is left unanswered.
 - **Factory:** the reviewer and its report ([`prompts/review.md`](../prompts/review.md)), and my approval of the Review artifact.
+- **Measure:** Review artifacts I return (`artifact_returned` at review), which is what I caught after review.
 
 ### 6. Hand off
 
 When context runs long, the session writes a handoff, and the next session starts from it pasted in.
 
 - **Check:** the next session starts from committed state and a stated next move.
-- **Factory:** the order record and resumed worker sessions replace the handoff.
+- **Factory:** the order record and the station's brief replace the handoff. A worker resumes its session, or starts a fresh one from the brief once its session dies.
+- **Measure:** sessions that died (`session_died`) and the station runs they failed (`station_failed`).
 
 ### 7. Ship
 
@@ -60,6 +65,7 @@ Verified slices are committed locally; a shared branch is pushed only on my go.
 
 - **Check:** the work is on the default branch.
 - **Factory:** approving the Review artifact (`dim order approve`) ships the order.
+- **Measure:** ships that landed (`ship_landed`) against ships that stopped (`ship_stopped`).
 
 ### 8. Close the gap
 
