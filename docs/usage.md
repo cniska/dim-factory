@@ -10,6 +10,8 @@ bun install
 bun link       # puts dim on PATH
 ```
 
+`dim` runs under the bun this checkout pins, through mise, whichever bun the calling project pins ([`bin/dim`](../bin/dim)).
+
 ## Collect and inspect
 
 ```sh

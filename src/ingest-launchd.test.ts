@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AGENT_LABEL, agentPlist, agentPlistPath, bunPath, installAgent, planAgent } from "./ingest-launchd";
+import { AGENT_LABEL, agentPlist, agentPlistPath, installAgent, planAgent } from "./ingest-launchd";
 import type { Env } from "./paths";
 
 const roots: string[] = [];
@@ -41,8 +41,9 @@ describe("launchd agent", () => {
     expect(plist).toContain(`<string>${join(dir, "state", "dim-factory", "sync.log")}</string>`);
   });
 
-  test("picks a bun path that survives an upgrade", () => {
-    expect(bunPath()).not.toContain("/Cellar/");
+  test("runs the agent under the bun that runs dim, not whichever bun the caller's PATH finds", () => {
+    const dir = newRoot();
+    expect(planAgent(env(dir)).contents).toContain(`<string>${process.execPath}</string>`);
   });
 
   test("writes the plist where launchd looks, and reports when it already matches", () => {

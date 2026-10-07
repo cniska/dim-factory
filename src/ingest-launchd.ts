@@ -47,13 +47,9 @@ ${args.map((a) => `    <string>${xmlText(a)}</string>`).join("\n")}
 
 export type AgentPlan = { path: string; contents: string; unchanged: boolean };
 
-export function bunPath(): string {
-  return Bun.which("bun") ?? process.execPath;
-}
-
 export function planAgent(env: Env = process.env): AgentPlan {
   const path = agentPlistPath(env);
-  const contents = agentPlist(bunPath(), resolve(import.meta.dir, ".."), env);
+  const contents = agentPlist(process.execPath, resolve(import.meta.dir, ".."), env);
   const unchanged = existsSync(path) && readFileSync(path, "utf8") === contents;
   return { path, contents, unchanged };
 }

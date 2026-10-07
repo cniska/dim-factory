@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "dim": "./src/cli.ts"
+    "dim": "./bin/dim"
   },
   "scripts": {
     "dim": "bun run src/cli.ts",
