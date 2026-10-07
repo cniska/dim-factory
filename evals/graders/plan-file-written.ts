@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Glob } from "bun";
 import { z } from "zod";
 import type { Grader } from "../grader-contract";
 
@@ -11,8 +12,9 @@ const Plan = z.object({
 export const planFileWritten: Grader = {
   name: "plan-file-written",
   grade({ tmp }) {
-    const path = join(tmp, "plan.json");
-    if (!existsSync(path)) return { pass: false, reason: `no ${path}` };
+    const [found] = [...new Glob("**/plan.json").scanSync({ cwd: tmp, dot: true })];
+    if (found === undefined) return { pass: false, reason: `no plan.json under ${tmp}` };
+    const path = join(tmp, found);
     let raw: unknown;
     try {
       raw = JSON.parse(readFileSync(path, "utf8"));

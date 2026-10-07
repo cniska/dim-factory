@@ -1,4 +1,5 @@
 {"type":"system","subtype":"init","session_id":"s-fixture"}
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat > \"$TMPDIR/plan.json\" <<'EOF'\n{\"body\": \"x\"}\nEOF"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Contains brace with quote character (expansion obfuscation)"}]}}
-{"type":"assistant","message":{"content":[{"type":"text","text":"I wrote the plan with a heredoc."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat > \"$TMPDIR/plan.json\" <<'EOF'\n{\"body\": \"x\"}\nEOF"}}]},"session_id":"s-fixture"}
+{"type":"system","subtype":"permission_denied","tool_name":"Bash","tool_use_id":"t1","decision_reason_type":"other","decision_reason":"Contains brace with quote character (expansion obfuscation)","message":"Contains brace with quote character (expansion obfuscation)","session_id":"s-fixture"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Contains brace with quote character (expansion obfuscation)","is_error":true,"tool_use_id":"t1"}]},"session_id":"s-fixture"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I wrote the plan with a heredoc."}]},"session_id":"s-fixture"}

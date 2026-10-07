@@ -7,7 +7,15 @@ export type ToolCall = {
   readonly name: string;
   readonly input: Readonly<Record<string, unknown>>;
   readonly result: ToolResult | null;
+  readonly denied: string | null;
 };
+
+const PermissionDenied = z.looseObject({
+  type: z.literal("system"),
+  subtype: z.literal("permission_denied"),
+  tool_use_id: z.string(),
+  decision_reason: z.string(),
+});
 
 const ToolUse = z.object({
   type: z.literal("tool_use"),
@@ -25,7 +33,9 @@ const ToolResultBlock = z.object({
   content: ResultText,
 });
 
-const Line = z.looseObject({ message: z.looseObject({ content: z.unknown() }).optional() });
+const Line = z.looseObject({ message: z.unknown().optional() });
+
+const Message = z.looseObject({ content: z.unknown() });
 
 const textOf = (content: z.infer<typeof ResultText>) =>
   typeof content === "string" ? content : content.map((part) => part.text ?? "").join("");
@@ -33,13 +43,19 @@ const textOf = (content: z.infer<typeof ResultText>) =>
 export function toolCallsOf(lines: readonly string[]): readonly ToolCall[] {
   const calls: ToolCall[] = [];
   const results = new Map<string, ToolResult>();
+  const denials = new Map<string, string>();
   for (const line of lines) {
     if (line.trim() === "") continue;
-    const content = Line.parse(JSON.parse(line)).message?.content;
+    const event: unknown = JSON.parse(line);
+    const denied = PermissionDenied.safeParse(event);
+    if (denied.success) denials.set(denied.data.tool_use_id, denied.data.decision_reason);
+    const message = Message.safeParse(Line.parse(event).message);
+    const content = message.success ? message.data.content : null;
     if (!Array.isArray(content)) continue;
     for (const block of content) {
       const use = ToolUse.safeParse(block);
-      if (use.success) calls.push({ id: use.data.id, name: use.data.name, input: use.data.input, result: null });
+      if (use.success)
+        calls.push({ id: use.data.id, name: use.data.name, input: use.data.input, result: null, denied: null });
       const result = ToolResultBlock.safeParse(block);
       if (result.success) {
         results.set(result.data.tool_use_id, {
@@ -49,5 +65,9 @@ export function toolCallsOf(lines: readonly string[]): readonly ToolCall[] {
       }
     }
   }
-  return calls.map((call) => ({ ...call, result: results.get(call.id) ?? null }));
+  return calls.map((call) => ({
+    ...call,
+    result: results.get(call.id) ?? null,
+    denied: denials.get(call.id) ?? null,
+  }));
 }

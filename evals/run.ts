@@ -28,7 +28,14 @@ function runOnce(spec: Case, arm: Arm, run: number, token: string, out: string):
     const tmp = join(root, "tmp");
     const workspace = join(root, "workspace");
     for (const dir of [home, tmp, workspace]) mkdirSync(dir, { recursive: true });
-    const env = { ...process.env, HOME: home, TMPDIR: tmp, WORKSPACE: workspace, CLAUDE_CODE_OAUTH_TOKEN: token };
+    const env = {
+      ...process.env,
+      HOME: home,
+      TMPDIR: tmp,
+      CLAUDE_CODE_TMPDIR: tmp,
+      WORKSPACE: workspace,
+      CLAUDE_CODE_OAUTH_TOKEN: token,
+    };
     const scaffold = Bun.spawnSync(["sh", join(spec.dir, "scaffold.sh")], { env, stderr: "pipe" });
     if (scaffold.exitCode !== 0) throw new Error(`${spec.name} scaffold failed: ${scaffold.stderr.toString()}`);
     const instruction = arm === "with" ? ["--append-system-prompt", readFileSync(join(REPO, spec.instruction), "utf8")] : [];
