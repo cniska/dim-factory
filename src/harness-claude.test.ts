@@ -6,7 +6,7 @@ const START: Start = {
   session: { kind: "new", id: "s1" },
   model: "opus",
   instructions: "# Build",
-  policy: { writable: ["/t"], denied: ["/w"], unedited: [], web: false },
+  policy: { writable: ["/t"], denied: ["/w"], edits: true, web: false },
   socket: "/t/s",
 };
 
@@ -56,9 +56,12 @@ describe("starting Claude Code", () => {
     });
   });
 
-  test("denies the edit tool a directory it may not edit while Bash may still write there", () => {
-    const argv = claude.argv({ ...START, policy: { ...START.policy, denied: [], unedited: ["/w"] } });
-    expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/**)"]);
+  test("offers the edit tool only when the policy edits, so a worker that may not edit still writes through its programs", () => {
+    const toolsOf = (argv: readonly string[]) => argv[argv.indexOf("--tools") + 1];
+    expect(toolsOf(claude.argv(START))).toBe("Bash,Read,Write,Agent,Edit");
+    const argv = claude.argv({ ...START, policy: { ...START.policy, denied: [], edits: false } });
+    expect(toolsOf(argv)).toBe("Bash,Read,Write,Agent");
+    expect(settingsOf(argv).permissions.deny).toEqual([]);
     expect(settingsOf(argv).sandbox.filesystem).toEqual({ allowWrite: ["/t"], denyWrite: [] });
   });
 

@@ -234,6 +234,7 @@ describe("what a station worker may change", () => {
         program(["README.md", `${who}-committed.txt`, `node_modules/${who}-ignored.txt`], `${who}\n`),
         `git add -A && git commit -qm "chore: ${who} commits"`,
         program(["README.md", `${who}-untracked.txt`], `${who}\n`),
+        `echo ${who} wrote everything`,
       ].join(" && "),
     },
   ];
@@ -243,7 +244,7 @@ describe("what a station worker may change", () => {
       entry.type === "tool_result" ? [entry.output] : [],
     );
 
-  test("AC-84 a planner's and a reviewer's own edit is refused while the programs they run write and commit, and the next station starts at the recorded head with only ignored files kept", async () => {
+  test("AC-84 a planner's and a reviewer's own writes and the programs they run all succeed, and the next station starts at the recorded head with only ignored files kept", async () => {
     const m = await start({
       script: {
         planner: [[...leaveTraces("planner"), ...planTurn()]],
@@ -272,8 +273,10 @@ describe("what a station worker may change", () => {
     expect(existsSync(join(order.workspace, "node_modules", "planner-ignored.txt"))).toBe(true);
     expect(existsSync(join(order.workspace, "node_modules", "reviewer-ignored.txt"))).toBe(true);
     for (const role of ["planner", "reviewer"] as const) {
-      const [edited] = await toolResults(m, sessionOf(workerOf(order, role), 0).id);
-      expect(edited).toContain("has been denied");
+      const [edited, ran] = await toolResults(m, sessionOf(workerOf(order, role), 0).id);
+      expect(edited).toMatch(new RegExp(`^wrote /.*/${role}-edited\\.txt$`));
+      expect(ran).toContain(`${role} wrote everything`);
+      expect(existsSync(join(order.workspace, `${role}-edited.txt`))).toBe(false);
     }
   });
 
@@ -303,16 +306,15 @@ describe("what a station worker may change", () => {
     }
   });
 
-  test("AC-86 every station turn is offered the shell, file and subagent tools, and the planner the web tools too", async () => {
+  test("AC-86 every station turn is offered the shell, file and subagent tools, the builder file editing and the planner the web tools", async () => {
     const m = await start({ script: happyPath() });
     await reviewed(m.operator);
 
-    const station = ["Bash", "Read", "Write", "Edit", "Agent"];
+    const station = ["Bash", "Read", "Write", "Agent"];
     const offered = (role: StationRole) => m.invocations(role).map((invocation) => invocation.tools);
     for (const tools of offered("planner")) expect(tools).toEqual([...station, "WebSearch", "WebFetch"]);
-    for (const role of ["builder", "reviewer"] as const) {
-      for (const tools of offered(role)) expect(tools).toEqual(station);
-    }
+    for (const tools of offered("builder")) expect(tools).toEqual([...station, "Edit"]);
+    for (const tools of offered("reviewer")) expect(tools).toEqual(station);
   });
 });
 

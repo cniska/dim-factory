@@ -15,16 +15,16 @@ describe("a station worker's sandbox", () => {
     expect(policyOf({ access: "edit", ...places })).toEqual({
       writable: ["/t/tmp"],
       denied: ["/c/.git/hooks"],
-      unedited: [],
+      edits: true,
       web: false,
     });
   });
 
-  test("lets a planning or reviewing turn's commands write the workspace, but not its edit tool", () => {
+  test("lets a planning or reviewing turn's commands write the workspace, without the edit tool", () => {
     expect(policyOf({ access: "run", ...places })).toEqual({
       writable: ["/t/tmp"],
       denied: ["/c/.git/hooks"],
-      unedited: ["/w"],
+      edits: false,
       web: false,
     });
   });

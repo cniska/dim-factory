@@ -94,10 +94,13 @@ export function sandboxed(
     ...linkedCommonDir(cwd),
     ...writableDirs,
     ...(settings.sandbox.filesystem?.allowWrite ?? []),
+    ...editRoots(settings.permissions?.allow ?? [], cwd),
   ].map(real);
-  const denied = [join(cwd, ".git", "hooks"), ...(settings.sandbox.filesystem?.denyWrite ?? [])].map(
-    deniedRoot,
-  );
+  const denied = [
+    join(cwd, ".git", "hooks"),
+    ...(settings.sandbox.filesystem?.denyWrite ?? []),
+    ...editRoots(settings.permissions?.deny ?? [], cwd),
+  ].map(deniedRoot);
   const gitConfig = join(real(cwd), ".git", "config");
   const profile = [
     "(version 1)",

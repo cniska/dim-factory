@@ -77,11 +77,11 @@ export function policyOf({
   const hooks = join(checkoutGit, "hooks");
   switch (access) {
     case "edit":
-      return { writable: [turn.tmp], denied: [hooks], unedited: [], web };
+      return { writable: [turn.tmp], denied: [hooks], edits: true, web };
     case "run":
-      return { writable: [turn.tmp], denied: [hooks], unedited: [workspace], web };
+      return { writable: [turn.tmp], denied: [hooks], edits: false, web };
     case "read":
-      return { writable: [turn.tmp], denied: [workspace, checkoutGit], unedited: [], web };
+      return { writable: [turn.tmp], denied: [workspace, checkoutGit], edits: false, web };
     default:
       return unreachable(access);
   }

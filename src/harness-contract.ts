@@ -32,7 +32,7 @@ export const HARNESSES: Readonly<Record<HarnessName, Harness>> = {
 export type Policy = {
   readonly writable: readonly string[];
   readonly denied: readonly string[];
-  readonly unedited: readonly string[];
+  readonly edits: boolean;
   readonly web: boolean;
 };
 

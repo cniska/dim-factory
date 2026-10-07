@@ -144,10 +144,10 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **FR-98** — `dim doctor` changes nothing. Run in a project's checkout, it reports each thing the factory needs of the machine and of that project that does not hold, with what resolves it: no gates chosen, a chosen gate missing, behind the canonical set or changed in place, and a gate present but not chosen among them.
 - **FR-99** — A project's check is the declared task its settings name, or the task named `check` where they name none, and its format command likewise with `format`. Adopting a project records the names its own tasks already have rather than renaming them.
 - **FR-100** — A build hands over only once the project's check, run on its branch's head after its definition of done holds, passes without changing the workspace. A check that fails or changes the workspace is recorded with its output and keeps the build with its builder, and is not a missed return.
-- **FR-101** — Every station's worker can run whatever verifies a claim, and the programs it runs may write in its workspace and its temporary directory. Only the builder edits the project's files itself.
+- **FR-101** — Every station's worker can run whatever verifies a claim, and the programs it runs may write in its workspace and its temporary directory.
 - **FR-102** — Only the builder's commits taken through the gates become the order's work. Every other turn ends with the workspace back at the order's recorded head, keeping only the files the project's git ignores.
 - **FR-103** — The planner can search the web and read web pages.
-- **FR-104** — A station's worker is offered only the tools station work uses: the shell, reading, writing and editing files, and starting subagents, with the planner's web tools beside them.
+- **FR-104** — A station's worker is offered only the tools station work uses: the shell, reading and writing files, and starting subagents, with editing files for the builder and the web tools for the planner.
 - **FR-105** — The builder and the reviewer are given dim's guidance for writing each language the project's tracked source uses.
 - **FR-106** — A session that replaces a dead one starts from the station's brief, not from the dead session's messages.
 
@@ -236,9 +236,9 @@ Every agent in the factory is a worker: the operator, and each station's worker 
 - **AC-81** — `dim doctor` in a project's checkout with one chosen gate missing, one behind, one changed in place, one present but not chosen, and no shipping setting reports each with what resolves it, and leaves the checkout, its settings and the record unchanged. (FR-98)
 - **AC-82** — An order in a project whose settings name `verify` as its check, while it also declares a failing `check`, is built and judged by `verify`, and its builder's brief names `verify`. (FR-99)
 - **AC-83** — A build whose head fails the project's check, or whose check rewrites files, is refused at its return with the check's output in the log and stays at build without failing the station; once a further commit makes the check pass, the same return hands the build over with the passing check in the log. (FR-86, FR-100)
-- **AC-84** — A planner's and a reviewer's own edit to a project file is refused, while each runs a program that writes tracked, untracked and ignored files in the workspace and commits on the order's branch; the next station starts at the order's recorded head with only the ignored files kept, and neither turn's commit reaches the order's work. (FR-36, FR-44, FR-101, FR-102)
+- **AC-84** — A planner and a reviewer each write a project file themselves and run a program that writes tracked, untracked and ignored files in the workspace and commits on the order's branch, and every one of those writes succeeds; the next station starts at the order's recorded head with only the ignored files kept, and neither turn's commit reaches the order's work. (FR-36, FR-44, FR-101, FR-102)
 - **AC-85** — A planner's turn is allowed to search the web and fetch pages, and a builder's or reviewer's turn is not. (FR-103)
-- **AC-86** — Every station turn is offered exactly the shell, reading, writing and editing files and starting subagents, and the planner's turn the web tools beside them. (FR-103, FR-104)
+- **AC-86** — Every station turn is offered exactly the shell, reading and writing files and starting subagents, the builder's turn editing files beside them and the planner's turn the web tools. (FR-103, FR-104)
 - **AC-87** — In a project that tracks TypeScript source, every builder's and reviewer's turn carries dim's TypeScript guidance and no planner's turn does. (FR-105)
 
 ## 11. Constraints
