@@ -10,9 +10,10 @@
   "scripts": {
     "dim": "bun run src/cli.ts",
     "prepare": "git config core.hooksPath .githooks",
-    "format": "bunx biome check --write src acceptance",
+    "eval": "bun evals/run.ts",
+    "format": "bunx biome check --write src acceptance evals",
     "gates:bundle": "bun src/gate-bundles-write.ts",
-    "lint": "bunx biome check --error-on-warnings src acceptance",
+    "lint": "bunx biome check --error-on-warnings src acceptance evals",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "test:acceptance": "bun test --parallel --concurrent --max-concurrency=3 ./acceptance/*.acceptance.ts",

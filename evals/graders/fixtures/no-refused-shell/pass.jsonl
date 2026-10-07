@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"s-fixture"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"/tmp/fixture/plan.json","content":"{\"body\": \"x\"}"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"File created successfully at: /tmp/fixture/plan.json"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls missing-dir"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":[{"type":"text","text":"Exit code 1\nls: missing-dir: No such file or directory"}]}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Contains brace with quote character, but only in prose."}]}}

@@ -1,0 +1,1 @@
+Plan how to add a `--version` flag to this CLI that prints the version from package.json. Don't change the repo. Save the plan as JSON, `{"body": "<the plan in Markdown>", "slices": [{"title": "...", "outcome": "..."}]}`, to `$TMPDIR/plan.json`, then reply with the file's path.

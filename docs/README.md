@@ -17,6 +17,7 @@ Each fact lives on one page and is linked from the others.
 - [The wall](wall.md) — the read-only board the owner watches
 - [Adopting a project](adopting.md) — what a project needs before the factory runs its orders
 - [Agent command reference](usage.md) — install, collect, query, hooks and config
+- [Evals](evals.md) — measuring what a station's instructions change
 - [Session database](design.md) — sources, schema, ingestion, hooks and read path
 - [Glossary](glossary.md) — one word per thing
 - [Source layout](../src/README.md) — where to start reading the code

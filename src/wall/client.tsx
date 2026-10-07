@@ -320,7 +320,7 @@ function TokenSection({ view }: { view: WallItemView | null }) {
         <p className="text-quiet">No station worker has run yet.</p>
       ) : (
         <div className="wall-markdown wall-table-scroll text-muted-foreground">
-          <table className="tabular-nums whitespace-nowrap">
+          <table className="!table-auto tabular-nums whitespace-nowrap">
             <thead>
               <tr>
                 {TOKEN_COLUMNS.map((column) => (

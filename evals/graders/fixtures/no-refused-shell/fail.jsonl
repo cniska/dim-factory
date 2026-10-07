@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"s-fixture"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat > \"$TMPDIR/plan.json\" <<'EOF'\n{\"body\": \"x\"}\nEOF"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Contains brace with quote character (expansion obfuscation)"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"I wrote the plan with a heredoc."}]}}

@@ -1,0 +1,7 @@
+{
+  "instruction": "prompts/references/shell.md",
+  "model": "claude-opus-5-5",
+  "runs": 5,
+  "tools": "Bash,Read,Write",
+  "graders": ["no-refused-shell", "plan-file-written"]
+}
