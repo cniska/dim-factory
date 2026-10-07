@@ -335,9 +335,7 @@ function TokenSection({ view }: { view: WallItemView | null }) {
                     <WorkerLabel worker={usage.worker} />
                     {usage.subagents === 0 ? null : (
                       <span className="flex items-center gap-[var(--space-sm)] text-quiet">
-                        <span className="invisible flex" aria-hidden="true">
-                          <Robot label="" />
-                        </span>
+                        <Robot label="subagents" className="text-quiet opacity-60" />
                         <span>
                           <Digits value={String(usage.subagents)} />{" "}
                           {usage.subagents === 1 ? "subagent" : "subagents"}
