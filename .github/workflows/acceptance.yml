@@ -1,10 +1,18 @@
 name: Acceptance
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
 
 permissions:
   contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  # A superseded pull request run is worth cancelling; a push to main is the run
+  # that says whether main is green, so it finishes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   acceptance:
